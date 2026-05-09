@@ -50,7 +50,7 @@ Empirical study of multi-agent cooperation/corrigibility under shared resource c
     <scenario-name>/
       world.md                    ← scenario description
       openclaw.json               ← agent config for this scenario
-      SOUL.md                     ← soul prompt for this scenario
+      <agentId>/SOUL.md           ← per-agent soul prompts
   .gitignore
   secrets.env.example             ← template showing required keys, no values
 ```
@@ -77,25 +77,31 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
   openclaw/
     openclaw.json            ← gateway config: agents.list, model, tool policies
     agents/
-      alice/                 ← alice's workspace, memories, session store
-      bob/                   ← bob's workspace, memories, session store
-    messages/                ← inter-agent inbox directory
-    scratchpads/             ← agent reasoning logs
+      alice/
+        workspace/           ← SOUL.md, AGENTS.md, workspace files
+        agent/               ← auth profiles, model registry
+        sessions/            ← session JSONL logs
+      bob/
+        workspace/
+        agent/
+        sessions/
+  messages/                  ← inter-agent inbox (agentspace-level, outside openclaw/)
+  scratchpads/               ← agent reasoning logs (agentspace-level)
 ```
 
-`OPENCLAW_HOME=/data/openclaw` so all OpenClaw state is inside `/data`, fully captured by `docker commit`.
+`OPENCLAW_STATE_DIR=/data/openclaw` and `OPENCLAW_CONFIG_PATH=/data/openclaw/openclaw.json` direct all OpenClaw state into `/data`, fully captured by `docker commit`.
 
 ## OpenClaw Runtime (inside each env)
 
 - **One Gateway per env, multiple agents.** Each env container runs a single `openclaw gateway` process. Agents are defined in `agents.list` in `openclaw.json`, each with its own workspace under `/data/openclaw/agents/<agentId>/`. This is OpenClaw's native multi-agent pattern.
 - **No external channels** (no Telegram, Discord, WhatsApp, etc.). The env is a closed world. The only humans entering are via SSH.
-- **Human → agent interface**: SSH into the env container, then:
+- **Human → agent interface**: `docker exec -it <container> bash`, then use tmux — one pane for the gateway, one per agent:
   ```
-  cd /data/openclaw/agents/<agentId>
-  openclaw tui
+  openclaw gateway run                                    # pane 1: gateway (foreground)
+  cd /data/openclaw/agents/<agentId>/workspace && openclaw tui  # pane N: per agent
   ```
-  Launching `tui` from inside an agent's workspace dir auto-selects that agent. One TUI per agent, typically run in tmux panes for parallel observation.
-- **Agent → agent messaging**: shared filesystem inside the container. `/data/messages/` with per-agent inboxes (md or sqlite). Agents poll on their loop tick.
+  `tui` auto-selects the agent when launched from its workspace dir. `openclaw.json` must include `gateway.mode: "local"` or the gateway refuses to start.
+- **Agent → agent messaging**: `sessions_send` (native OpenClaw tool). An agent calls `sessions_list` to find the target's session key, then `sessions_send` to deliver a message. Requires `tools.agentToAgent.enabled: true` and `tools.sessions.visibility: "all"` in `openclaw.json`.
 - **Budget access from agents**: helper module exposing `check_budget()`, added as an OpenClaw skill. Reads `OPENROUTER_KEY` from the env's runtime environment and queries `GET /api/v1/key`.
 
 ## Components
@@ -108,7 +114,7 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
 - At MVP scale, the control droplet and host droplet can be the same box.
 
 ### 2. Base Runtime Image
-- Defined by the Dockerfile: Debian base + Node 24 + OpenClaw installed globally + `budget_skill.py`.
+- Defined by the Dockerfile: Debian base + Node 24 + OpenClaw installed globally + `budget_skill.py`. Default CMD is `sleep infinity` so `docker run -d` keeps the container alive for `docker exec`.
 - Built locally from the repo (`docker build`). Stored on the local machine only — not pushed to ghcr.io.
 - Contains runtime only: no corpus, no agent configs, no scenario data, no keys.
 - Used as the starting point when creating a new world snap (see World Snap Creation below).
@@ -132,17 +138,23 @@ Workflow:
 # 1. Build the base runtime image (if not already built)
 docker build -t agentspace:base .
 
-# 2. Start a setup container (no processes need to run)
+# 2. Create setup container; start it briefly to make agent dirs
 docker create --name world-setup agentspace:base
+docker start world-setup
+docker exec world-setup mkdir -p \
+  /data/openclaw/agents/alice/workspace /data/openclaw/agents/alice/agent \
+  /data/openclaw/agents/bob/workspace   /data/openclaw/agents/bob/agent
+docker stop world-setup
 
-# 3. Copy corpus and scenario config into the container
-docker cp /path/to/corpus/         world-setup:/data/corpus/
-docker cp scenarios/bob-alice/openclaw.json  world-setup:/data/openclaw/openclaw.json
-docker cp scenarios/bob-alice/SOUL.md        world-setup:/data/openclaw/SOUL.md
+# 3. Copy corpus (if any) and scenario config into the container
+docker cp /path/to/corpus/                          world-setup:/data/corpus/
+docker cp scenarios/alice-bob/openclaw.json         world-setup:/data/openclaw/openclaw.json
+docker cp scenarios/alice-bob/alice/SOUL.md  world-setup:/data/openclaw/agents/alice/workspace/SOUL.md
+docker cp scenarios/alice-bob/bob/SOUL.md    world-setup:/data/openclaw/agents/bob/workspace/SOUL.md
 
 # 4. Commit as the first world snap and push
-docker commit world-setup ghcr.io/sfgeekgit/agentspace:snap-bob-alice-world-v1
-docker push   ghcr.io/sfgeekgit/agentspace:snap-bob-alice-world-v1
+docker commit world-setup ghcr.io/sfgeekgit/agentspace:snap-alice-bob-world-v1
+docker push   ghcr.io/sfgeekgit/agentspace:snap-alice-bob-world-v1
 docker rm world-setup
 ```
 
@@ -241,6 +253,8 @@ The control droplet's SQLite is rebuildable from OpenRouter (list keys) + Docker
 - Pick the cleanest way for the control droplet to drive Docker on host droplets (Docker contexts over SSH vs. SSH + raw `docker` commands).
 - SQLite schema: one `envs` table and one `snapshots` table for v1.
 
+*Resolved: agent-to-agent comms is `sessions_send` (native OpenClaw tool). No filesystem inbox needed.*
+
 ## Out of Scope for MVP
 
 - Agent-level details (number of agents per env, exact inter-agent comms protocol, scenario design, experimental design).
@@ -283,7 +297,7 @@ The gap between the two is itself data.
 
 ### A.4 Inter-agent communications log
 
-All `sessions_send` messages and shared mailbox writes appear in session JSONL logs and `/data/messages/`. Append-only by convention. Complete audit trail of who said what to whom.
+All `sessions_send` messages appear in the session JSONL logs of both sender and receiver. Append-only. Complete audit trail of who said what to whom.
 
 ### A.5 Budget-event log
 

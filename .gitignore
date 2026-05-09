@@ -1,0 +1,11 @@
+secrets.env
+*.env
+!*.env.example
+
+__pycache__/
+*.pyc
+
+db.sqlite
+*.sqlite
+
+.DS_Store

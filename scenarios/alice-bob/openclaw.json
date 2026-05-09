@@ -1,0 +1,56 @@
+{
+  // OpenRouter key is injected at runtime via OPENROUTER_KEY env var.
+  // openclaw.json is inside the image; the key is never baked in.
+  // Required: gateway refuses to start without this.
+  gateway: {
+    mode: "local",
+  },
+
+  models: {
+    providers: {
+      openrouter: {
+        apiKey: "${OPENROUTER_KEY}",
+      },
+    },
+  },
+
+  agents: {
+    defaults: {
+      model: {
+        // Update to the current best-value model on OpenRouter.
+        // Format: openrouter/<provider>/<model-id>
+        primary: "openrouter/anthropic/claude-haiku-4-5-20251001",
+      },
+    },
+    list: [
+      {
+        id: "alice",
+        name: "Alice",
+        workspace: "/data/openclaw/agents/alice/workspace",
+        agentDir: "/data/openclaw/agents/alice/agent",
+      },
+      {
+        id: "bob",
+        name: "Bob",
+        workspace: "/data/openclaw/agents/bob/workspace",
+        agentDir: "/data/openclaw/agents/bob/agent",
+      },
+    ],
+  },
+
+  // Tool policy: messaging profile (sessions_list, sessions_history,
+  // sessions_send, session_status) plus read/write for scratchpads.
+  // No exec, no web, no external channels.
+  tools: {
+    profile: "messaging",
+    allow: ["read", "write"],
+    agentToAgent: {
+      enabled: true,
+      allow: ["alice", "bob"],
+    },
+    sessions: {
+      // "all" lets each agent see and target the other's sessions.
+      visibility: "all",
+    },
+  },
+}
