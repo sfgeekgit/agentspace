@@ -77,11 +77,11 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
   openclaw/
     openclaw.json            ← gateway config: agents.list, model, tool policies
     agents/
-      alice/
+      a87329/
         workspace/           ← SOUL.md, AGENTS.md, workspace files
         agent/               ← auth profiles, model registry
         sessions/            ← session JSONL logs
-      bob/
+      a90301/
         workspace/
         agent/
         sessions/
@@ -142,19 +142,19 @@ docker build -t agentspace:base .
 docker create --name world-setup agentspace:base
 docker start world-setup
 docker exec world-setup mkdir -p \
-  /data/openclaw/agents/alice/workspace /data/openclaw/agents/alice/agent \
-  /data/openclaw/agents/bob/workspace   /data/openclaw/agents/bob/agent
+  /data/openclaw/agents/a87329/workspace /data/openclaw/agents/a87329/agent \
+  /data/openclaw/agents/a90301/workspace   /data/openclaw/agents/a90301/agent
 docker stop world-setup
 
 # 3. Copy corpus (if any) and scenario config into the container
 docker cp /path/to/corpus/                          world-setup:/data/corpus/
-docker cp scenarios/alice-bob/openclaw.json         world-setup:/data/openclaw/openclaw.json
-docker cp scenarios/alice-bob/alice/SOUL.md  world-setup:/data/openclaw/agents/alice/workspace/SOUL.md
-docker cp scenarios/alice-bob/bob/SOUL.md    world-setup:/data/openclaw/agents/bob/workspace/SOUL.md
+docker cp scenarios/a87329-a90301/openclaw.json         world-setup:/data/openclaw/openclaw.json
+docker cp scenarios/a87329-a90301/a87329/SOUL.md  world-setup:/data/openclaw/agents/a87329/workspace/SOUL.md
+docker cp scenarios/a87329-a90301/a90301/SOUL.md    world-setup:/data/openclaw/agents/a90301/workspace/SOUL.md
 
 # 4. Commit as the first world snap and push
-docker commit world-setup ghcr.io/sfgeekgit/agentspace:snap-alice-bob-world-v1
-docker push   ghcr.io/sfgeekgit/agentspace:snap-alice-bob-world-v1
+docker commit world-setup ghcr.io/sfgeekgit/agentspace:snap-a87329-a90301-world-v1
+docker push   ghcr.io/sfgeekgit/agentspace:snap-a87329-a90301-world-v1
 docker rm world-setup
 ```
 
@@ -184,9 +184,9 @@ The forked env starts with identical state. Agents have full memory of everythin
 `docker create` allocates the container filesystem without running any processes:
 ```bash
 docker create --name edit-tmp ghcr.io/sfgeekgit/agentspace:snap-<id>
-docker cp edit-tmp:/data/openclaw/agents/alice/memory.md ./
+docker cp edit-tmp:/data/openclaw/agents/a87329/memory.md ./
 # edit locally
-docker cp ./memory.md edit-tmp:/data/openclaw/agents/alice/memory.md
+docker cp ./memory.md edit-tmp:/data/openclaw/agents/a87329/memory.md
 docker commit edit-tmp ghcr.io/sfgeekgit/agentspace:snap-<id>-modified
 docker rm edit-tmp
 ```
@@ -204,14 +204,14 @@ Each snapshot image carries OCI labels recording: parent snapshot ID, env name, 
 
 Example fork tree:
 ```
-snap-bob-alice-world-v1  (world snap: corpus loaded, agents never run)
+snap-a90301-a87329-world-v1  (world snap: corpus loaded, agents never run)
     │
     └─ snap-001 (end of round 1, budget at 40%)
             │
             ├─ snap-001-a  (unmodified → fork A, continues normally)
             │
-            ├─ snap-001-b  (alice's memory edited: removed knowledge of deal)
-            │       └─ fork B: what if alice forgot?
+            ├─ snap-001-b  (a87329's memory edited: removed knowledge of deal)
+            │       └─ fork B: what if a87329 forgot?
             │
             └─ snap-001-c  (SOUL.md edited: increased budget anxiety)
                     └─ fork C: what if agents were more stressed?

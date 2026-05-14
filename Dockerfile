@@ -3,7 +3,7 @@ FROM debian:trixie-slim
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends ca-certificates curl gnupg && \
     curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
+    apt-get install -y --no-install-recommends nodejs emacs-nox procps && \
     npm install -g openclaw@latest && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -11,7 +11,8 @@ RUN apt-get update -qq && \
 ENV OPENCLAW_STATE_DIR=/data/openclaw
 ENV OPENCLAW_CONFIG_PATH=/data/openclaw/openclaw.json
 
-RUN mkdir -p /data/openclaw /data/messages /data/scratchpads
+RUN echo '(setq make-backup-files nil)' > /root/.emacs && \
+    mkdir -p /data/openclaw /data/messages /data/scratchpads
 
 WORKDIR /data
 

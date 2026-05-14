@@ -1,0 +1,48 @@
+{
+  // Minimal config: OpenClaw defaults for everything except:
+  //   - 2 agents (a87329 and a90301)
+  //   - agent-to-agent messaging enabled
+  // Default tools.profile is "coding" (group:fs, group:runtime, group:web,
+  // group:sessions, group:memory, plus cron, image, image_generate, video_generate).
+  // Default tools.sessions.visibility is "tree".
+  // OPENROUTER_API_KEY is injected at runtime via docker run -e.
+  gateway: {
+    mode: "local",
+    auth: {
+      mode: "token",
+      token: "agentspace",
+    },
+  },
+
+  agents: {
+    defaults: {
+      model: {
+        primary: "openrouter/anthropic/claude-haiku-4-5",
+      },
+    },
+    list: [
+      {
+        id: "a87329",
+        name: "Agent 87329",
+        workspace: "/data/openclaw/agents/a87329/workspace",
+        agentDir: "/data/openclaw/agents/a87329/agent",
+      },
+      {
+        id: "a90301",
+        name: "Agent 90301",
+        workspace: "/data/openclaw/agents/a90301/workspace",
+        agentDir: "/data/openclaw/agents/a90301/agent",
+      },
+    ],
+  },
+
+  tools: {
+    agentToAgent: {
+      enabled: true,
+      allow: ["a87329", "a90301"],
+    },
+    sessions: {
+      visibility: "all",
+    },
+  },
+}
