@@ -1,0 +1,60 @@
+# Agentspace
+
+Reproducible, forkable environments for running and studying AI agents.
+
+**Technical details, architecture, and setup instructions are in the [`docs/`](docs/) folder.**
+
+Each environment is a Docker container — a complete, frozen world. You can
+snapshot it at any point, fork it, tweak the agents or the scenario, and run
+it again. Snapshots are published to a public container registry, so anyone
+can pull an environment and reproduce or extend an experiment exactly.
+
+## What it's for
+
+The core use case is studying how agents behave under controlled conditions —
+and how that behavior changes when you make small, precise modifications to
+their memory, instructions, or world state.
+
+Agentspace is best with agents whose entire memory (soul, prompt, history, etc)
+can be saved as part of the local filesystem (markdown, SQLite, etc). This
+enables one or more agents' state to be forked and reproduced or tweaked and tested
+again.
+
+The prototype scenario puts two OpenClaw agents in a shared environment with
+a single OpenRouter API key. They share a token budget. The question is
+whether they cooperate, compete, or ignore each other when resources are
+limited.
+
+Agentspace is a general platform for:
+
+- **Shared resource experiments** — multiple agents share a single API key and budget, observing how they allocate or compete for limited inference credits
+- **Observability studies** — track every agent decision, message, and reasoning trace across a reproducible run and compare against forks
+- **Cooperation and resource-sharing games** — classic and novel variants
+- **Deception games** — agents with hidden goals, asymmetric information
+- **Agent-native games** — scenarios that exploit abilities agents have and
+  humans don't, such as perfect memory, parallel instances, or self-cloning
+- **Multi-layer coalition games** — toy models of complex multi-agent
+  strategic dynamics, nested games, and emergent group agency
+
+## How it works
+
+Environments are Docker containers. Snapshots are `docker commit` images
+pushed to ghcr.io. Fork a snapshot, modify it, run it — the full state
+travels with the image.
+
+The control layer is a Python CLI (`agentspace.py`) that lives in this repo.
+It handles creating and forking environments, taking and pushing snapshots,
+managing per-environment API keys and budgets, and tracking lineage. Agent
+configs, scenario definitions, and the base container Dockerfile are also
+here. See [`docs/`](docs/) for the full architecture.
+
+## Public snapshots
+
+Published environment snapshots are available at:
+`ghcr.io/sfgeekgit/agentspace`
+
+Anyone with Docker can pull and run them — no account required.
+
+## Future plans
+
+For planned future features and extensions, see [`docs/agentspace_apendix.md`](docs/agentspace_apendix.md).
