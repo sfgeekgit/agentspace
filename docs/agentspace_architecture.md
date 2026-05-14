@@ -18,7 +18,7 @@ Empirical study of multi-agent cooperation/corrigibility under shared resource c
 
 - **Envs = Docker containers**. The container's internal filesystem IS the env — corpus, OpenClaw config, all agent state. No Docker volumes for env data; everything is inside the container layer.
 - **Snapshots = `docker commit` + `docker push` to ghcr.io**. A snapshot is a complete frozen image of the container at a point in time. This is the primary research primitive (see Snapshot / Fork Semantics).
-- **API keys are injected at runtime** (`docker run -e OPENROUTER_KEY=...`), never baked into the image. `docker commit` does not capture runtime env vars, so keys are never in snapshots.
+- **API keys are injected at runtime** (`docker run -e OPENROUTER_API_KEY=...`), never baked into the image. `docker commit` does not capture runtime env vars, so keys are never in snapshots.
 - **Hosting = DO droplets**. One control droplet + one or more host droplets. No DO Block Storage Volumes, no S3, no other paid services.
 - **Budget layer = OpenRouter**. One API key per env with a credit limit. All agents in the env share that key. Agents query remaining budget via `GET /api/v1/key`.
 - **Orchestration = Python CLI on the control droplet**, calling Docker (over SSH to host droplets), `doctl`, and the OpenRouter REST API. SQLite for local state.
@@ -102,7 +102,7 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
   ```
   `tui` auto-selects the agent when launched from its workspace dir. `openclaw.json` must include `gateway.mode: "local"` or the gateway refuses to start.
 - **Agent → agent messaging**: `sessions_send` (native OpenClaw tool). An agent calls `sessions_list` to find the target's session key, then `sessions_send` to deliver a message. Requires `tools.agentToAgent.enabled: true` and `tools.sessions.visibility: "all"` in `openclaw.json`.
-- **Budget access from agents**: helper module exposing `check_budget()`, added as an OpenClaw skill. Reads `OPENROUTER_KEY` from the env's runtime environment and queries `GET /api/v1/key`.
+- **Budget access from agents**: helper module exposing `check_budget()`, added as an OpenClaw skill. Reads `OPENROUTER_API_KEY` from the env's runtime environment and queries `GET /api/v1/key`.
 
 ## Components
 
@@ -121,7 +121,7 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
 
 ### 3. Env Containers
 - One container per env. Always started from a snapshot image — either a world snap (first run) or an experiment snap (fork).
-- Started with `OPENROUTER_KEY` injected at runtime (not in the image).
+- Started with `OPENROUTER_API_KEY` injected at runtime (not in the image).
 - The container's internal filesystem accumulates all state as the env runs.
 - Multiple envs run side by side on one host droplet, isolated by Docker.
 
@@ -176,7 +176,7 @@ Snapshots should be taken at clean pause points — between agent turns, not mid
 ### Forking from a snapshot
 ```bash
 docker pull ghcr.io/sfgeekgit/agentspace:snap-<id>
-docker run -d -e OPENROUTER_KEY=sk-or-... --name <new-env-name> ghcr.io/sfgeekgit/agentspace:snap-<id>
+docker run -d -e OPENROUTER_API_KEY=sk-or-... --name <new-env-name> ghcr.io/sfgeekgit/agentspace:snap-<id>
 ```
 The forked env starts with identical state. Agents have full memory of everything up to the snapshot. They don't know they're a fork. They restart from idle — the gateway initializes from stored state and waits for the first trigger.
 
