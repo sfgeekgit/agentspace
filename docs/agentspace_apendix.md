@@ -71,9 +71,9 @@ This creates a multi-layer feedback loop: an agent's in-game strategy affects th
 
 Some game mechanics are impossible for humans but natural for agents. These can be implemented as optional feature flags in the agentspace control code — each env is spun up with a specific combination of flags enabled, and runs with different flag sets are compared.
 
-**The Soundproof Box**
+**Vegas Room**
 
-Two agents can each instantiate a copy of themselves and place the copies inside a "soundproof box." Inside the box, the copies can communicate freely and share information they would not reveal in the main game. The box has a single yes/no question set by the agents before entering (e.g. "should I take this deal?"), and it produces EXACTLY ONE BIT of output, yes or no. The copies are then discarded; only the one-bit answer exits the box.
+Two agents can each instantiate a copy of themselves and place the copies inside a "vegas room" or "soundproof box." Inside the box, the copies can communicate freely and share information they would not reveal in the main game. The box has a single yes/no question set by the agents before entering (e.g. "should I take this deal?"), and it produces EXACTLY ONE BIT of output, yes or no. The copies are then discarded; only the one-bit answer exits the box.
 
 This gives agents a mechanism for secret coordination with a provably bounded information leak — something with no human equivalent.
 

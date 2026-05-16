@@ -1,0 +1,241 @@
+"""Env verbs: list, show, start, stop, kick, kill, logs, exec."""
+
+import click
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
+from . import audit, db, docker_host, openrouter
+from .runtimes import openclaw
+
+console = Console()
+
+
+def _require_env(name: str) -> dict:
+    env = db.get_env(name)
+    if env is None:
+        raise click.ClickException(
+            f"env {name!r} not found. Try 'agentspace env list'."
+        )
+    return env
+
+
+def _live_status(env: dict) -> str:
+    """Best-effort live status check; falls back to last-known on unreachable host."""
+    host = env["host"] or "localhost"
+    name = env["name"]
+    try:
+        running = docker_host.container_running(host, name)
+        exists = running or docker_host.container_exists(host, name)
+        if running:
+            return "running"
+        if exists:
+            return "stopped"
+        return "missing"
+    except docker_host.DockerError:
+        return f"unreachable (last: {env.get('status') or '?'})"
+
+
+# ---- list ----
+
+def cmd_list():
+    envs = db.list_envs()
+    if not envs:
+        console.print("[dim]no envs. Try 'agentspace snap fork <snap_ref> <name>'.[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    for col in ("NAME", "SNAP", "HOST", "STATUS", "USED", "LIMIT"):
+        table.add_column(col)
+
+    for e in envs:
+        snap = db.get_snap_by_id(e["snap_id"])
+        snap_str = f"{snap['scenario']}:{snap['version']}" if snap else e["snap_id"][:8]
+        status = _live_status(e)
+        used_str = "—"
+        limit_str = f"${float(e.get('budget_usd') or 0):.2f}"
+        if e.get("openrouter_key"):
+            try:
+                info = openrouter.get_key_info(e["openrouter_key"])
+                data = info.get("data") or info
+                used_str = f"${float(data.get('usage') or 0):.2f}"
+                if data.get("limit") is not None:
+                    limit_str = f"${float(data.get('limit')):.2f}"
+            except Exception:
+                pass
+        table.add_row(
+            e["name"],
+            snap_str,
+            e["host"] or "localhost",
+            status,
+            used_str,
+            limit_str,
+        )
+        # Persist live status back for next time.
+        if status in ("running", "stopped", "missing"):
+            db.set_env_status(e["name"], status)
+    console.print(table)
+
+
+# ---- show ----
+
+def cmd_show(name: str):
+    env = _require_env(name)
+    snap = db.get_snap_by_id(env["snap_id"])
+    snap_str = f"{snap['scenario']}:{snap['version']}" if snap else env["snap_id"]
+    status = _live_status(env)
+
+    used_str = "—"
+    limit_str = f"${float(env.get('budget_usd') or 0):.2f}"
+    if env.get("openrouter_key"):
+        try:
+            info = openrouter.get_key_info(env["openrouter_key"])
+            data = info.get("data") or info
+            used_str = f"${float(data.get('usage') or 0):.2f}"
+            if data.get("limit") is not None:
+                limit_str = f"${float(data.get('limit')):.2f}"
+        except Exception as e:
+            used_str = f"query failed: {e}"
+
+    body = (
+        f"  Snap:         {snap_str}\n"
+        f"  Host:         {env['host'] or 'localhost'}\n"
+        f"  Container:    {env.get('container_id') or '—'}\n"
+        f"  Status:       {status}\n"
+        f"  Created:      {env.get('created_at') or '—'}\n"
+        f"  Budget used:  {used_str} / {limit_str}\n"
+    )
+    if snap:
+        agents = snap.get("agents") or []
+        flags = snap.get("feature_flags") or {}
+        body += (
+            f"\n  Agents:       {', '.join(agents) or '—'}\n"
+            f"  Flags:        {' '.join(f'{k}={v}' for k, v in flags.items()) or '—'}\n"
+            f"  Model:        {snap.get('model') or '—'}\n"
+        )
+    console.print(Panel(body, title=name, expand=False))
+
+
+# ---- start / stop ----
+
+def cmd_start(name: str):
+    env = _require_env(name)
+    host = env["host"] or "localhost"
+    snap = db.get_snap_by_id(env["snap_id"])
+    if snap is None:
+        raise click.ClickException(
+            f"env {name!r} references unknown snap_id {env['snap_id']!r}"
+        )
+
+    console.print(f"[dim]docker start {name} …[/dim]")
+    docker_host.run(host, "start", name)
+
+    flags = snap.get("feature_flags") or {}
+    agents = snap.get("agents") or []
+    if flags:
+        console.print(f"[dim]re-translating flags from snap labels …[/dim]")
+        openclaw.translate_flags(host, name, flags, agents)
+
+    console.print(f"[dim]starting gateway …[/dim]")
+    openclaw.start_gateway(host, name)
+    openclaw.wait_for_gateway(host, name)
+
+    db.set_env_status(name, "running")
+    audit.log("env.start", name)
+    console.print(f"[green]✓[/green] env {name} is running. Agents are dormant; use "
+                  f"'agentspace env kick {name}' to resume them.")
+
+
+def cmd_stop(name: str):
+    env = _require_env(name)
+    host = env["host"] or "localhost"
+
+    console.print(f"[dim]stopping gateway …[/dim]")
+    openclaw.stop_gateway(host, name)
+
+    console.print(f"[dim]docker stop {name} …[/dim]")
+    docker_host.run(host, "stop", name)
+
+    db.set_env_status(name, "stopped")
+    audit.log("env.stop", name)
+    console.print(f"[green]✓[/green] env {name} stopped. Container filesystem preserved.")
+
+
+# ---- kick ----
+
+def cmd_kick(name: str, message: str | None = None):
+    env = _require_env(name)
+    host = env["host"] or "localhost"
+    snap = db.get_snap_by_id(env["snap_id"])
+    agents = (snap.get("agents") if snap else []) or []
+    if not agents:
+        raise click.ClickException(f"env {name!r} has no agents recorded on its snap.")
+
+    text = message or openclaw.read_kick_message(host, name)
+    console.print(f"[dim]kicking {len(agents)} agent(s) with message {text!r} …[/dim]")
+    for agent_id in agents:
+        openclaw.kick_agent(host, name, agent_id, text)
+    audit.log("env.kick", name, args={"agents": agents, "message": text})
+    console.print(f"[green]✓[/green] kick sent.")
+
+
+# ---- kill ----
+
+def cmd_kill(name: str, force: bool = False):
+    env = _require_env(name)
+    if not force:
+        click.confirm(
+            f"This will stop and remove container {name!r}. State on ghcr.io is unaffected. "
+            f"Continue?",
+            abort=True,
+        )
+
+    host = env["host"] or "localhost"
+    docker_host.run(host, "stop", name, check=False)
+    docker_host.run(host, "rm", name, check=False)
+    try:
+        openrouter.disable_key(name)
+    except openrouter.OpenRouterError as e:
+        console.print(f"[yellow]could not disable OpenRouter key: {e}[/yellow]")
+    db.delete_env(name)
+    audit.log("env.kill", name)
+    console.print(f"[green]✓[/green] env {name} killed.")
+
+
+# ---- logs ----
+
+def cmd_logs(name: str, agent: str | None = None, follow: bool = False):
+    env = _require_env(name)
+    host = env["host"] or "localhost"
+
+    if follow:
+        proc = (
+            openclaw.tail_agent_log(host, name, agent, follow=True)
+            if agent
+            else openclaw.tail_gateway_log(host, name, follow=True)
+        )
+        try:
+            for line in proc.stdout:
+                click.echo(line, nl=False)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            proc.terminate()
+    else:
+        text = (
+            openclaw.tail_agent_log(host, name, agent, follow=False)
+            if agent
+            else openclaw.tail_gateway_log(host, name, follow=False)
+        )
+        click.echo(text)
+
+
+# ---- exec ----
+
+def cmd_exec(name: str, cmd: list[str]):
+    env = _require_env(name)
+    host = env["host"] or "localhost"
+    audit.log("env.exec", name, args={"cmd": cmd})
+    # Pass through stdin/stdout/stderr by NOT capturing.
+    result = docker_host.run(host, "exec", name, *cmd, capture=False, check=False)
+    raise SystemExit(result.returncode)

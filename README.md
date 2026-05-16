@@ -4,6 +4,19 @@ Reproducible, forkable environments for running and studying AI agents.
 
 **Technical details, architecture, and setup instructions are in the [`docs/`](docs/) folder.**
 
+## Quickstart
+
+See [`docs/agentspace_cli.md`](docs/agentspace_cli.md) for full setup. Once installed:
+
+```bash
+python3 zookeeper.py snap tree                           # see what's available
+python3 zookeeper.py snap fork simple2agent:1.0 env7     # spin up a fresh env
+python3 zookeeper.py env logs env7 -f                    # watch it run
+python3 zookeeper.py snap take env7 -m "round 1 done"    # snapshot a moment
+```
+
+
+
 Each environment is a Docker container — a complete, frozen world. You can
 snapshot it at any point, fork it, tweak the agents or the scenario, and run
 it again. Snapshots are published to a public container registry, so anyone
@@ -42,7 +55,7 @@ Environments are Docker containers. Snapshots are `docker commit` images
 pushed to ghcr.io. Fork a snapshot, modify it, run it — the full state
 travels with the image.
 
-The control layer is a Python CLI (`agentspace.py`) that lives in this repo.
+The control layer is a Python CLI (`zookeeper.py`) that lives in this repo.
 It handles creating and forking environments, taking and pushing snapshots,
 managing per-environment API keys and budgets, and tracking lineage. Agent
 configs, scenario definitions, and the base container Dockerfile are also
