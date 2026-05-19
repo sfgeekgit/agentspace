@@ -3,6 +3,27 @@
 
 Thin entry point: loads secrets, sets up click groups, dispatches to module verbs.
 The real work lives in agentspace/*.py.
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  DEVELOPER NOTE — DUAL-MODE REQUIREMENT                                      ║
+║                                                                              ║
+║  Every command in this file MUST be available in BOTH of these ways:        ║
+║    1. As a click command with flags (for scripting / automation)             ║
+║    2. In the interactive menu (for human operators)                          ║
+║                                                                              ║
+║  When you add a new click command:                                           ║
+║    • Add it to the appropriate click group below (snap, env, budget, etc.)  ║
+║    • Add a matching entry in the corresponding menu_<group>() function       ║
+║      in the INTERACTIVE MENU section at the bottom of this file             ║
+║                                                                              ║
+║  When you add a whole new click group:                                       ║
+║    • Add the group and its commands below as usual                           ║
+║    • Add a new menu_<group>() function in the INTERACTIVE MENU section       ║
+║    • Add the new group as a top-level choice in launch_menu()                ║
+║                                                                              ║
+║  Failing to update the menu means human operators lose access to your        ║
+║  feature. Both modes must stay in sync.                                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
 import os
@@ -10,6 +31,11 @@ import sys
 from pathlib import Path
 
 import click
+
+try:
+    import questionary
+except ImportError:
+    questionary = None
 
 
 # ---- secrets loading ----
@@ -55,6 +81,7 @@ def cli():
 
 
 # ---- snap group ----
+# NOTE: When you add a snap subcommand here, add it to menu_snap() below too.
 
 @cli.group()
 def snap():
@@ -119,7 +146,10 @@ def snap_take(env_name, message, note, version):
 @click.option("--budget", "budget_usd", type=float, default=None, help="Credit limit for the new OpenRouter key.")
 @click.option("--host", "host", default="localhost", help="Host droplet (default: localhost).")
 @click.option("--kick/--no-kick", default=None, help="Override default kick behavior.")
-def snap_fork(snap_ref, new_env_name, souls, model, budget_usd, host, kick):
+@click.option("--key", "existing_key", default=None,
+              help="Use an existing OpenRouter inference key instead of minting a new one. "
+                   "Skips per-env isolation; budget commands won't reflect a per-env limit.")
+def snap_fork(snap_ref, new_env_name, souls, model, budget_usd, host, kick, existing_key):
     """Pull a snap and start it as a new env."""
     from agentspace import snap as snap_mod
     snap_mod.cmd_fork(
@@ -130,6 +160,7 @@ def snap_fork(snap_ref, new_env_name, souls, model, budget_usd, host, kick):
         budget_usd=budget_usd,
         host=host,
         kick=kick,
+        existing_key=existing_key,
     )
 
 
@@ -158,6 +189,7 @@ def snap_rebuild_index(repo):
 
 
 # ---- env group ----
+# NOTE: When you add an env subcommand here, add it to menu_env() below too.
 
 @cli.group()
 def env():
@@ -233,6 +265,7 @@ def env_exec(name, cmd):
 
 
 # ---- budget group ----
+# NOTE: When you add a budget subcommand here, add it to menu_budget() below too.
 
 @cli.group()
 def budget():
@@ -256,7 +289,304 @@ def budget_topup(env_name, amount_usd):
     budget_mod.cmd_topup(env_name, amount_usd)
 
 
+# ================================================================================
+# INTERACTIVE MENU
+# ================================================================================
+#
+# These functions provide the menu that launches when zookeeper.py is run with
+# no arguments. They call the same agentspace module functions as the click
+# commands above — no duplicate logic, just a different way to collect inputs.
+#
+# DEVELOPER: Keep the menu in sync with the click commands above.
+#   - New snap command?   → add to menu_snap()
+#   - New env command?    → add to menu_env()
+#   - New budget command? → add to menu_budget()
+#   - New top-level group? → add menu_<group>() and add it to launch_menu()
+#
+# Navigation: arrow keys to move, Enter to select, Ctrl-C anywhere = Back/cancel.
+# ================================================================================
+
+
+def _ask(prompt_fn):
+    """Run a questionary prompt. Returns None on Ctrl-C/Ctrl-D (treated as Back/cancel)."""
+    try:
+        return prompt_fn()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return None
+
+
+def menu_snap():
+    # NOTE: Add new snap commands to this list AND as a handler below.
+    from agentspace import snap as snap_mod
+    while True:
+        choice = _ask(lambda: questionary.select(
+            "Snaps — choose a command:",
+            choices=[
+                "List snaps",
+                "Show snap",
+                "Snap tree",
+                "Add note to snap",
+                "Take snap  (commit running env to ghcr.io)",
+                "Fork snap  (start new env from a snap)",
+                "Pull snap  (fetch from ghcr.io)",
+                "Push snap  (upload metadata to ghcr.io)",
+                "Rebuild index",
+                questionary.Separator(),
+                "← Back",
+                "Quit",
+            ],
+        ).ask())
+
+        if choice is None or choice == "← Back":
+            return
+        if choice == "Quit":
+            sys.exit(0)
+
+        if choice == "List snaps":
+            scenario = _ask(lambda: questionary.text("Filter by scenario (blank for all):").ask())
+            if scenario is None:
+                continue
+            snap_mod.cmd_list(scenario=scenario or None, as_json=False)
+
+        elif choice == "Show snap":
+            ref = _ask(lambda: questionary.text("Snap ref (scenario:version, snap_id prefix, or ghcr tag):").ask())
+            if not ref:
+                continue
+            snap_mod.cmd_show(ref)
+
+        elif choice == "Snap tree":
+            scenario = _ask(lambda: questionary.text("Restrict to scenario (blank for all):").ask())
+            if scenario is None:
+                continue
+            snap_mod.cmd_tree(scenario=scenario or None)
+
+        elif choice == "Add note to snap":
+            ref = _ask(lambda: questionary.text("Snap ref:").ask())
+            if not ref:
+                continue
+            text = _ask(lambda: questionary.text("Note text:").ask())
+            if not text:
+                continue
+            snap_mod.cmd_note(ref, text)
+
+        elif choice == "Take snap  (commit running env to ghcr.io)":
+            env_name = _ask(lambda: questionary.text("Env name:").ask())
+            if not env_name:
+                continue
+            message = _ask(lambda: questionary.text("Label (baked into snap):").ask())
+            if not message:
+                continue
+            note = _ask(lambda: questionary.text("Initial note (blank to skip):").ask())
+            version = _ask(lambda: questionary.text("Version override (blank for auto):").ask())
+            snap_mod.cmd_take(env_name, message=message, note=note or None, version=version or None)
+
+        elif choice == "Fork snap  (start new env from a snap)":
+            ref = _ask(lambda: questionary.text("Snap ref:").ask())
+            if not ref:
+                continue
+            new_name = _ask(lambda: questionary.text("New env name:").ask())
+            if not new_name:
+                continue
+            model = _ask(lambda: questionary.text("Model override (blank to keep snap default):").ask())
+            budget_str = _ask(lambda: questionary.text("Budget USD (blank to skip):").ask())
+            host = _ask(lambda: questionary.text("Host (blank for localhost):").ask())
+            existing_key = _ask(lambda: questionary.text("Existing OpenRouter key (blank to mint new):").ask())
+            kick_choice = _ask(lambda: questionary.select(
+                "Kick behavior:",
+                choices=["Use scenario default", "Kick", "No kick"],
+            ).ask())
+            kick = None if kick_choice == "Use scenario default" else (kick_choice == "Kick")
+            souls_raw = _ask(lambda: questionary.text(
+                "Soul injections (agentId=path, comma-separated; blank to skip):"
+            ).ask())
+            souls = tuple(s.strip() for s in souls_raw.split(",") if s.strip()) if souls_raw else ()
+            snap_mod.cmd_fork(
+                ref, new_name,
+                souls=souls,
+                model=model or None,
+                budget_usd=float(budget_str) if budget_str else None,
+                host=host or "localhost",
+                kick=kick,
+                existing_key=existing_key or None,
+            )
+
+        elif choice == "Pull snap  (fetch from ghcr.io)":
+            tag = _ask(lambda: questionary.text("ghcr.io tag:").ask())
+            if not tag:
+                continue
+            snap_mod.cmd_pull(tag)
+
+        elif choice == "Push snap  (upload metadata to ghcr.io)":
+            ref = _ask(lambda: questionary.text("Snap ref:").ask())
+            if not ref:
+                continue
+            snap_mod.cmd_push(ref)
+
+        elif choice == "Rebuild index":
+            repo = _ask(lambda: questionary.text("ghcr.io repo (blank for default):").ask())
+            snap_mod.cmd_rebuild_index(repo=repo or None)
+
+
+def menu_env():
+    # NOTE: Add new env commands to this list AND as a handler below.
+    from agentspace import env as env_mod
+    while True:
+        choice = _ask(lambda: questionary.select(
+            "Envs — choose a command:",
+            choices=[
+                "List envs",
+                "Show env",
+                "Start env",
+                "Stop env",
+                "Kick env",
+                "Kill env  (removes container)",
+                "Logs",
+                "Exec command in env",
+                questionary.Separator(),
+                "← Back",
+                "Quit",
+            ],
+        ).ask())
+
+        if choice is None or choice == "← Back":
+            return
+        if choice == "Quit":
+            sys.exit(0)
+
+        if choice == "List envs":
+            env_mod.cmd_list()
+
+        elif choice == "Show env":
+            name = _ask(lambda: questionary.text("Env name:").ask())
+            if not name:
+                continue
+            env_mod.cmd_show(name)
+
+        elif choice == "Start env":
+            name = _ask(lambda: questionary.text("Env name:").ask())
+            if not name:
+                continue
+            env_mod.cmd_start(name)
+
+        elif choice == "Stop env":
+            name = _ask(lambda: questionary.text("Env name:").ask())
+            if not name:
+                continue
+            env_mod.cmd_stop(name)
+
+        elif choice == "Kick env":
+            name = _ask(lambda: questionary.text("Env name:").ask())
+            if not name:
+                continue
+            msg = _ask(lambda: questionary.text("Message override (blank for scenario default):").ask())
+            env_mod.cmd_kick(name, message=msg or None)
+
+        elif choice == "Kill env  (removes container)":
+            name = _ask(lambda: questionary.text("Env name:").ask())
+            if not name:
+                continue
+            confirmed = _ask(lambda: questionary.confirm(
+                f"Kill env '{name}'? The container will be removed (snap on ghcr.io is unaffected).",
+                default=False,
+            ).ask())
+            if confirmed:
+                env_mod.cmd_kill(name, force=True)
+
+        elif choice == "Logs":
+            name = _ask(lambda: questionary.text("Env name:").ask())
+            if not name:
+                continue
+            agent = _ask(lambda: questionary.text("Agent ID for session log (blank for gateway log):").ask())
+            follow = _ask(lambda: questionary.confirm("Follow (stream new lines)?", default=False).ask())
+            env_mod.cmd_logs(name, agent=agent or None, follow=follow or False)
+
+        elif choice == "Exec command in env":
+            name = _ask(lambda: questionary.text("Env name:").ask())
+            if not name:
+                continue
+            cmd_str = _ask(lambda: questionary.text("Command to run:").ask())
+            if not cmd_str:
+                continue
+            import shlex
+            env_mod.cmd_exec(name, shlex.split(cmd_str))
+
+
+def menu_budget():
+    # NOTE: Add new budget commands to this list AND as a handler below.
+    from agentspace import budget as budget_mod
+    while True:
+        choice = _ask(lambda: questionary.select(
+            "Budget — choose a command:",
+            choices=[
+                "Show budget",
+                "Top up budget",
+                questionary.Separator(),
+                "← Back",
+                "Quit",
+            ],
+        ).ask())
+
+        if choice is None or choice == "← Back":
+            return
+        if choice == "Quit":
+            sys.exit(0)
+
+        if choice == "Show budget":
+            env_name = _ask(lambda: questionary.text("Env name (blank for all envs):").ask())
+            budget_mod.cmd_show(env_name or None)
+
+        elif choice == "Top up budget":
+            env_name = _ask(lambda: questionary.text("Env name:").ask())
+            if not env_name:
+                continue
+            amount = _ask(lambda: questionary.text("Amount to add (USD):").ask())
+            if not amount:
+                continue
+            try:
+                budget_mod.cmd_topup(env_name, float(amount))
+            except ValueError:
+                print(f"  Invalid amount: {amount!r}")
+
+
+def launch_menu():
+    """Interactive menu — launched when zookeeper.py is called with no arguments.
+
+    DEVELOPER: If you add a new top-level click group, add it as a choice here
+    and write a corresponding menu_<group>() function above.
+    """
+    if questionary is None:
+        sys.exit("questionary is required for the interactive menu.\nInstall it with: pip install questionary")
+
+    print("\n  agentspace control panel\n  arrow keys to navigate · Enter to select · Ctrl-C to go back\n")
+    while True:
+        choice = _ask(lambda: questionary.select(
+            "What would you like to do?",
+            choices=[
+                "Snaps   — manage frozen env images",
+                "Envs    — manage running containers",
+                "Budget  — OpenRouter credit limits",
+                questionary.Separator(),
+                "Quit",
+            ],
+        ).ask())
+
+        if choice is None or choice == "Quit":
+            print("Bye.")
+            sys.exit(0)
+
+        if choice.startswith("Snaps"):
+            menu_snap()
+        elif choice.startswith("Envs"):
+            menu_env()
+        elif choice.startswith("Budget"):
+            menu_budget()
+
+
 # ---- entry ----
 
 if __name__ == "__main__":
-    cli()
+    if len(sys.argv) == 1:
+        launch_menu()
+    else:
+        cli()
