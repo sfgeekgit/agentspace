@@ -50,12 +50,16 @@ def translate_flags(
         )
 
     # tools.sessions.visibility is intentionally NOT auto-set here. The default comes
-    # from the scenario's openclaw.json (baked into the world snap). We currently ship
-    # "all": with "self", agents couldn't message each other at all; "all" lets them
-    # talk (the desired demo) at the cost that they CAN read each other's history,
-    # though they don't unless heavily prompted. Wanting message-yes/read-no likely
-    # needs a different mechanism (e.g. separate OS users per agent). The
-    # `sessions_visibility` feature flag overrides only if explicitly set on the snap.
+    # from the scenario's openclaw.json (baked into the world snap). We ship "all":
+    # "self"/"tree" block cross-agent sessions_send entirely (gateway refuses). The
+    # session-tool read path that "all" opens is closed per-agent in the scenario's
+    # openclaw.json via agents.list[].tools.deny of sessions_history/sessions_list.
+    # !! WARNING: that is only PARTIAL isolation. All agents in an env share one
+    # !! container as the same OS user, so any agent with fs/exec tools can read a
+    # !! peer's workspace, memory, and session JSONLs straight off the filesystem.
+    # !! No openclaw config written here closes that; it needs per-agent sandboxing
+    # !! or fs/exec tool denial (see docs/agentspace_cli.md "Feature flags").
+    # The `sessions_visibility` feature flag overrides only if explicitly set on the snap.
     vis = feature_flags.get("sessions_visibility")
     if vis:
         writes.append(("tools.sessions.visibility", str(vis)))

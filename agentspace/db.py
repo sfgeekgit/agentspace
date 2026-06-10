@@ -250,17 +250,17 @@ def set_env_status(name: str, status: str, container_id: str | None = None):
 def reconcile_snaps(snaps: Iterable[dict[str, Any]]):
     """Used by rebuild-index after reading ghcr.io.
 
-    Upserts all snaps from the registry, then deletes any local-only rows that
-    no longer exist remotely AND have no envs referencing them. Snaps referenced
-    by an active env are preserved even if they've disappeared from the registry —
-    deleting them would orphan the env (and SQLite blocks it via foreign key).
+    Deletes local-only rows that no longer exist remotely AND have no envs
+    referencing them, then upserts all snaps from the registry. Prune runs first:
+    a rebuilt tag keeps its scenario:version but gets a new snap_id, and the stale
+    row would collide with the new one on UNIQUE(scenario, version) otherwise.
+    Snaps referenced by an active env are preserved even if they've disappeared
+    from the registry — deleting them would orphan the env (and SQLite blocks it
+    via foreign key).
     """
     conn = get_conn()
     new_snaps = list(snaps)
     new_ids = {s["snap_id"] for s in new_snaps}
-
-    for s in new_snaps:
-        upsert_snap(s)
 
     referenced_ids = {
         row[0] for row in conn.execute("SELECT DISTINCT snap_id FROM envs").fetchall()
@@ -269,5 +269,8 @@ def reconcile_snaps(snaps: Iterable[dict[str, Any]]):
         sid = row[0]
         if sid not in new_ids and sid not in referenced_ids:
             conn.execute("DELETE FROM snaps WHERE snap_id = ?", (sid,))
+
+    for s in new_snaps:
+        upsert_snap(s)
 
     conn.commit()

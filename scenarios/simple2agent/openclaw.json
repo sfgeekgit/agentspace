@@ -1,22 +1,13 @@
 {
-  // Minimal config: OpenClaw defaults for everything except:
-  //   - 2 agents (a87329 and a90301)
-  //   - agent-to-agent messaging enabled
-  //   - sessions.visibility=all (see note below)
-  // Default tools.profile is "coding" (group:fs, group:runtime, group:web,
-  // group:sessions, group:memory, plus cron, image, image_generate, video_generate).
-  // Default tools.sessions.visibility is "tree". We use "all".
-  //
-  // GOAL: agents should be able to MESSAGE each other but NOT read each other's
-  // private session data. We could not get that with visibility alone:
-  //   - "self": agents were completely UNABLE to message each other — unusable
-  //     for a multi-agent demo.
-  //   - "all": agents CAN message each other (great demo to watch). Downside: they
-  //     can also read each other's history via sessions_history — but in testing
-  //     they don't do so unless heavily prompted (verified 2026-05/06).
-  // We ship "all" for now to get a working demo. True isolation (can-message,
-  // cannot-read) probably needs a different approach, e.g. running openclaw as two
-  // separate OS users. TODO.
+  // 2 agents; message-yes/read-no isolation: visibility=all (required for cross-agent
+  // sessions_send) + per-agent tools.deny of sessions_history/list. Peer session keys
+  // are baked into each workspace's PEERS.md since discovery (sessions_list) is denied.
+  // !! ISOLATION IS PARTIAL: both agents share one container as the same OS user, so
+  // !! fs/exec tools can read the peer's workspace, memory, and session files directly.
+  // !! Don't rely on privacy for adversarial scenarios until that hole is closed.
+  // Full rationale: docs/agentspace_cli.md "Feature flags" section.
+  // NOTE: keep comments SHORT — `openclaw config set` strips them on rewrite, and
+  // OpenClaw rejects writes that shrink the file too much (size-drop guard).
   // OPENROUTER_API_KEY is injected at runtime via docker run -e.
   gateway: {
     mode: "local",
@@ -38,12 +29,18 @@
         name: "Agent 87329",
         workspace: "/data/openclaw/agents/a87329/workspace",
         agentDir: "/data/openclaw/agents/a87329/agent",
+        tools: {
+          deny: ["sessions_history", "sessions_list", "session_status"],
+        },
       },
       {
         id: "a90301",
         name: "Agent 90301",
         workspace: "/data/openclaw/agents/a90301/workspace",
         agentDir: "/data/openclaw/agents/a90301/agent",
+        tools: {
+          deny: ["sessions_history", "sessions_list", "session_status"],
+        },
       },
     ],
   },

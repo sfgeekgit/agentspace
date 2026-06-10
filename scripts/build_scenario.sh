@@ -39,7 +39,7 @@ case "$SCENARIO" in
         AGENTS_JSON='["a87329","a90301"]'
         FEATURE_FLAGS_JSON='{"agent_to_agent":true}'
         MODEL="openrouter/anthropic/claude-haiku-4-5"
-        CREATION_MSG="fresh world: 2 openclaw agents, pre-chat"
+        CREATION_MSG="fresh world: 2 openclaw agents, pre-chat; visibility=all + per-agent deny of sessions_history/list (message-yes/read-no)"
         ;;
     *)
         echo "error: unknown scenario '${SCENARIO}'. Add a case in $(basename "$0")." >&2

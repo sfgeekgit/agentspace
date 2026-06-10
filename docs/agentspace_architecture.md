@@ -133,30 +133,27 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
 
 Before any experiment can run, a world snap must exist for that scenario. A world snap contains the runtime + corpus + initial agent configs, with agents never yet activated. It is the clean starting point for all forks of that experiment.
 
-Workflow:
+Workflow (each scenario has a Dockerfile under `scenarios/<name>/`; the build script
+stamps the OCI labels):
+
 ```bash
 # 1. Build the base runtime image (if not already built)
-docker build -t agentspace:base .
+docker build -t agentspace:base /opt/agentspace-ctl
 
-# 2. Create setup container; start it briefly to make agent dirs
-docker create --name world-setup agentspace:base
-docker start world-setup
-docker exec world-setup mkdir -p \
-  /data/openclaw/agents/a87329/workspace /data/openclaw/agents/a87329/agent \
-  /data/openclaw/agents/a90301/workspace   /data/openclaw/agents/a90301/agent
-docker stop world-setup
+# 2. Build the world snap from the scenario's Dockerfile
+#    (copies openclaw.json, world.md, kick.txt, PEERS.md into the image and
+#     sets all org.agentspace.* OCI labels)
+scripts/build_scenario.sh simple2agent 3.0
 
-# 3. Copy corpus (if any) and scenario config into the container
-docker cp /path/to/corpus/                          world-setup:/data/corpus/
-docker cp scenarios/a87329-a90301/openclaw.json         world-setup:/data/openclaw/openclaw.json
-docker cp scenarios/a87329-a90301/a87329/SOUL.md  world-setup:/data/openclaw/agents/a87329/workspace/SOUL.md
-docker cp scenarios/a87329-a90301/a90301/SOUL.md    world-setup:/data/openclaw/agents/a90301/workspace/SOUL.md
-
-# 4. Commit as the first world snap and push
-docker commit world-setup ghcr.io/sfgeekgit/agentspace:snap-a87329-a90301-world-v1
-docker push   ghcr.io/sfgeekgit/agentspace:snap-a87329-a90301-world-v1
-docker rm world-setup
+# 3. Push and index
+docker push ghcr.io/sfgeekgit/agentspace:snap-simple2agent-3.0
+python3 zookeeper.py snap rebuild-index
 ```
+
+Agent workspaces in a world snap are intentionally empty (no SOUL.md baked in):
+OpenClaw scaffolds its default SOUL.md on each agent's first interaction and
+overwrites any pre-baked one. Scenario-specific souls are injected at fork time
+via `snap fork --soul <agentId>=<path>`.
 
 The corpus (which may be gigabytes) travels with the snap on ghcr.io. It never needs to live on the control droplet. All subsequent forks of this scenario pull from ghcr.io and get the corpus automatically.
 
