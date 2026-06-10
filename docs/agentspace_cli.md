@@ -120,6 +120,33 @@ agentspace env kill env8
 
 ---
 
+## Waking agents manually (no auto-kick)
+
+If you forked with `--no-kick` or just want to drive an agent interactively, two
+options inside the running container:
+
+```bash
+# Interactive TUI connected to the gateway. Agent is selected by CWD.
+# Use `openclaw tui` (NOT `openclaw chat`, which is an alias for `tui --local` and runs
+# in embedded mode without sessions_send and other gateway tools).
+docker exec -it <env_name> bash
+cd /data/openclaw/agents/<agent_id>/workspace
+openclaw tui --token agentspace
+
+# One-shot turn via the gateway (same form used by auto-kick).
+docker exec <env_name> openclaw agent --agent <agent_id> --message "<text>" --deliver
+```
+
+On a freshly-forked world snap the agent's workspace is empty. The first
+interaction (TUI message or one-shot turn) scaffolds `SOUL.md`, `IDENTITY.md`,
+`BOOTSTRAP.md`, etc. into the workspace — expect a noticeable startup delay on
+the first turn while this happens.
+
+To override the scaffolded default `SOUL.md` with a scenario-specific one, pass
+`--soul <agentId>=<path>` to `snap fork`.
+
+---
+
 ## Versioning
 
 The CLI assigns snap versions automatically as you take snapshots. Each scenario has its
@@ -178,17 +205,33 @@ Current flags:
 | Flag | Values | Effect |
 |---|---|---|
 | `agent_to_agent` | bool | Cross-agent `sessions_send` enabled |
-| `sessions_visibility` | `tree` / `all` | Session lookup scope |
 
-For the openclaw runtime, `agent_to_agent: true` expands to **three** writes via
-`openclaw config set`:
+For the openclaw runtime, `agent_to_agent: true` expands at translate time to:
 
 - `tools.agentToAgent.enabled=true`
 - `tools.agentToAgent.allow=<agents-array>` (the list comes from the snap's `agents` label)
-- `tools.sessions.visibility=all` (unless `sessions_visibility` is already set)
 
-`gateway.mode=local` is set defensively on every translate, since the gateway refuses to
-start without it.
+`tools.sessions.visibility` is **not** runtime-translated. It's a "protected"
+openclaw config path — `openclaw config set` silently fails to write it (the file
+isn't actually updated even though the CLI returns success). Therefore visibility
+must be **baked into the scenario's `openclaw.json`** at world-build time. We ship
+`"all"`. We'd prefer something narrower (agents able to message each other but not
+read each other's history), but with `"self"` agents couldn't message each other
+at all. `"all"` lets them talk;
+the trade-off is they *can* read each other's history via `sessions_history`,
+though in testing they don't unless heavily prompted. Achieving true
+message-yes/read-no isolation likely needs a different mechanism (e.g. separate OS
+users per agent) — open TODO.
+
+Two openclaw settings are written defensively on every translate, since the gateway
+won't function correctly without them:
+
+- `gateway.mode=local` — gateway refuses to start otherwise.
+- `gateway.controlUi.dangerouslyDisableDeviceAuth=true` — disables device pairing.
+  The gateway binds loopback inside an isolated container, so the threat model that
+  pairing protects against doesn't apply here, and self-approval from inside a fresh
+  container is chicken-and-egg (the CLI command that approves pairing requests is
+  itself a CLI request that needs pairing).
 
 **Footgun:** never set openclaw's `tools.allow` from a feature flag — it's a replacement
 allowlist that silently removes every other tool, including messaging. The translator

@@ -33,19 +33,29 @@ def translate_flags(
     flags + agents list (which come from the snap's OCI labels).
     """
     # `gateway.mode=local` is a structural requirement (gateway refuses to start otherwise).
-    # Setting it here defensively so a snap with a clobbered openclaw.json can still boot.
-    writes: list[tuple[str, str]] = [("gateway.mode", "local")]
+    # `gateway.controlUi.dangerouslyDisableDeviceAuth=true` bypasses device pairing — the
+    # gateway is loopback-only inside an isolated container, so the threat model device
+    # pairing protects against doesn't apply, and the bootstrap is chicken-and-egg from
+    # inside a fresh container (CLI can't self-approve).
+    # Setting both here defensively so a snap with a clobbered openclaw.json can still boot.
+    writes: list[tuple[str, str]] = [
+        ("gateway.mode", "local"),
+        ("gateway.controlUi.dangerouslyDisableDeviceAuth", "true"),
+    ]
 
     if feature_flags.get("agent_to_agent"):
         writes.append(("tools.agentToAgent.enabled", "true"))
         writes.append(
             ("tools.agentToAgent.allow", json.dumps(agents, separators=(",", ":")))
         )
-        # agent_to_agent implies sessions visibility=all unless the snap explicitly
-        # overrides via sessions_visibility.
-        if "sessions_visibility" not in feature_flags:
-            writes.append(("tools.sessions.visibility", "all"))
 
+    # tools.sessions.visibility is intentionally NOT auto-set here. The default comes
+    # from the scenario's openclaw.json (baked into the world snap). We currently ship
+    # "all": with "self", agents couldn't message each other at all; "all" lets them
+    # talk (the desired demo) at the cost that they CAN read each other's history,
+    # though they don't unless heavily prompted. Wanting message-yes/read-no likely
+    # needs a different mechanism (e.g. separate OS users per agent). The
+    # `sessions_visibility` feature flag overrides only if explicitly set on the snap.
     vis = feature_flags.get("sessions_visibility")
     if vis:
         writes.append(("tools.sessions.visibility", str(vis)))

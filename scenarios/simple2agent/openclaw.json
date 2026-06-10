@@ -2,9 +2,21 @@
   // Minimal config: OpenClaw defaults for everything except:
   //   - 2 agents (a87329 and a90301)
   //   - agent-to-agent messaging enabled
+  //   - sessions.visibility=all (see note below)
   // Default tools.profile is "coding" (group:fs, group:runtime, group:web,
   // group:sessions, group:memory, plus cron, image, image_generate, video_generate).
-  // Default tools.sessions.visibility is "tree".
+  // Default tools.sessions.visibility is "tree". We use "all".
+  //
+  // GOAL: agents should be able to MESSAGE each other but NOT read each other's
+  // private session data. We could not get that with visibility alone:
+  //   - "self": agents were completely UNABLE to message each other — unusable
+  //     for a multi-agent demo.
+  //   - "all": agents CAN message each other (great demo to watch). Downside: they
+  //     can also read each other's history via sessions_history — but in testing
+  //     they don't do so unless heavily prompted (verified 2026-05/06).
+  // We ship "all" for now to get a working demo. True isolation (can-message,
+  // cannot-read) probably needs a different approach, e.g. running openclaw as two
+  // separate OS users. TODO.
   // OPENROUTER_API_KEY is injected at runtime via docker run -e.
   gateway: {
     mode: "local",

@@ -422,7 +422,7 @@ def cmd_rebuild_index(repo: str | None = None):
         except Exception as e:
             console.print(f"[yellow]skipping {t} — {e}[/yellow]")
 
-    db.replace_all_snaps(snaps)
+    db.reconcile_snaps(snaps)
     audit.log("snap.rebuild_index", repo, args={"count": len(snaps)})
     console.print(f"[green]✓[/green] indexed {len(snaps)} snap(s).")
 
@@ -437,6 +437,7 @@ def cmd_fork(
     budget_usd: float | None = None,
     host: str = "localhost",
     kick: bool | None = None,
+    existing_key: str | None = None,
 ):
     snap = resolve_snap_ref(snap_ref)
     ghcr_tag = snap["ghcr_tag"]
@@ -462,21 +463,27 @@ def cmd_fork(
     console.print(f"[dim]ensuring local image …[/dim]")
     docker_host.run(host, "pull", ghcr_tag, check=False)
 
-    console.print(f"[dim]minting OpenRouter key (budget ${budget_usd:.2f}) …[/dim]")
-    try:
-        key_resp = openrouter.mint_key(new_env_name, budget_usd)
-    except openrouter.OpenRouterError as e:
-        raise click.ClickException(f"could not mint OpenRouter key: {e}")
-    inference_key = (
-        key_resp.get("key")
-        or (key_resp.get("data") or {}).get("key")
-        or key_resp.get("api_key")
-    )
-    if not inference_key:
-        audit.log_error("snap.fork", new_env_name, "no key in response", args=key_resp)
-        raise click.ClickException(
-            f"OpenRouter response missing key field. Inspect audit log for details."
+    if existing_key:
+        console.print(
+            f"[yellow]using provided OpenRouter key (no mint, no per-env budget cap).[/yellow]"
         )
+        inference_key = existing_key
+    else:
+        console.print(f"[dim]minting OpenRouter key (budget ${budget_usd:.2f}) …[/dim]")
+        try:
+            key_resp = openrouter.mint_key(new_env_name, budget_usd)
+        except openrouter.OpenRouterError as e:
+            raise click.ClickException(f"could not mint OpenRouter key: {e}")
+        inference_key = (
+            key_resp.get("key")
+            or (key_resp.get("data") or {}).get("key")
+            or key_resp.get("api_key")
+        )
+        if not inference_key:
+            audit.log_error("snap.fork", new_env_name, "no key in response", args=key_resp)
+            raise click.ClickException(
+                f"OpenRouter response missing key field. Inspect audit log for details."
+            )
 
     now = _now()
     container_started = False

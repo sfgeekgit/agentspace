@@ -247,10 +247,27 @@ def set_env_status(name: str, status: str, container_id: str | None = None):
 
 # ---- maintenance ----
 
-def replace_all_snaps(snaps: Iterable[dict[str, Any]]):
-    """Used by rebuild-index after reading ghcr.io. Wipes and reloads."""
+def reconcile_snaps(snaps: Iterable[dict[str, Any]]):
+    """Used by rebuild-index after reading ghcr.io.
+
+    Upserts all snaps from the registry, then deletes any local-only rows that
+    no longer exist remotely AND have no envs referencing them. Snaps referenced
+    by an active env are preserved even if they've disappeared from the registry —
+    deleting them would orphan the env (and SQLite blocks it via foreign key).
+    """
     conn = get_conn()
-    conn.execute("DELETE FROM snaps")
-    for s in snaps:
+    new_snaps = list(snaps)
+    new_ids = {s["snap_id"] for s in new_snaps}
+
+    for s in new_snaps:
         upsert_snap(s)
+
+    referenced_ids = {
+        row[0] for row in conn.execute("SELECT DISTINCT snap_id FROM envs").fetchall()
+    }
+    for row in conn.execute("SELECT snap_id FROM snaps").fetchall():
+        sid = row[0]
+        if sid not in new_ids and sid not in referenced_ids:
+            conn.execute("DELETE FROM snaps WHERE snap_id = ?", (sid,))
+
     conn.commit()

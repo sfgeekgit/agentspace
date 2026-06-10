@@ -101,7 +101,7 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
   cd /data/openclaw/agents/<agentId>/workspace && openclaw tui  # pane N: per agent
   ```
   `tui` auto-selects the agent when launched from its workspace dir. `openclaw.json` must include `gateway.mode: "local"` or the gateway refuses to start.
-- **Agent → agent messaging**: `sessions_send` (native OpenClaw tool). An agent calls `sessions_list` to find the target's session key, then `sessions_send` to deliver a message. Requires `tools.agentToAgent.enabled: true` and `tools.sessions.visibility: "all"` in `openclaw.json`.
+- **Agent → agent messaging**: `sessions_send` (native OpenClaw tool). An agent calls `sessions_list` to find the target's session key, then `sessions_send` to deliver a message. Requires `tools.agentToAgent.enabled: true` and `tools.agentToAgent.allow: [<agent_ids>]` in `openclaw.json`. Visibility caveat: with `"self"` agents couldn't message each other at all, so we currently ship `tools.sessions.visibility: "all"`. Under `"all"` agents *can* read each other's history via `sessions_history`, though they don't unless heavily prompted. True message-yes/read-no isolation likely needs a different mechanism (e.g. separate OS users per agent) — open TODO.
 - **Budget access from agents**: helper module exposing `check_budget()`, added as an OpenClaw skill. Reads `OPENROUTER_API_KEY` from the env's runtime environment and queries `GET /api/v1/key`.
 
 ## Components
