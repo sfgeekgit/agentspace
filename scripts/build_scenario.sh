@@ -37,9 +37,12 @@ AGENTSPACE_VER="$(python3 -c 'import sys; sys.path.insert(0, "."); from agentspa
 case "$SCENARIO" in
     simple2agent)
         AGENTS_JSON='["a87329","a90301"]'
-        FEATURE_FLAGS_JSON='{"agent_to_agent":true}'
+        # fs_isolation=sandbox drives zookeeper lifecycle mechanics only (host
+        # mounts, seed/restore, sibling cleanup); the openclaw sandbox config
+        # itself is baked into the scenario's openclaw.json.
+        FEATURE_FLAGS_JSON='{"agent_to_agent":true,"fs_isolation":"sandbox"}'
         MODEL="openrouter/anthropic/claude-haiku-4-5"
-        CREATION_MSG="fresh world: 2 openclaw agents, pre-chat; visibility=all + per-agent deny of sessions_history/list (message-yes/read-no)"
+        CREATION_MSG="fresh world: 2 openclaw agents, per-agent docker sandboxes; visibility=all + per-agent deny (message-yes/read-no), pingpong 0, heartbeat 240m"
         ;;
     *)
         echo "error: unknown scenario '${SCENARIO}'. Add a case in $(basename "$0")." >&2

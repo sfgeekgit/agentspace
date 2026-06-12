@@ -23,6 +23,13 @@ python3 zookeeper.py <noun> <verb> [args]
 - Docker (see `droplet-setup.md`)
 - Python 3.10+ with `click` and `rich` installed
 - The base runtime image: `docker build -t agentspace:base /opt/agentspace-ctl`
+- For sandboxed scenarios (`fs_isolation: "sandbox"`), one-time host setup:
+  - `sudo install -d -o $USER -g $USER /var/agentspace-envs` — per-env agent
+    workspace trees live here (the CLI itself never needs root: contents written
+    root-owned by sandboxes are cleaned through the env container's own mount).
+  - The sandbox image `openclaw-sandbox:bookworm-slim` must exist on the host
+    daemon (local-only; build from OpenClaw's official sandbox Dockerfile —
+    see `runtime_openclaw.md` §4). `snap fork` checks and refuses if missing.
 
 ### Secrets
 
@@ -205,6 +212,7 @@ Current flags:
 | Flag | Values | Effect |
 |---|---|---|
 | `agent_to_agent` | bool | Cross-agent `sessions_send` enabled |
+| `fs_isolation` | `"sandbox"` | Per-agent filesystem isolation. Drives zookeeper **lifecycle mechanics only** — fork creates host workspace dirs and mounts (docker socket + workspace tree at the identical path), rewrites per-env paths/prefix in the baked config, seeds or restores workspaces; take tars the host tree into the container pre-commit; kill removes sandbox sibling containers (matched by mount, not name) and the workspace tree. The runtime's sandbox config itself is NOT translated — it's baked into the scenario's openclaw.json, same precedent as visibility. |
 
 For the openclaw runtime, `agent_to_agent: true` expands at translate time to:
 

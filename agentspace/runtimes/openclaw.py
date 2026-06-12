@@ -20,6 +20,102 @@ NAME = "openclaw"
 GATEWAY_LOG_PATH = "/tmp/gateway.log"
 KICK_FILE_PATH = "/data/scenario_kick.txt"  # set by snap.cmd_fork if present
 
+# ---- sandbox (fs_isolation) layout ----
+# Per-agent sandbox containers are DooD siblings: the gateway drives the HOST
+# docker daemon through a mounted socket, and the host daemon resolves mount
+# paths in the HOST namespace. So agent workspaces live on the host under
+# WORKSPACE_ROOT/<env_name>/ and are bind-mounted into the env container at the
+# IDENTICAL absolute path. All root-needing file ops on that tree run as root
+# INSIDE the env container, through its own mount — zookeeper itself stays a
+# plain user (host-side it only mkdirs/rmdirs dirs it owns).
+WORKSPACE_ROOT = "/var/agentspace-envs"
+SANDBOX_IMAGE = "openclaw-sandbox:bookworm-slim"  # local-only; OC won't pull it
+WORKSPACES_TAR_PATH = "/data/workspaces.tgz"  # written by snap take, pre-commit
+SEED_DIR = "/data/seed/agents"  # baked by the scenario Dockerfile (world snaps)
+CONFIG_PATH = "/data/openclaw/openclaw.json"
+
+
+def env_fs_root(env_name: str) -> str:
+    return f"{WORKSPACE_ROOT}/{env_name}"
+
+
+def rewrite_workspace_paths(host: str, container: str, env_name: str):
+    """Point openclaw.json's host-namespace paths at this env's tree.
+
+    World snaps ship the __ENV__ placeholder; experiment snaps carry the parent
+    env's name. Both match the generic patterns. Done with sed on the raw file
+    (NOT `openclaw config set`: comment-stripping + size-drop guard).
+
+    Also rewrites sandbox.docker.containerPrefix: OC's sandbox name hash
+    IGNORES the workspace path (verified 2026-06-12 — an env silently REUSED
+    another env's sandbox, mounts and all), so the prefix must be per-env
+    unique. Matching the VALUE ("openclaw-sbx-…") keeps it robust to config-set
+    key requoting.
+    """
+    root = env_fs_root(env_name)
+    sed = (
+        f"sed -i -E "
+        f"-e 's#{WORKSPACE_ROOT}/[^/\"]+#{root}#g' "
+        f"-e 's#\"openclaw-sbx-[^\"]*\"#\"openclaw-sbx-{env_name}-\"#g' "
+        f"{CONFIG_PATH}"
+    )
+    docker_host.run(host, "exec", container, "sh", "-c", sed)
+
+
+def restore_env_fs(host: str, container: str, env_name: str):
+    """Populate the env's host workspace tree (root inside the container,
+    writing through the bind mount). Experiment snaps restore the tar captured
+    at snap take; world snaps copy the baked seed files (PEERS.md etc.)."""
+    root = env_fs_root(env_name)
+    script = (
+        f"if [ -f {WORKSPACES_TAR_PATH} ]; then tar -xzf {WORKSPACES_TAR_PATH} -C {root}; "
+        f"elif [ -d {SEED_DIR} ]; then cp -a {SEED_DIR}/. {root}/; fi"
+    )
+    docker_host.run(host, "exec", container, "sh", "-c", script)
+
+
+def capture_env_fs(host: str, container: str, env_name: str):
+    """tar the host workspace tree INTO the container before `docker commit`,
+    so the pushed image is the complete env (ghcr tag = complete env). The tar
+    runs as root inside the container; entries are relative to the env root so
+    a fork can extract them under a different env name."""
+    root = env_fs_root(env_name)
+    docker_host.run(
+        host, "exec", container, "sh", "-c",
+        f"tar -czf {WORKSPACES_TAR_PATH} -C {root} .",
+    )
+
+
+def clear_env_fs(host: str, container: str, env_name: str):
+    """Delete root-owned workspace contents through the mount (the mount point
+    itself can't be removed from inside; the caller rmdirs it host-side)."""
+    root = env_fs_root(env_name)
+    docker_host.run(
+        host, "exec", container, "sh", "-c",
+        f"find {root} -mindepth 1 -delete", check=False,
+    )
+
+
+def find_sandbox_containers(host: str, env_name: str) -> list[str]:
+    """Sandbox siblings OUTLIVE the env container and must be removed at env
+    kill. Names are OC-generated (openclaw-sbx-agent-<id>-<hash>) and agent ids
+    repeat across envs forked from one snap, so match by mounted workspace path
+    — unambiguous regardless of how OC derives the name hash."""
+    root = env_fs_root(env_name)
+    out = docker_host.stdout(
+        host, "ps", "-a", "--filter", "name=openclaw-sbx-",
+        "--format", "{{.Names}}", check=False,
+    )
+    matches = []
+    for name in out.split():
+        mounts = docker_host.stdout(
+            host, "inspect", "--format",
+            "{{range .Mounts}}{{.Source}}\n{{end}}", name, check=False,
+        )
+        if any(m == root or m.startswith(root + "/") for m in mounts.split()):
+            matches.append(name)
+    return matches
+
 
 def translate_flags(
     host: str,
@@ -64,6 +160,14 @@ def translate_flags(
     if vis:
         writes.append(("tools.sessions.visibility", str(vis)))
 
+    # `fs_isolation: "sandbox"` is intentionally NOT translated to openclaw
+    # config. The sandbox block is baked into the scenario's openclaw.json
+    # (same precedent as visibility — protected/bake-at-build settings); the
+    # flag only tells zookeeper lifecycle code to do the host-mount mechanics
+    # (snap.cmd_fork / cmd_take, env.cmd_kill). With it, the !! warning above
+    # is CLOSED: each agent's fs/exec tools run in a dedicated container that
+    # mounts only its own workspace.
+
     for key, value in writes:
         docker_host.exec_(host, container, "openclaw", "config", "set", key, value)
 
@@ -87,10 +191,12 @@ def start_gateway(host: str, container: str):
 
 
 def stop_gateway(host: str, container: str):
-    """Best-effort stop. OpenClaw may not have a clean shutdown; pkill as fallback."""
+    """Best-effort stop. The process name is `openclaw` (not "openclaw gateway"),
+    so pkill must match exact name — `pkill -f 'openclaw gateway'` MISSES it.
+    Hot reload is a lie: any config change requires this + start_gateway."""
     docker_host.run(
         host, "exec", container, "sh", "-c",
-        "openclaw gateway stop 2>/dev/null || pkill -f 'openclaw gateway' || true",
+        "openclaw gateway stop 2>/dev/null; pkill -x openclaw || true",
         check=False,
     )
 
@@ -98,7 +204,9 @@ def stop_gateway(host: str, container: str):
 GATEWAY_READY_MARKER = "[gateway] ready"
 
 
-def wait_for_gateway(host: str, container: str, timeout_s: float = 90.0):
+def wait_for_gateway(host: str, container: str, timeout_s: float = 180.0):
+    # 90s proved too tight: observed a healthy cold start taking 94s (http
+    # server 42s + channel/warmup waits) — ready arrived just past the old cap.
     """Wait for the gateway to print its ready marker to /tmp/gateway.log.
 
     `openclaw gateway status` always exits 0 even when the gateway isn't running, so

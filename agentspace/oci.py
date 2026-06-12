@@ -91,9 +91,11 @@ def change_args(labels: dict[str, str]) -> list[str]:
     """Build `--change 'LABEL k=v'` args for `docker commit`."""
     args: list[str] = []
     for k, v in labels.items():
-        # docker commit --change expects shell-quoted label syntax; we let subprocess
-        # pass the whole token as a single argv element so embedded quotes survive.
-        args.extend(["--change", f"LABEL {k}={v}"])
+        # The --change value is parsed by the daemon as a Dockerfile LABEL
+        # instruction, so values with spaces need Dockerfile-style quoting
+        # (subprocess argv quoting alone is not enough).
+        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+        args.extend(["--change", f'LABEL {k}="{escaped}"'])
     return args
 
 
