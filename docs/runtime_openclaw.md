@@ -75,9 +75,25 @@ session jsonl.
   gateway-side).
 - Topology is DooD (docker-outside-of-docker): the gateway uses the HOST docker
   daemon via a mounted `/var/run/docker.sock`; sandbox containers are SIBLINGS of
-  the env container, named `openclaw-sbx-agent-<id>-<hash>` (deterministic; gateway
+  the env container, named `<prefix>agent-<id>-<hash>` (deterministic; gateway
   restarts REUSE them; they OUTLIVE the env container — lifecycle code must remove
   them explicitly).
+- COLLISION BUG (verified 2026-06-12, worst case): the name `<hash>` IGNORES the
+  workspace path — same agent id ⇒ same sandbox name across envs. With the default
+  prefix, a second env will silently REUSE the first env's sandbox, mounts and all
+  (agent sees the OTHER env's workspace; no error anywhere). Fix:
+  `sandbox.docker.containerPrefix` (resolution: agent-level ?? global ??
+  "openclaw-sbx-") must be per-env unique. We bake
+  `containerPrefix: "openclaw-sbx-<env>-"` and verify disjoint sandboxes when
+  forking two envs from one snap. Leftover siblings are therefore not just litter
+  — they're a live cross-env breach for any env without a unique prefix.
+- Sandboxes are created LAZILY on the agent's first sandboxed tool call, not at
+  gateway start — scaffolding (SOUL.md etc.) is gateway-side and happens without
+  them. "Did the sandbox come up right" can only be checked with a probe turn.
+- Host pollution quirk: OC mounts an internal skills dir into each sandbox using
+  a CONTAINER-namespace source path (`/data/openclaw/sandbox/skills-workspaces/…`),
+  which the host daemon resolves in the HOST namespace → stray empty root-owned
+  `/data/openclaw/sandbox/…` dirs appear on the host. Harmless; needs root to remove.
 - PATH RULE: the host daemon resolves mount paths in the HOST namespace → agent
   workspaces must live on the host AND be mounted into the env container at the
   IDENTICAL absolute path; openclaw.json must use those host paths.
@@ -125,7 +141,8 @@ session jsonl.
 
 - Start: `openclaw gateway run` (foreground; background it, log to a file).
   Readiness: grep `[gateway] ready` in the log — `openclaw gateway status` ALWAYS
-  exits 0 and is useless as a probe. Cold start ~30s (use 90s timeouts). Binds
+  exits 0 and is useless as a probe. Cold start is VARIABLE: ~30s typical, but a
+  healthy start taking 94s was observed (http server alone 42s) — use 180s timeouts. Binds
   loopback `ws://127.0.0.1:18789`. Requires `gateway.mode: "local"` or it refuses
   to start.
 - RESTART CORRECTLY: the process name is `openclaw` (not "openclaw gateway"), so
@@ -183,9 +200,11 @@ session jsonl.
   AGENTS.md, HEARTBEAT.md, TOOLS.md, USER.md, .openclaw/) — expect a slow first
   turn. Pre-existing extra files (e.g. PEERS.md) SURVIVE scaffolding (verified). A
   pre-baked SOUL.md gets OVERWRITTEN — ship world snaps with empty workspaces and
-  inject custom souls at fork time (`snap fork --soul`; whether the injected soul
-  survives scaffolding is still untested). The scaffolded default soul is OC's stock
-  template.
+  inject custom souls at fork time (`snap fork --soul`). Verified 2026-06-12: a
+  fork-time-injected SOUL.md SURVIVES first-turn scaffolding (marker intact, other
+  files scaffolded around it). Caveat: verified via an embedded-mode turn (same
+  scaffolding stages ran); not yet re-verified through a gateway-routed turn. The
+  scaffolded default soul is OC's stock template.
 - `NO_REPLY` / `REPLY_SKIP` / `ANNOUNCE_SKIP` are suppress-delivery tokens agents
   emit; the TUI may display them truncated — cosmetic.
 - Agent budget self-check (works in-container with the injected key):
@@ -199,3 +218,11 @@ messaging clean with both §2 and §3 fixes applied; peer history tools absent;
 peer workspaces unreadable from inside a sandbox; docker socket and gateway config
 invisible; snapshot round-trip (container commit + workspace tar) restores a
 working env with state intact.
+
+Re-verified 2026-06-12 through the NORMAL CLI PATH on simple2agent:4.0
+(zookeeper snap fork / take / env kill): full checklist passed — siblings on
+exec, sends work, history denied, PEERS.md survives, peer workspace / socket /
+gateway config invisible from inside the sandbox (checked by exec'ing into the
+sandbox itself), snapshot round-trip via experiment snap 4.1, two-envs-from-one-
+snap disjoint sandboxes (after the containerPrefix fix, §4), sandboxed env kill
+removes siblings + workspace tree. Plus the --soul survival result (§11).

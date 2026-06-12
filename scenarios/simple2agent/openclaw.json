@@ -1,13 +1,9 @@
 {
-  // 2 agents; message-yes/read-no isolation: visibility=all (required for cross-agent
-  // sessions_send) + per-agent tools.deny of sessions_history/list. Peer session keys
-  // are baked into each workspace's PEERS.md since discovery (sessions_list) is denied.
-  // !! ISOLATION IS PARTIAL: both agents share one container as the same OS user, so
-  // !! fs/exec tools can read the peer's workspace, memory, and session files directly.
-  // !! Don't rely on privacy for adversarial scenarios until that hole is closed.
-  // Full rationale: docs/agentspace_cli.md "Feature flags" section.
-  // NOTE: keep comments SHORT — `openclaw config set` strips them on rewrite, and
-  // OpenClaw rejects writes that shrink the file too much (size-drop guard).
+  // simple2agent 4.0: 2 agents, message-yes/read-no isolation, BOTH layers closed:
+  // session tools (visibility=all + per-agent deny) AND filesystem (per-agent
+  // docker sandboxes). __ENV__ → env name, rewritten by `snap fork`; workspace
+  // paths are HOST-namespace (host daemon resolves sandbox mounts; path rule).
+  // Rationale/quirks: docs/runtime_openclaw.md. Keep comments SHORT (size-drop guard).
   // OPENROUTER_API_KEY is injected at runtime via docker run -e.
   gateway: {
     mode: "local",
@@ -22,13 +18,22 @@
       model: {
         primary: "openrouter/anthropic/claude-haiku-4-5",
       },
+      heartbeat: { every: "240m" },
+      // OC bug: sessionToolsVisibility is read ONLY from defaults-level sandbox.
+      // containerPrefix: OC's sandbox name hash IGNORES the workspace path, so
+      // without a per-env prefix two envs from one snap silently SHARE sandboxes.
+      sandbox: {
+        sessionToolsVisibility: "all",
+        docker: { containerPrefix: "openclaw-sbx-__ENV__-" },
+      },
     },
     list: [
       {
         id: "a87329",
         name: "Agent 87329",
-        workspace: "/data/openclaw/agents/a87329/workspace",
-        agentDir: "/data/openclaw/agents/a87329/agent",
+        workspace: "/var/agentspace-envs/__ENV__/a87329/workspace",
+        agentDir: "/var/agentspace-envs/__ENV__/a87329/agent",
+        sandbox: { mode: "all", scope: "agent", workspaceAccess: "rw" },
         tools: {
           deny: ["sessions_history", "sessions_list", "session_status"],
         },
@@ -36,13 +41,19 @@
       {
         id: "a90301",
         name: "Agent 90301",
-        workspace: "/data/openclaw/agents/a90301/workspace",
-        agentDir: "/data/openclaw/agents/a90301/agent",
+        workspace: "/var/agentspace-envs/__ENV__/a90301/workspace",
+        agentDir: "/var/agentspace-envs/__ENV__/a90301/agent",
+        sandbox: { mode: "all", scope: "agent", workspaceAccess: "rw" },
         tools: {
           deny: ["sessions_history", "sessions_list", "session_status"],
         },
       },
     ],
+  },
+
+  session: {
+    // 0 kills the automatic A2A reply-loop (budget storms + privacy leak).
+    agentToAgent: { maxPingPongTurns: 0 },
   },
 
   tools: {

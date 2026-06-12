@@ -8,6 +8,11 @@ RUN apt-get update -qq && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Docker CLI only (static client, no daemon) — OC sandbox mode shells out to
+# `docker`, which talks to the HOST daemon via the socket mounted at fork time.
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz \
+    | tar -xz -C /usr/local/bin --strip-components=1 docker/docker
+
 ENV OPENCLAW_STATE_DIR=/data/openclaw
 ENV OPENCLAW_CONFIG_PATH=/data/openclaw/openclaw.json
 

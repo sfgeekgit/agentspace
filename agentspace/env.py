@@ -1,5 +1,8 @@
 """Env verbs: list, show, start, stop, kick, kill, logs, exec."""
 
+import os
+import shutil
+
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -191,8 +194,38 @@ def cmd_kill(name: str, force: bool = False):
         )
 
     host = env["host"] or "localhost"
+    snap = db.get_snap_by_id(env["snap_id"])
+    sandboxed = bool(snap) and (snap.get("feature_flags") or {}).get("fs_isolation") == "sandbox"
+
+    if sandboxed:
+        # 1. Sandbox siblings OUTLIVE the env container — remove them explicitly
+        #    (matched by mounted workspace path, not by OC's generated names).
+        for sbx in openclaw.find_sandbox_containers(host, name):
+            console.print(f"[dim]removing sandbox container {sbx} …[/dim]")
+            docker_host.run(host, "rm", "-f", sbx, check=False)
+        # 2. Workspace contents are root-owned (written by sandboxes) — delete
+        #    them as root through the env container's own mount, BEFORE the
+        #    container goes away. Start it briefly if stopped (no gateway,
+        #    no spend).
+        env_root = openclaw.env_fs_root(name)
+        if docker_host.container_exists(host, name):
+            if not docker_host.container_running(host, name):
+                docker_host.run(host, "start", name, check=False)
+            console.print(f"[dim]clearing workspace tree {env_root} …[/dim]")
+            openclaw.clear_env_fs(host, name, name)
+
     docker_host.run(host, "stop", name, check=False)
     docker_host.run(host, "rm", name, check=False)
+
+    if sandboxed:
+        # 3. The now-empty dirs are operator-owned (created at fork) — plain rmdir.
+        shutil.rmtree(openclaw.env_fs_root(name), ignore_errors=True)
+        if os.path.isdir(openclaw.env_fs_root(name)):
+            console.print(
+                f"[yellow]could not fully remove {openclaw.env_fs_root(name)} "
+                f"(root-owned leftovers?). Remove manually, e.g. with sudo.[/yellow]"
+            )
+
     try:
         openrouter.disable_key(name)
     except openrouter.OpenRouterError as e:

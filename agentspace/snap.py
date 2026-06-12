@@ -5,6 +5,7 @@ metadata; SQLite is a local cache. Notes are local-only until `snap push` is run
 """
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -314,6 +315,21 @@ def cmd_take(
         "notes": notes_arr,
     }
 
+    # Sandboxed envs keep workspaces on the host; tar them INTO the container
+    # pre-commit so the pushed image is the complete env. The env container
+    # itself does the (root) tar through its own mount — start it briefly if
+    # stopped (CMD is `sleep infinity`; the gateway is NOT started, no spend).
+    if (parent_snap.get("feature_flags") or {}).get("fs_isolation") == "sandbox":
+        console.print(f"[dim]capturing host workspace tree into container …[/dim]")
+        # Use env_name (the container NAME): container_running matches names,
+        # and env["container_id"] is the raw hex id.
+        was_running = docker_host.container_running(host, env_name)
+        if not was_running:
+            docker_host.run(host, "start", env_name)
+        openclaw.capture_env_fs(host, env_name, env_name)
+        if not was_running:
+            docker_host.run(host, "stop", env_name, check=False)
+
     labels = oci.make_labels(snap)
     console.print(f"[dim]committing {container} → {ghcr_tag}[/dim]")
     oci.commit_with_labels(host, container, ghcr_tag, labels)
@@ -460,8 +476,41 @@ def cmd_fork(
     if kick is None:
         kick = is_world
 
+    flags = snap.get("feature_flags") or {}
+    agents = snap.get("agents") or []
+    sandboxed = flags.get("fs_isolation") == "sandbox"
+    env_root = openclaw.env_fs_root(new_env_name)
+
+    if sandboxed and host != "localhost":
+        raise click.ClickException(
+            "fs_isolation=sandbox envs are localhost-only for now (host-side "
+            "workspace dirs need mkdir/rmdir on the remote host)."
+        )
+
     console.print(f"[dim]ensuring local image …[/dim]")
     docker_host.run(host, "pull", ghcr_tag, check=False)
+
+    if sandboxed:
+        # The sandbox image is local-only (not on any registry; OC won't pull it).
+        result = docker_host.run(host, "image", "inspect", openclaw.SANDBOX_IMAGE, check=False)
+        if result.returncode != 0:
+            raise click.ClickException(
+                f"sandbox image {openclaw.SANDBOX_IMAGE!r} not found on {host}. "
+                f"Build it from OpenClaw's official sandbox Dockerfile first "
+                f"(see docs/runtime_openclaw.md §4)."
+            )
+        # Host-side workspace tree, owned by the operator. Contents written by
+        # sandboxes are root-owned; those are cleaned through the container.
+        console.print(f"[dim]creating workspace tree {env_root} …[/dim]")
+        try:
+            for agent_id in agents:
+                os.makedirs(f"{env_root}/{agent_id}/workspace", exist_ok=True)
+                os.makedirs(f"{env_root}/{agent_id}/agent", exist_ok=True)
+        except PermissionError:
+            raise click.ClickException(
+                f"cannot create {env_root}. One-time setup: "
+                f"sudo install -d -o $USER {openclaw.WORKSPACE_ROOT}"
+            )
 
     if existing_key:
         console.print(
@@ -489,13 +538,28 @@ def cmd_fork(
     container_started = False
     try:
         console.print(f"[dim]starting container {new_env_name} …[/dim]")
-        docker_host.run(
-            host, "run", "-d",
+        run_args = [
+            "run", "-d",
             "-e", f"OPENROUTER_API_KEY={inference_key}",
             "--name", new_env_name,
-            ghcr_tag,
-        )
+        ]
+        if sandboxed:
+            # DooD: gateway drives the HOST daemon; workspace tree mounted at
+            # the IDENTICAL absolute path (host daemon resolves mount paths in
+            # the host namespace — see docs/runtime_openclaw.md §4).
+            run_args += [
+                "-v", "/var/run/docker.sock:/var/run/docker.sock",
+                "-v", f"{env_root}:{env_root}",
+            ]
+        run_args.append(ghcr_tag)
+        docker_host.run(host, *run_args)
         container_started = True
+
+        if sandboxed:
+            console.print(f"[dim]rewriting workspace paths → {env_root} …[/dim]")
+            openclaw.rewrite_workspace_paths(host, new_env_name, new_env_name)
+            console.print(f"[dim]populating workspaces (seed or snapshot tar) …[/dim]")
+            openclaw.restore_env_fs(host, new_env_name, new_env_name)
 
         # Inject souls.
         for soul_spec in souls:
@@ -509,7 +573,12 @@ def cmd_fork(
                 soul_file = REPO_ROOT / soul_file
             if not soul_file.is_file():
                 raise click.ClickException(f"soul file not found: {soul_file}")
-            dest = f"/data/openclaw/agents/{agent_id}/workspace/SOUL.md"
+            # Sandboxed envs keep workspaces on the host tree; docker cp into
+            # the container writes through the bind mount either way.
+            if sandboxed:
+                dest = f"{env_root}/{agent_id}/workspace/SOUL.md"
+            else:
+                dest = f"/data/openclaw/agents/{agent_id}/workspace/SOUL.md"
             console.print(f"[dim]injecting soul {agent_id} ← {soul_file}[/dim]")
             docker_host.run(host, "cp", str(soul_file), f"{new_env_name}:{dest}")
 
@@ -517,8 +586,6 @@ def cmd_fork(
             console.print(f"[dim]patching model = {model}[/dim]")
             openclaw.patch_model(host, new_env_name, model)
 
-        flags = snap.get("feature_flags") or {}
-        agents = snap.get("agents") or []
         if flags:
             console.print(f"[dim]translating feature flags → openclaw config …[/dim]")
             openclaw.translate_flags(host, new_env_name, flags, agents)

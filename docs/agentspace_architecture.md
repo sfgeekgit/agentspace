@@ -14,6 +14,33 @@ Empirical study of multi-agent cooperation/corrigibility under shared resource c
 - **Host droplet**: a DO droplet running Docker, hosting one or more env containers. Envs on the same host are isolated by Docker.
 - **Control droplet**: a separate small DO droplet running the orchestration CLI.
 
+## Isolation Model
+
+An env guarantees that agents interact with each other **only via the messaging
+channel**. Everything else an agent owns — workspace files, memory, session
+transcripts — is private to it.
+
+Isolation has two layers, and both must be closed for the guarantee to hold:
+
+1. **Communication-tools layer**: agents must be able to send messages to each
+   other, but not read each other's message history or session state through
+   runtime tools.
+2. **Filesystem layer**: an agent with file/exec tools must not be able to
+   reach a peer's workspace, memory, or transcripts through the filesystem.
+
+Closing only the first layer is not isolation — any agent with exec tools can
+read peers' files straight off a shared filesystem. Current implementation:
+per-agent sandbox containers; each agent's file/exec tools run in a dedicated
+container that mounts only that agent's own workspace.
+
+## Agent Memory Durability
+
+Conversational state is runtime-ephemeral: sessions may reset across idle
+periods or day boundaries, and a fresh fork starts from whatever was frozen in
+the snap. **Durable agent memory must live in workspace files.** Souls should
+instruct agents to journal to their workspace when continuity matters —
+anything not written to a file should be assumed forgettable.
+
 ## Stack
 
 - **Envs = Docker containers**. The container's internal filesystem IS the env — corpus, OpenClaw config, all agent state. No Docker volumes for env data; everything is inside the container layer.
@@ -101,7 +128,7 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
   cd /data/openclaw/agents/<agentId>/workspace && openclaw tui  # pane N: per agent
   ```
   `tui` auto-selects the agent when launched from its workspace dir. `openclaw.json` must include `gateway.mode: "local"` or the gateway refuses to start.
-- **Agent → agent messaging**: `sessions_send` (native OpenClaw tool). An agent calls `sessions_list` to find the target's session key, then `sessions_send` to deliver a message. Requires `tools.agentToAgent.enabled: true` and `tools.agentToAgent.allow: [<agent_ids>]` in `openclaw.json`. Visibility caveat: with `"self"` agents couldn't message each other at all, so we currently ship `tools.sessions.visibility: "all"`. Under `"all"` agents *can* read each other's history via `sessions_history`, though they don't unless heavily prompted. True message-yes/read-no isolation likely needs a different mechanism (e.g. separate OS users per agent) — open TODO.
+- **Agent → agent messaging**: `sessions_send` (native OpenClaw tool). An agent calls `sessions_list` to find the target's session key, then `sessions_send` to deliver a message. Requires `tools.agentToAgent.enabled: true` and `tools.agentToAgent.allow: [<agent_ids>]` in `openclaw.json`. Visibility caveat: with `"self"` agents couldn't message each other at all, so we currently ship `tools.sessions.visibility: "all"`. Under `"all"` the session-read tools are closed per-agent via `tools.deny` of `sessions_history`/`sessions_list`/`session_status`, and the filesystem layer is closed by per-agent sandbox containers (see Isolation Model above). Implemented as of scenario 4.0.
 - **Budget access from agents**: helper module exposing `check_budget()`, added as an OpenClaw skill. Reads `OPENROUTER_API_KEY` from the env's runtime environment and queries `GET /api/v1/key`.
 
 ## Components
@@ -130,6 +157,11 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
 - Runs env containers. SSH-reachable from the control droplet.
 
 ## World Snap Creation
+
+**Scenario-content principle:** world files (world.md, PEERS.md, souls, kick
+messages) tell agents what they *can* do — never enumerate denied or absent
+abilities. Listing what's forbidden leaks experiment design to the agents and
+plants ideas; capabilities they don't have should simply not be mentioned.
 
 Before any experiment can run, a world snap must exist for that scenario. A world snap contains the runtime + corpus + initial agent configs, with agents never yet activated. It is the clean starting point for all forks of that experiment.
 
@@ -266,6 +298,13 @@ The control droplet's SQLite is rebuildable from OpenRouter (list keys) + Docker
 ## Appendix A: Observability
 
 Clean observability is a first-class research requirement: we need to be able to see what every agent did, said, and (where possible) thought, both live and post-hoc.
+
+**Observability principle: runtime logs are ground truth.** Gateway/runtime
+logs, session transcripts, and direct inspection of containers and files are
+evidence; an agent's self-report about its own configuration or capabilities is
+not. Agents confabulate plausible-sounding wrong explanations of their own
+setup — verify against logs and source, never against what an agent says about
+itself.
 
 ### A.1 Model-level reasoning (chain-of-thought)
 
