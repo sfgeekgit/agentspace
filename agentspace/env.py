@@ -1,7 +1,9 @@
 """Env verbs: list, show, start, stop, kick, kill, logs, exec."""
 
 import os
+import re
 import shutil
+from datetime import datetime, timezone
 
 import click
 from rich.console import Console
@@ -39,6 +41,57 @@ def _live_status(env: dict) -> str:
         return f"unreachable (last: {env.get('status') or '?'})"
 
 
+_STARTED_AT_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
+
+
+def _started_at(env: dict, status: str) -> str:
+    """Local-time 'YYYY-MM-DD HH:MM' the env was last started, or '—'.
+
+    Reads Docker's own State.StartedAt — no extra tracking needed. Only meaningful
+    while running. Docker reports UTC (RFC3339Nano); we truncate the fractional
+    seconds and render in local time.
+    """
+    if status != "running":
+        return "—"
+    host = env["host"] or "localhost"
+    try:
+        raw = docker_host.inspect(host, env["name"], format="{{.State.StartedAt}}").strip()
+    except docker_host.DockerError:
+        return "—"
+    if not raw or raw.startswith("0001-01-01"):  # docker's zero value = never started
+        return "—"
+    m = _STARTED_AT_RE.match(raw)
+    if not m:
+        return "—"
+    dt = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
+    return dt.astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def _fmt_duration(seconds: float | None) -> str:
+    """Human runtime like '2d 3h 14m', '3h 14m', or '14m'. '—' for none/negative."""
+    if not seconds or seconds < 0:
+        return "—"
+    total = int(seconds)
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def _total_runtime(intervals: dict, name: str, status: str, now: datetime) -> str:
+    """Total time an env has run, from the audit log: completed sessions plus the
+    live one if running. '—' when we have no recorded runtime (see audit.py)."""
+    info = intervals.get(name) or {}
+    total = info.get("closed", 0.0)
+    if status == "running" and info.get("open_since") is not None:
+        total += (now - info["open_since"]).total_seconds()
+    return _fmt_duration(total)
+
+
 # ---- list ----
 
 def cmd_list():
@@ -48,13 +101,20 @@ def cmd_list():
         return
 
     table = Table(show_header=True, header_style="bold")
-    for col in ("NAME", "SNAP", "HOST", "STATUS", "USED", "LIMIT"):
+    for col in ("NAME", "SNAP", "HOST", "STATUS", "STARTED", "RUNTIME", "USED", "LIMIT"):
         table.add_column(col)
+
+    now = datetime.now(timezone.utc)
+    intervals = audit.env_runtime_intervals(
+        since_by_name={e["name"]: e["created_at"] for e in envs}
+    )
 
     for e in envs:
         snap = db.get_snap_by_id(e["snap_id"])
         snap_str = f"{snap['scenario']}:{snap['version']}" if snap else e["snap_id"][:8]
         status = _live_status(e)
+        started_str = _started_at(e, status)
+        runtime_str = _total_runtime(intervals, e["name"], status, now)
         used_str = "—"
         limit_str = f"${float(e.get('budget_usd') or 0):.2f}"
         if e.get("openrouter_key"):
@@ -71,6 +131,8 @@ def cmd_list():
             snap_str,
             e["host"] or "localhost",
             status,
+            started_str,
+            runtime_str,
             used_str,
             limit_str,
         )
@@ -87,6 +149,10 @@ def cmd_show(name: str):
     snap = db.get_snap_by_id(env["snap_id"])
     snap_str = f"{snap['scenario']}:{snap['version']}" if snap else env["snap_id"]
     status = _live_status(env)
+    started_str = _started_at(env, status)
+    now = datetime.now(timezone.utc)
+    intervals = audit.env_runtime_intervals(since_by_name={name: env["created_at"]})
+    runtime_str = _total_runtime(intervals, name, status, now)
 
     used_str = "—"
     limit_str = f"${float(env.get('budget_usd') or 0):.2f}"
@@ -105,6 +171,8 @@ def cmd_show(name: str):
         f"  Host:         {env['host'] or 'localhost'}\n"
         f"  Container:    {env.get('container_id') or '—'}\n"
         f"  Status:       {status}\n"
+        f"  Started:      {started_str}\n"
+        f"  Runtime:      {runtime_str}\n"
         f"  Created:      {env.get('created_at') or '—'}\n"
         f"  Budget used:  {used_str} / {limit_str}\n"
     )

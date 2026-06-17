@@ -74,8 +74,11 @@ snap rebuild-index [--repo <repo>]         # rebuild SQLite from ghcr.io labels
 ### env
 
 ```
-env list                                   # table with live status + budget
+env list                                   # table with live status, started time, runtime + budget
 env show <name>                            # detail panel
+# STARTED is Docker's last-start time (local tz). RUNTIME is total time started,
+# summed from the audit log — approximate: it only counts starts/stops done
+# through this CLI, so starting or stopping an env by other means undercounts it.
 env start <name>                           # restart; re-applies flags from snap labels; agents dormant
 env stop <name>                            # docker stop; container filesystem preserved
 env kick <name> [--message "<text>"]       # wake agents (creates initial sessions if missing)

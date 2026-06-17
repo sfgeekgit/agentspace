@@ -619,6 +619,7 @@ def cmd_fork(
             args={"from": f"{snap['scenario']}:{snap['version']}", "budget_usd": budget_usd,
                   "kick": kick, "host": host},
         )
+        audit.log("env.start", new_env_name)  # first session start, for runtime tracking
         console.print(f"[green]✓[/green] env {new_env_name} is running (forked from "
                       f"{snap['scenario']}:{snap['version']}).")
         if not kick:
