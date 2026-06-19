@@ -68,18 +68,22 @@ def _started_at(env: dict, status: str) -> str:
 
 
 def _fmt_duration(seconds: float | None) -> str:
-    """Human runtime like '2d 3h 14m', '3h 14m', or '14m'. '—' for none/negative."""
+    """Human runtime, two units max: '4d 23h', '3h 14m', '14m', '9s'. Under an
+    hour shows a single unit (minutes, or seconds if under a minute). '—' for
+    none/negative."""
     if not seconds or seconds < 0:
         return "—"
     total = int(seconds)
     days, rem = divmod(total, 86400)
     hours, rem = divmod(rem, 3600)
-    minutes = rem // 60
+    minutes, secs = divmod(rem, 60)
     if days:
-        return f"{days}d {hours}h {minutes}m"
+        return f"{days}d {hours}h"
     if hours:
         return f"{hours}h {minutes}m"
-    return f"{minutes}m"
+    if minutes:
+        return f"{minutes}m"
+    return f"{secs}s"
 
 
 def _total_runtime(intervals: dict, name: str, status: str, now: datetime) -> str:
@@ -102,7 +106,8 @@ def cmd_list():
 
     table = Table(show_header=True, header_style="bold")
     for col in ("NAME", "SNAP", "HOST", "STATUS", "STARTED", "RUNTIME", "USED", "LIMIT"):
-        table.add_column(col)
+        # STARTED ('YYYY-MM-DD HH:MM') has a space; keep it on one line.
+        table.add_column(col, no_wrap=(col == "STARTED"))
 
     now = datetime.now(timezone.utc)
     intervals = audit.env_runtime_intervals(
