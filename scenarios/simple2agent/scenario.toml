@@ -1,0 +1,15 @@
+# simple2agent — minimal cooperation / communication test.
+#
+# Re-expressed as a v1 manifest-based scen so the scen registry can discover it.
+# The existing world.md / openclaw.json / seed files still define the world; this
+# manifest is the small declarative head the registry and menu read.
+#
+# Fixed at exactly 2 agents (the baked openclaw.json hardcodes the two agent ids),
+# so min_agents == max_agents == 2. Variable-N support is a future builder
+# capability, not this scen.
+
+active = true
+description = "Two agents in a closed world with a shared budget; basic comms test."
+min_agents = 2
+max_agents = 2
+module_blacklist = []
