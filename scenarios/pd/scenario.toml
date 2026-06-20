@@ -1,0 +1,15 @@
+# pd — Prisoner's Dilemma (2 agents).
+#
+# A repeated two-choice payoff interaction. Agent-facing text uses NEUTRAL labels
+# (X/Y) per the minimal-comms rule — no "cooperate/defect/game/prisoner" framing.
+# Payoffs are the classic PD (T=5, R=3, P=1, S=0).
+#
+# Content-only for now: there is no run-time referee, so simultaneity and payoff
+# tallies are not enforced (see README.md). The enforced version awaits the
+# run-time services/referee interface that this scen is meant to define.
+
+active = true
+description = "Prisoner's Dilemma — 2 agents, repeated two-choice payoff interaction."
+min_agents = 2
+max_agents = 2
+module_blacklist = []
