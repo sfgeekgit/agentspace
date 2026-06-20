@@ -36,7 +36,14 @@ DEFAULT_FEATURE_FLAGS = {"agent_to_agent": True, "fs_isolation": "sandbox"}
 
 # A world name becomes the snap's scenario identity (the tag is snap-<name>-<ver>),
 # so it must be a safe tag component: lowercase letters, digits, underscore.
-_NAME_RE = re.compile(r"^[a-z0-9_]+$")
+WORLD_NAME_PATTERN = r"^[a-z0-9_]+$"
+_NAME_RE = re.compile(WORLD_NAME_PATTERN)
+
+
+def valid_world_name(name: str) -> bool:
+    """Single source of truth for world-name validity (used by the builder and
+    the menu wizard so the two never drift)."""
+    return bool(_NAME_RE.match(name))
 
 
 def _now() -> str:
@@ -96,9 +103,10 @@ def _stage_world(
     world_md: str | None,
     kick_text: str,
     seeds: dict[str, dict[str, str]],   # agent_id -> {filename: contents}
-    corpus_dir: Path | None,
 ):
-    """Write the full /data subtree into `stage` for a single `docker cp`."""
+    """Write the generated /data subtree into `stage` for one `docker cp`. The
+    scen corpus is NOT staged here — it's copied straight into the container (it
+    may be gigabytes; staging would copy it twice)."""
     data = stage / "data"
     (data / "openclaw").mkdir(parents=True, exist_ok=True)
     (data / "openclaw" / "openclaw.json").write_text(config_text, encoding="utf-8")
@@ -113,9 +121,6 @@ def _stage_world(
         ws.mkdir(parents=True, exist_ok=True)
         for fname, contents in files.items():
             (ws / fname).write_text(contents, encoding="utf-8")
-
-    if corpus_dir is not None:
-        shutil.copytree(corpus_dir, data / "corpus", dirs_exist_ok=True)
 
 
 def build_world_root(
@@ -147,7 +152,7 @@ def build_world_root(
     rng = random.Random(actual_seed)
 
     identity = world_name or scen_name
-    if not _NAME_RE.match(identity):
+    if not valid_world_name(identity):
         raise ValueError(
             f"world name must be lowercase letters/digits/underscore: {identity!r}"
         )
@@ -241,12 +246,20 @@ def build_world_root(
             world_md=world_md,
             kick_text=kick_text if kick_text.endswith("\n") else kick_text + "\n",
             seeds=seeds,
-            corpus_dir=scen["data_dir"],
         )
-        docker_host.run(host, "run", "-d", "--name", tmp_container, base_image)
+        # `docker run` is INSIDE the try so a partial create is still cleaned up
+        # by the finally (otherwise the container name leaks and retries collide).
         try:
+            docker_host.run(host, "run", "-d", "--name", tmp_container, base_image)
             docker_host.run(host, "exec", tmp_container, "mkdir", "-p", "/data")
             docker_host.run(host, "cp", f"{stage}/data/.", f"{tmp_container}:/data")
+            # Corpus copied straight from the scen dir into the container (NOT
+            # staged) — it may be gigabytes; staging would copy it a second time.
+            if scen["data_dir"] is not None:
+                docker_host.run(host, "exec", tmp_container, "mkdir", "-p", "/data/corpus")
+                docker_host.run(
+                    host, "cp", f"{scen['data_dir']}/.", f"{tmp_container}:/data/corpus"
+                )
 
             snap = _snap_dict(
                 snap_id=snap_id, scenario=identity, scen=scen_name, version=version,

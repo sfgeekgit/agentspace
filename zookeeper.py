@@ -557,7 +557,10 @@ def menu_new_world():
     """
     from agentspace import registry, builder
 
-    # 1. runtime — only openclaw today (auto-selected).
+    # 1. runtime — only openclaw exists today, so default it SILENTLY (no prompt).
+    #    The arch still supports others (builder/registry take a runtime, and
+    #    runtimes.get dispatches): when a second runtime lands, add a
+    #    questionary.select here over the available runtimes.
     runtime = "openclaw"
 
     # 2. scen — pick from the registry (active only).
@@ -655,13 +658,19 @@ def menu_new_world():
             return
         selected_modules = tuple(sel)
 
-    # 6. world name (blank → use the scen name as the identity).
-    raw = _ask(lambda: questionary.text(
-        f"World name (blank = '{scen['name']}'; lowercase/digits/underscore):"
-    ).ask())
-    if raw is None:
-        return
-    world_name = raw.strip() or None
+    # 6. world name (blank → use the scen name as the identity). Validated inline
+    #    so a bad name is caught here, not after the build has already started.
+    while True:
+        raw = _ask(lambda: questionary.text(
+            f"World name (blank = '{scen['name']}'; lowercase/digits/underscore):"
+        ).ask())
+        if raw is None:
+            return
+        world_name = raw.strip() or None
+        if world_name and not builder.valid_world_name(world_name):
+            print("  Use lowercase letters, digits, and underscore only.")
+            continue
+        break
     identity = world_name or scen["name"]
 
     # 7. confirm + build.
