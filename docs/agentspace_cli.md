@@ -15,6 +15,22 @@ cd /opt/agentspace-ctl
 python3 zookeeper.py <noun> <verb> [args]
 ```
 
+Run with no arguments for the interactive menu.
+
+## Creating a new world (World Root)
+
+A brand-new world (`X.0` snap) is built from a **scen** via the menu:
+
+```bash
+python3 zookeeper.py        # → "New world"
+```
+
+The wizard picks a runtime (openclaw), a scen, the agent count, a per-agent model
++ persona, modules (none yet), and a world name, then builds a local World Root.
+This is distinct from **Fork** (snap → env) and **Take** (env → snap). Scens and
+personas are authored as files in the repo — see `authoring_scenarios.md`. The
+underlying call is `agentspace.builder.build_world_root(...)`.
+
 
 ## Setup
 
@@ -314,8 +330,10 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
     snap.py                    ← snap verbs
     env.py                     ← env verbs
     budget.py                  ← budget verbs
+    registry.py                ← discover scens / personas / modules (scan git dirs)
+    builder.py                 ← build a World Root from a scen + roster
     runtimes/__init__.py       ← dispatch on snap.runtime label
-    runtimes/openclaw.py       ← openclaw flag→config translate, soul, gateway, kick
+    runtimes/openclaw.py       ← openclaw flag→config translate + render_config, soul, gateway, kick
 ```
 
 Only `zookeeper.py` imports `click`. Other modules are plain functions, callable from

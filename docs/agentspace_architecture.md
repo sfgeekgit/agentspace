@@ -75,12 +75,21 @@ anything not written to a file should be assumed forgettable.
       budget_skill.py             ← check_budget() helper module
   scenarios/
     <scenario-name>/
-      world.md                    ← scenario description
-      openclaw.json               ← agent config for this scenario
-      <agentId>/SOUL.md           ← per-agent soul prompts
+      scenario.toml               ← manifest (required): active, description, min/max_agents, module_blacklist
+      world.md                    ← optional shared world text
+      roles/<role>.md             ← optional per-role briefings (baked into ROLE.md)
+      logic.py                    ← optional hooks: assign_roles(), validate()
+      data/                       ← optional corpus baked into the snap
+  personas/
+    <short_name>.md               ← reusable persona soul text (baked into SOUL.md at build)
+  modules/                        ← optional add-ons (reserved; none yet)
   .gitignore
   secrets.env.example             ← template showing required keys, no values
 ```
+
+See `authoring_scenarios.md` for how to write a scen, persona, or module. (The
+legacy per-scenario `Dockerfile` + `openclaw.json` form still exists for
+simple2agent; new scens use the manifest form above and the builder below.)
 
 ### Control droplet — runtime state (ephemeral, rebuildable, never committed)
 ```
@@ -165,8 +174,25 @@ plants ideas; capabilities they don't have should simply not be mentioned.
 
 Before any experiment can run, a world snap must exist for that scenario. A world snap contains the runtime + corpus + initial agent configs, with agents never yet activated. It is the clean starting point for all forks of that experiment.
 
-Workflow (each scenario has a Dockerfile under `scenarios/<name>/`; the build script
-stamps the OCI labels):
+### Builder path (current)
+
+New world roots are built from a **scen** (a manifest-based definition under
+`scenarios/<name>/`) via the **builder** (`agentspace/builder.py`), driven by the
+menu's "New world" wizard (`zookeeper.py`). The builder is a thin host: it
+generates generic agent IDs, asks the runtime to render its native config for N
+agents, composes per-agent seed files (persona → `SOUL.md`, peers, optional role
+→ `ROLE.md`), bakes `world.md` + a generic kick + any `data/` corpus, then
+assembles the image (`docker run` base → `docker cp` staged tree → `docker commit`
+with OCI labels). Scen-specific behavior (role assignment, validation) is
+delegated to the scen's optional `logic.py`. Non-secret provenance goes to OCI
+labels; the full build record incl. any secret role assignment goes to
+`audit.log` only. See `authoring_scenarios.md`.
+
+### Legacy (Dockerfile) path
+
+The original workflow still works for simple2agent — each such scenario has a
+hand-written `Dockerfile` + `openclaw.json` under `scenarios/<name>/`, and the
+build script stamps the OCI labels:
 
 ```bash
 # 1. Build the base runtime image (if not already built)
