@@ -34,6 +34,86 @@ WORKSPACES_TAR_PATH = "/data/workspaces.tgz"  # written by snap take, pre-commit
 SEED_DIR = "/data/seed/agents"  # baked by the scenario Dockerfile (world snaps)
 CONFIG_PATH = "/data/openclaw/openclaw.json"
 
+# Rewritten to the env name by rewrite_workspace_paths at fork (paths + prefix).
+ENV_PLACEHOLDER = "__ENV__"
+
+# Generic, non-prejudicial bootstrap message (the HARD minimal-comms rule). A
+# scen overrides it by shipping its own kick.txt.
+DEFAULT_KICK = "Read the .md files in your workspace."
+
+
+# ---- world-root config generation ----
+#
+# render_config() produces a complete openclaw.json for a world root with N
+# agents, parameterized by the agent list + per-agent model. It reproduces the
+# hand-tuned simple2agent 4.0 structure exactly (per-agent docker sandboxes;
+# message-yes/read-no isolation = visibility=all + per-agent deny of the
+# session-read tools; A2A ping-pong 0; heartbeat 240m), so the carefully-won
+# §2/§3/§4 fixes from docs/runtime_openclaw.md are preserved for any N.
+#
+# Emitted as plain JSON (a subset of OC's JSON5), with NO comments — so the
+# fork-time `config set` rewrites carry no size-drop risk (§8).
+
+def render_config(
+    agents: list[dict[str, str]],
+    *,
+    default_model: str | None = None,
+    env: str = ENV_PLACEHOLDER,
+) -> str:
+    """Render openclaw.json for `agents` (each: {"id", "model"}).
+
+    Workspace paths and the sandbox containerPrefix carry the `env` placeholder
+    (default __ENV__), rewritten per-env at fork by rewrite_workspace_paths.
+    Per-agent `model.primary` overrides the defaults-level fallback.
+    """
+    if not agents:
+        raise ValueError("render_config needs at least one agent")
+    ids = [a["id"] for a in agents]
+    if len(set(ids)) != len(ids):
+        raise ValueError(f"agent ids must be unique: {ids}")
+    if default_model is None:
+        default_model = agents[0]["model"]
+
+    def _entry(a: dict[str, str]) -> dict[str, Any]:
+        aid = a["id"]
+        return {
+            "id": aid,
+            "name": aid,  # generic; the name must never let an agent infer anything
+            "model": {"primary": a["model"]},
+            "workspace": f"{WORKSPACE_ROOT}/{env}/{aid}/workspace",
+            "agentDir": f"{WORKSPACE_ROOT}/{env}/{aid}/agent",
+            "sandbox": {"mode": "all", "scope": "agent", "workspaceAccess": "rw"},
+            "tools": {"deny": ["sessions_history", "sessions_list", "session_status"]},
+        }
+
+    config: dict[str, Any] = {
+        "gateway": {
+            "mode": "local",
+            "auth": {"mode": "token", "token": "agentspace"},
+        },
+        "agents": {
+            "defaults": {
+                "model": {"primary": default_model},
+                "heartbeat": {"every": "240m"},
+                # OC bug (§2): sessionToolsVisibility is read ONLY from the
+                # defaults-level sandbox. containerPrefix must be per-env unique
+                # (§4) — the placeholder is rewritten at fork.
+                "sandbox": {
+                    "sessionToolsVisibility": "all",
+                    "docker": {"containerPrefix": f"openclaw-sbx-{env}-"},
+                },
+            },
+            "list": [_entry(a) for a in agents],
+        },
+        # 0 kills the automatic A2A reply-loop (§3: budget storms + privacy leak).
+        "session": {"agentToAgent": {"maxPingPongTurns": 0}},
+        "tools": {
+            "agentToAgent": {"enabled": True, "allow": ids},
+            "sessions": {"visibility": "all"},
+        },
+    }
+    return json.dumps(config, indent=2) + "\n"
+
 
 def env_fs_root(env_name: str) -> str:
     return f"{WORKSPACE_ROOT}/{env_name}"

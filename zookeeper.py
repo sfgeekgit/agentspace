@@ -549,6 +549,141 @@ def menu_budget():
                 print(f"  Invalid amount: {amount!r}")
 
 
+def menu_new_world():
+    """Wizard: build a brand-new World Root (X.0 snap) from a scenario.
+
+    Distinct from Fork (snap→env) and Take (env→snap): this builds a fresh world
+    from a scen + roster and never starts an env. Builds locally; push later.
+    """
+    from agentspace import registry, builder
+
+    # 1. runtime — only openclaw today (auto-selected).
+    runtime = "openclaw"
+
+    # 2. scen — pick from the registry (active only).
+    scens = registry.list_scens()
+    if not scens:
+        print("  No scenarios available (add one under scenarios/<name>/).")
+        return
+    labels = [f"{s['name']}  —  {s['description']}" for s in scens]
+    pick = _ask(lambda: questionary.select(
+        "Scenario:", choices=labels + [questionary.Separator(), "← Back"]
+    ).ask())
+    if pick is None or pick == "← Back":
+        return
+    scen = scens[labels.index(pick)]
+
+    # 3. agent count — within the scen's min/max.
+    while True:
+        raw = _ask(lambda: questionary.text(
+            f"Number of agents ({scen['min_agents']}–{scen['max_agents']}):"
+        ).ask())
+        if raw is None:
+            return
+        try:
+            n = int(raw)
+        except ValueError:
+            print("  Enter a whole number.")
+            continue
+        if not (scen["min_agents"] <= n <= scen["max_agents"]):
+            print(f"  Must be {scen['min_agents']}–{scen['max_agents']}.")
+            continue
+        break
+
+    # 4. roster — per-agent model + persona (with same-for-all shortcuts).
+    personas = registry.list_personas()
+    if not personas:
+        print("  No personas available (add files under personas/).")
+        return
+    pchoices = [f"{p['short_name']}  —  {p['summary']}" for p in personas]
+
+    def pick_persona(label):
+        sel = _ask(lambda: questionary.select(label, choices=pchoices).ask())
+        return None if sel is None else personas[pchoices.index(sel)]["short_name"]
+
+    DEFAULT_MODEL = "openrouter/anthropic/claude-haiku-4-5"
+    same_model = _ask(lambda: questionary.confirm(
+        "Use the same backend model for every agent?", default=True).ask())
+    if same_model is None:
+        return
+    if same_model:
+        m = _ask(lambda: questionary.text("Backend model:", default=DEFAULT_MODEL).ask())
+        if not m:
+            return
+        models = [m] * n
+    else:
+        models = []
+        for i in range(n):
+            m = _ask(lambda: questionary.text(
+                f"Model for agent {i + 1}/{n}:", default=DEFAULT_MODEL).ask())
+            if not m:
+                return
+            models.append(m)
+
+    same_persona = _ask(lambda: questionary.confirm(
+        "Use the same persona for every agent?", default=True).ask())
+    if same_persona is None:
+        return
+    if same_persona:
+        p = pick_persona("Persona for every agent:")
+        if p is None:
+            return
+        persona_list = [p] * n
+    else:
+        persona_list = []
+        for i in range(n):
+            p = pick_persona(f"Persona for agent {i + 1}/{n}:")
+            if p is None:
+                return
+            persona_list.append(p)
+
+    roster = [{"model": models[i], "persona": persona_list[i]} for i in range(n)]
+
+    # 5. modules — MANDATORY step (zero choices today; never silently skipped).
+    modules = registry.list_modules()
+    if not modules:
+        if _ask(lambda: questionary.select(
+            "Modules (none available yet):",
+            choices=["Continue (no modules)", "← Back"],
+        ).ask()) in (None, "← Back"):
+            return
+        selected_modules = ()
+    else:
+        sel = _ask(lambda: questionary.checkbox(
+            "Modules to include:", choices=[m["name"] for m in modules]).ask())
+        if sel is None:
+            return
+        selected_modules = tuple(sel)
+
+    # 6. world name (blank → use the scen name as the identity).
+    raw = _ask(lambda: questionary.text(
+        f"World name (blank = '{scen['name']}'; lowercase/digits/underscore):"
+    ).ask())
+    if raw is None:
+        return
+    world_name = raw.strip() or None
+    identity = world_name or scen["name"]
+
+    # 7. confirm + build.
+    if not _ask(lambda: questionary.confirm(
+        f"Build World Root '{identity}' from scen '{scen['name']}' "
+        f"with {n} agent(s)?", default=True).ask()):
+        return
+    print(f"  Building '{identity}' … (this runs docker; may take a moment)")
+    try:
+        snap = builder.build_world_root(
+            scen["name"], roster,
+            world_name=world_name, runtime=runtime, modules=selected_modules,
+        )
+    except Exception as e:
+        print(f"  Build failed: {e}")
+        return
+    print(f"\n  ✓ Built World Root {snap['scenario']}:{snap['version']}")
+    print(f"    Tag:    {snap['ghcr_tag']}")
+    print(f"    Agents: {', '.join(snap['agents'])}")
+    print("    Local only — push with the snap tooling when ready.\n")
+
+
 def launch_menu():
     """Interactive menu — launched when zookeeper.py is called with no arguments.
 
@@ -563,6 +698,7 @@ def launch_menu():
         choice = _ask(lambda: questionary.select(
             "What would you like to do?",
             choices=[
+                "New world — build a World Root from a scenario",
                 "Snaps   — manage frozen env images",
                 "Envs    — manage running containers",
                 "Budget  — OpenRouter credit limits",
@@ -575,7 +711,9 @@ def launch_menu():
             print("Bye.")
             sys.exit(0)
 
-        if choice.startswith("Snaps"):
+        if choice.startswith("New world"):
+            menu_new_world()
+        elif choice.startswith("Snaps"):
             menu_snap()
         elif choice.startswith("Envs"):
             menu_env()

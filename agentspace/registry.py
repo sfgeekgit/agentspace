@@ -15,8 +15,10 @@ Layout (see docs / re-arch plan):
     modules/<name>/                  ← optional add-on (none exist yet)
 """
 
+import importlib.util
 import tomllib
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent  # /opt/agentspace-ctl
@@ -126,6 +128,27 @@ def list_scens(include_inactive: bool = False) -> list[dict[str, Any]]:
         if scen["active"] or include_inactive:
             out.append(scen)
     return out
+
+
+def load_scen_logic(scen: dict[str, Any]) -> ModuleType | None:
+    """Import a scen's optional `logic.py` and return the module, or None if the
+    scen has none. Executing it runs scen-authored code — scens are first-party
+    (in-repo, git-tracked), so this is intended. The module MAY define:
+
+        assign_roles(n, params, rng) -> list[str]   # role per agent (len n)
+        validate(n, params)          -> str | None  # error message, or None
+
+    Both are optional; a scen with neither is a plain N-generic-agent scen.
+    """
+    if not scen.get("has_logic"):
+        return None
+    path = scen["dir"] / "logic.py"
+    spec = importlib.util.spec_from_file_location(f"agentspace_scen_{scen['name']}", path)
+    if spec is None or spec.loader is None:
+        raise RegistryError(f"scen {scen['name']!r}: cannot load logic.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 # ---------------------------------------------------------------------------

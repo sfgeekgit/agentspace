@@ -1,0 +1,12 @@
+# roles_demo — a minimal scen that exercises role assignment.
+#
+# Demonstrates the scen logic hooks: one agent is assigned the "coordinator"
+# role and the rest "member", each getting its own ROLE.md. No referee/services
+# (that comes with the first scen that needs run-time adjudication). Free-form
+# interaction otherwise.
+
+active = true
+description = "Minimal multi-role demo: one coordinator, the rest members."
+min_agents = 2
+max_agents = 8
+module_blacklist = []
