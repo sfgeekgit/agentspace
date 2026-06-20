@@ -16,6 +16,7 @@ Layout (see docs / re-arch plan):
 """
 
 import importlib.util
+import re
 import tomllib
 from pathlib import Path
 from types import ModuleType
@@ -50,14 +51,23 @@ def _load_toml(path: Path) -> dict[str, Any]:
 # scens
 # ---------------------------------------------------------------------------
 
+def _optional_parts(scen_dir: Path) -> dict[str, Any]:
+    """Presence of a scen's optional parts, surfaced so callers don't re-stat."""
+    return {
+        "has_world": (scen_dir / "world.md").is_file(),
+        "has_logic": (scen_dir / "logic.py").is_file(),
+        "has_kick": (scen_dir / "kick.txt").is_file(),
+        "roles_dir": (scen_dir / "roles") if (scen_dir / "roles").is_dir() else None,
+        "data_dir": (scen_dir / "data") if (scen_dir / "data").is_dir() else None,
+    }
+
+
 def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str, Any]:
     """Validate + normalize a raw manifest into the canonical scen dict.
 
     Only the minimal v1 fields are interpreted (active/description/min_agents/
-    max_agents/module_blacklist). Presence of optional parts (world.md, logic.py,
-    roles/, data/, kick.txt) is surfaced as booleans/paths so callers don't each
-    re-stat the directory. Adding new manifest fields later is backward-safe:
-    unknown keys are ignored here.
+    max_agents/module_blacklist). Adding new manifest fields later is
+    backward-safe: unknown keys are ignored here.
     """
     try:
         min_agents = int(data.get("min_agents", 1))
@@ -83,20 +93,34 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
         "min_agents": min_agents,
         "max_agents": max_agents,
         "module_blacklist": list(blacklist),
-        # optional parts (presence only; the builder reads contents later)
-        "has_world": (scen_dir / "world.md").is_file(),
-        "has_logic": (scen_dir / "logic.py").is_file(),
-        "has_kick": (scen_dir / "kick.txt").is_file(),
-        "roles_dir": (scen_dir / "roles") if (scen_dir / "roles").is_dir() else None,
-        "data_dir": (scen_dir / "data") if (scen_dir / "data").is_dir() else None,
+        **_optional_parts(scen_dir),
+    }
+
+
+def _inactive_scen_stub(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str, Any]:
+    """Minimal dict for a scen explicitly `active = false` whose manifest is
+    otherwise too broken to normalize — lets it be hidden quietly instead of
+    surfacing as a problem. min/max are 0 (it is never built while inactive)."""
+    return {
+        "name": name,
+        "dir": scen_dir,
+        "active": False,
+        "description": str(data.get("description", "")),
+        "min_agents": 0,
+        "max_agents": 0,
+        "module_blacklist": [],
+        **_optional_parts(scen_dir),
     }
 
 
 def load_scen(name: str) -> dict[str, Any]:
-    """Load and normalize one scen by directory name. Raises RegistryError if the
-    directory or manifest is missing/invalid. Note: this does NOT filter on
-    `active` — loading a named scen always works (the menu filters on active; a
-    direct/by-name load may legitimately want an inactive one)."""
+    """Load one scen by directory name. Raises RegistryError if the directory or
+    manifest is missing/unparseable, or (for an ACTIVE scen) if the manifest is
+    semantically invalid.
+
+    `active = false` is honored BEFORE deep validation: a deactivated scen does
+    not raise on semantic errors (so it can be hidden without first being fixed).
+    An unparseable manifest still raises — its `active` can't be read."""
     scen_dir = SCENARIOS_DIR / name
     manifest = scen_dir / SCEN_MANIFEST
     if not scen_dir.is_dir():
@@ -107,20 +131,30 @@ def load_scen(name: str) -> dict[str, Any]:
         data = _load_toml(manifest)
     except tomllib.TOMLDecodeError as e:
         raise RegistryError(f"scen {name!r}: invalid {SCEN_MANIFEST}: {e}")
+    if data.get("active") is False:
+        try:
+            return _normalize_scen(name, scen_dir, data)      # valid + inactive
+        except RegistryError:
+            return _inactive_scen_stub(name, scen_dir, data)  # broken + inactive
     return _normalize_scen(name, scen_dir, data)
 
 
-def list_scens(include_inactive: bool = False) -> list[dict[str, Any]]:
-    """All discoverable scens, sorted by name. A directory is a scen iff it
-    contains a readable scenario.toml — legacy/non-scen dirs are silently
-    skipped, as are manifests that fail to parse (a single bad scen can't break
-    the menu). Inactive scens are excluded unless include_inactive=True."""
+def _iter_scen_dirs():
+    """Yield each scenarios/ subdir that has a scenario.toml (i.e. is a scen),
+    sorted by name. Non-scen dirs are not yielded."""
     if not SCENARIOS_DIR.is_dir():
-        return []
-    out: list[dict[str, Any]] = []
+        return
     for scen_dir in sorted(SCENARIOS_DIR.iterdir()):
-        if not scen_dir.is_dir() or not (scen_dir / SCEN_MANIFEST).is_file():
-            continue
+        if scen_dir.is_dir() and (scen_dir / SCEN_MANIFEST).is_file():
+            yield scen_dir
+
+
+def list_scens(include_inactive: bool = False) -> list[dict[str, Any]]:
+    """All loadable scens, sorted by name. Invalid scens are silently skipped (a
+    single bad scen can't break discovery); use scan_scens() to also get the
+    problems. Inactive scens are excluded unless include_inactive=True."""
+    out: list[dict[str, Any]] = []
+    for scen_dir in _iter_scen_dirs():
         try:
             scen = load_scen(scen_dir.name)
         except RegistryError:
@@ -128,6 +162,48 @@ def list_scens(include_inactive: bool = False) -> list[dict[str, Any]]:
         if scen["active"] or include_inactive:
             out.append(scen)
     return out
+
+
+def scan_scens() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return (active_scens, problems) in one scan.
+
+    problems = [{"name", "reason", "can_disable"}] for scens that are NOT
+    explicitly deactivated but failed to load. (active=false scens never appear,
+    even if broken.) `can_disable` is True when the manifest at least parses — so
+    writing active=false (deactivate_scen) will silence it; False for an
+    unparseable manifest, which must be fixed/removed instead."""
+    scens: list[dict[str, Any]] = []
+    problems: list[dict[str, Any]] = []
+    for scen_dir in _iter_scen_dirs():
+        try:
+            scen = load_scen(scen_dir.name)
+        except RegistryError as e:
+            try:
+                _load_toml(scen_dir / SCEN_MANIFEST)
+                can_disable = True
+            except Exception:
+                can_disable = False
+            problems.append(
+                {"name": scen_dir.name, "reason": str(e), "can_disable": can_disable}
+            )
+            continue
+        if scen["active"]:
+            scens.append(scen)
+    return scens, problems
+
+
+def deactivate_scen(name: str) -> None:
+    """Set `active = false` in a scen's manifest via a text edit (works even when
+    the manifest is semantically invalid, as long as it is a file). Replaces an
+    existing `active = …` line or appends one."""
+    path = SCENARIOS_DIR / name / SCEN_MANIFEST
+    if not path.is_file():
+        raise RegistryError(f"no manifest to edit: {path}")
+    text = path.read_text(encoding="utf-8")
+    new, count = re.subn(r"(?m)^(\s*)active\s*=.*$", r"\1active = false", text, count=1)
+    if count == 0:
+        new = text + ("" if text.endswith("\n") else "\n") + "active = false\n"
+    path.write_text(new, encoding="utf-8")
 
 
 def load_scen_logic(scen: dict[str, Any]) -> ModuleType | None:

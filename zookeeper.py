@@ -563,8 +563,33 @@ def menu_new_world():
     #    questionary.select here over the available runtimes.
     runtime = "openclaw"
 
-    # 2. scen — pick from the registry (active only).
-    scens = registry.list_scens()
+    # 2. scen — surface any broken scens (with a one-key "disable" so the warning
+    #    isn't a permanent nag), then pick from the active ones.
+    while True:
+        scens, problems = registry.scan_scens()
+        if not problems:
+            break
+        for p in problems:
+            print(f"  ⚠ scenario skipped: {p['name']} — {p['reason']}")
+        disable_map = {
+            f"Disable '{p['name']}' (set active=false)": p["name"]
+            for p in problems if p["can_disable"]
+        }
+        if not disable_map:
+            break  # only unparseable ones — must be fixed/removed; just move on
+        choice = _ask(lambda: questionary.select(
+            "Some scenarios couldn't load:",
+            choices=["Continue"] + list(disable_map)
+                    + [questionary.Separator(), "← Back"],
+        ).ask())
+        if choice is None or choice == "← Back":
+            return
+        if choice == "Continue":
+            break
+        registry.deactivate_scen(disable_map[choice])
+        print(f"  disabled {disable_map[choice]} (active=false).")
+        # loop: re-scan → that scen is now hidden and its warning is gone
+
     if not scens:
         print("  No scenarios available (add one under scenarios/<name>/).")
         return
