@@ -5,7 +5,7 @@
 # (that comes with the first scen that needs run-time adjudication). Free-form
 # interaction otherwise.
 
-active = true
+active = false
 description = "Minimal multi-role demo: one coordinator, the rest members."
 min_agents = 2
 max_agents = 8

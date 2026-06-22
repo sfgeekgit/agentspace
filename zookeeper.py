@@ -382,9 +382,27 @@ def menu_snap():
             snap_mod.cmd_take(env_name, message=message, note=note or None, version=version or None)
 
         elif choice == "Fork snap  (start new env from a snap)":
-            ref = _ask(lambda: questionary.text("Snap ref:").ask())
-            if not ref:
+            from agentspace import db
+            snaps = db.list_snaps()
+            if not snaps:
+                print("  No snaps available. Build a World Root first, or 'Rebuild index'.")
                 continue
+            # Scrollable picker — no typing a ref. World roots (X.0) first, then
+            # the rest, each newest-relevant order from list_snaps (by created_at).
+            snaps.sort(key=lambda s: (not str(s["version"]).endswith(".0"), s["scenario"]))
+            snap_labels = [
+                f"{s['scenario']}:{s['version']}"
+                + ("  (world root)" if str(s["version"]).endswith(".0") else "")
+                + (f"  — {s['creation_message']}" if s.get("creation_message") else "")
+                for s in snaps
+            ]
+            pick = _ask(lambda: questionary.select(
+                "Snap to fork:", choices=snap_labels + [questionary.Separator(), "← Back"]
+            ).ask())
+            if pick is None or pick == "← Back":
+                continue
+            chosen = snaps[snap_labels.index(pick)]
+            ref = f"{chosen['scenario']}:{chosen['version']}"
             new_name = _ask(lambda: questionary.text("New env name:").ask())
             if not new_name:
                 continue
@@ -733,9 +751,9 @@ def launch_menu():
             "What would you like to do?",
             choices=[
                 "New world — build a World Root from a scenario",
-                "Snaps   — manage frozen env images",
-                "Envs    — manage running containers",
-                "Budget  — OpenRouter credit limits",
+                "Snaps     — manage frozen images; fork one to start an env",
+                "Envs      — manage running world containers",
+                "Budget    — OpenRouter credit limits",
                 questionary.Separator(),
                 "Quit",
             ],

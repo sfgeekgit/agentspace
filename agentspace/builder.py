@@ -261,10 +261,15 @@ def build_world_root(
                     host, "cp", f"{scen['data_dir']}/.", f"{tmp_container}:/data/corpus"
                 )
 
+            # Snap-level `model` is a display field; a world can run different
+            # models per agent, so show the shared model if uniform else "mixed"
+            # (per-agent models live in the build record + baked openclaw.json).
+            distinct_models = {a["model"] for a in agents}
+            model_label = next(iter(distinct_models)) if len(distinct_models) == 1 else "mixed"
             snap = _snap_dict(
                 snap_id=snap_id, scenario=identity, scen=scen_name, version=version,
                 ghcr_tag=ghcr_tag, now=now, runtime=runtime,
-                agents=agents, default_model=agents[0]["model"],
+                agents=agents, model_label=model_label,
             )
             labels = oci.make_labels(snap)
             oci.commit_with_labels(host, tmp_container, ghcr_tag, labels)
@@ -300,7 +305,7 @@ def build_world_root(
 
 
 def _snap_dict(
-    *, snap_id, scenario, scen, version, ghcr_tag, now, runtime, agents, default_model
+    *, snap_id, scenario, scen, version, ghcr_tag, now, runtime, agents, model_label
 ) -> dict[str, Any]:
     from . import __version__
     src = "" if scen == scenario else f", scen={scen}"
@@ -319,7 +324,7 @@ def _snap_dict(
         ),
         "runtime": runtime,
         "runtime_version": None,
-        "model": default_model,
+        "model": model_label,
         "agents": [a["id"] for a in agents],
         # Reuse soul_files (existing column) for per-agent PERSONA provenance only.
         # Role assignment is NEVER put here — it can be a secret answer key and
