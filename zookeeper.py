@@ -406,28 +406,29 @@ def menu_snap():
             new_name = _ask(lambda: questionary.text("New env name:").ask())
             if not new_name:
                 continue
-            model = _ask(lambda: questionary.text("Model override (blank to keep snap default):").ask())
+            # (No model-override prompt: it set a single gateway-wide value that is
+            #  shadowed by the per-agent models baked into new-builder worlds, so it
+            #  did nothing. Per-agent model selection at fork is a planned feature —
+            #  see home/cc model-picker TODO.)
             budget_str = _ask(lambda: questionary.text("Budget USD (blank to skip):").ask())
             host = _ask(lambda: questionary.text("Host (blank for localhost):").ask())
             existing_key = _ask(lambda: questionary.text("Existing OpenRouter key (blank to mint new):").ask())
-            kick_choice = _ask(lambda: questionary.select(
-                "Kick behavior:",
-                choices=["Use scenario default", "Kick", "No kick"],
-            ).ask())
-            kick = None if kick_choice == "Use scenario default" else (kick_choice == "Kick")
             souls_raw = _ask(lambda: questionary.text(
                 "Soul injections (agentId=path, comma-separated; blank to skip):"
             ).ask())
             souls = tuple(s.strip() for s in souls_raw.split(",") if s.strip()) if souls_raw else ()
+            # Fork creates the env DORMANT (agents not started) — beginning is a
+            # separate, deliberate action: Envs → "Wake agents". (No spend until then.)
             snap_mod.cmd_fork(
                 ref, new_name,
                 souls=souls,
-                model=model or None,
                 budget_usd=float(budget_str) if budget_str else None,
                 host=host or "localhost",
-                kick=kick,
+                kick=False,
                 existing_key=existing_key or None,
             )
+            print(f"  Env '{new_name}' created, agents dormant. "
+                  f"Begin it with Envs → 'Wake agents'.")
 
         elif choice == "Pull snap  (fetch from ghcr.io)":
             tag = _ask(lambda: questionary.text("ghcr.io tag:").ask())
@@ -457,7 +458,7 @@ def menu_env():
                 "Show env",
                 "Start env",
                 "Stop env",
-                "Kick env",
+                "Wake agents  (begin / send bootstrap)",
                 "Kill env  (removes container)",
                 "Logs",
                 "Exec command in env",
@@ -493,7 +494,7 @@ def menu_env():
                 continue
             env_mod.cmd_stop(name)
 
-        elif choice == "Kick env":
+        elif choice.startswith("Wake agents"):
             name = _ask(lambda: questionary.text("Env name:").ask())
             if not name:
                 continue
