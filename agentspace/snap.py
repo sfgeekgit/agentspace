@@ -25,6 +25,10 @@ from .runtimes import openclaw
 REPO_ROOT = Path(__file__).resolve().parent.parent  # /opt/agentspace-ctl
 GHCR_REPO_DEFAULT = versioning.GHCR_REPO_DEFAULT
 
+# Default OpenRouter credit limit (USD) for a forked env when none is given.
+# Single source of truth — the menu/CLI reference this so prompts stay in sync.
+DEFAULT_BUDGET_USD = 2.00
+
 console = Console()
 
 
@@ -468,8 +472,8 @@ def cmd_fork(
         )
 
     if budget_usd is None:
-        budget_usd = 2.00
-        console.print(f"[dim]--budget not given; using default ${budget_usd:.2f}[/dim]")
+        budget_usd = DEFAULT_BUDGET_USD
+        console.print(f"[dim]no budget given; using default ${budget_usd:.2f}[/dim]")
 
     # Default kick: on for world-snap forks, off otherwise.
     is_world = versioning.is_world_root(snap["version"])
@@ -622,9 +626,21 @@ def cmd_fork(
         audit.log("env.start", new_env_name)  # first session start, for runtime tracking
         console.print(f"[green]✓[/green] env {new_env_name} is running (forked from "
                       f"{snap['scenario']}:{snap['version']}).")
-        if not kick:
+
+        # Hand the operator everything needed to inspect / enter the new container.
+        # On a remote host the docker CLI must be pointed at it over SSH.
+        docker_prefix = "docker" if host == "localhost" else f"docker --host ssh://root@{host}"
+        console.print(f"  Container:  {container_id[:12]}   image: {ghcr_tag}")
+        console.print(f"  Host:       {host}   budget: ${budget_usd:.2f}")
+        console.print(f"  Enter it:   [bold]{docker_prefix} exec -it {new_env_name} bash[/bold]")
+        console.print(f"  Logs:       agentspace env logs {new_env_name} -f")
+        if kick:
+            console.print(f"  Agents:     kicked (running).")
+        else:
             console.print(
-                f"[dim]agents are dormant. Run 'agentspace env kick {new_env_name}' to wake them.[/dim]"
+                f"  Agents:     dormant — begin with "
+                f"[bold]agentspace env kick {new_env_name}[/bold] "
+                f"(menu: Envs → 'Wake agents')."
             )
 
     except Exception as e:

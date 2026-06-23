@@ -303,269 +303,309 @@ def budget_topup(env_name, amount_usd):
 #   - New budget command? → add to menu_budget()
 #   - New top-level group? → add menu_<group>() and add it to launch_menu()
 #
-# Navigation: arrow keys to move, Enter to select, Ctrl-C anywhere = Back/cancel.
+# Navigation: arrow keys to move, Enter to select. Ctrl-C / Ctrl-D / Esc cancels
+# the CURRENT action and returns to the menu (at a command list, it goes up one
+# level). Cancelling NEVER advances into the action.
 # ================================================================================
 
 
+class _Cancelled(Exception):
+    """Raised by `_ask` when the user cancels a prompt (Ctrl-C / Ctrl-D / Esc).
+
+    Why an exception and not a None return: 'optional' prompts (blank = default)
+    can't distinguish a blank entry from a cancel if cancel is just None — so a
+    cancel used to fall through and run the action with defaults. Raising unwinds
+    the whole flow to the nearest handler instead. Each menu loop catches it:
+    at the command-list select it returns to the parent menu; during a
+    multi-prompt action it aborts the action and redraws the command list.
+    """
+
+
 def _ask(prompt_fn):
-    """Run a questionary prompt. Returns None on Ctrl-C/Ctrl-D (treated as Back/cancel)."""
+    """Run a questionary prompt. Raises _Cancelled on Ctrl-C/Ctrl-D/Esc.
+
+    (questionary itself returns None when a select/confirm is dismissed with Esc;
+    we treat that as a cancel too, so Esc behaves like Ctrl-C everywhere.)
+    """
     try:
-        return prompt_fn()
+        result = prompt_fn()
     except (KeyboardInterrupt, EOFError):
         print()
-        return None
+        raise _Cancelled()
+    if result is None:
+        raise _Cancelled()
+    return result
 
 
 def menu_snap():
     # NOTE: Add new snap commands to this list AND as a handler below.
     from agentspace import snap as snap_mod
     while True:
-        choice = _ask(lambda: questionary.select(
-            "Snaps — choose a command:",
-            choices=[
-                "List snaps",
-                "Show snap",
-                "Snap tree",
-                "Add note to snap",
-                "Take snap  (commit running env to ghcr.io)",
-                "Fork snap  (start new env from a snap)",
-                "Pull snap  (fetch from ghcr.io)",
-                "Push snap  (upload metadata to ghcr.io)",
-                "Rebuild index",
-                questionary.Separator(),
-                "← Back",
-                "Quit",
-            ],
-        ).ask())
+        try:
+            choice = _ask(lambda: questionary.select(
+                "Snaps — choose a command:",
+                choices=[
+                    "List snaps",
+                    "Show snap",
+                    "Snap tree",
+                    "Add note to snap",
+                    "Take snap  (commit running env to ghcr.io)",
+                    "Fork snap  (start new env from a snap)",
+                    "Pull snap  (fetch from ghcr.io)",
+                    "Push snap  (upload metadata to ghcr.io)",
+                    "Rebuild index",
+                    questionary.Separator(),
+                    "← Back",
+                    "Quit",
+                ],
+            ).ask())
+        except _Cancelled:
+            return  # cancel at the command list → back to the main menu
 
-        if choice is None or choice == "← Back":
+        if choice == "← Back":
             return
         if choice == "Quit":
             sys.exit(0)
 
-        if choice == "List snaps":
-            scenario = _ask(lambda: questionary.text("Filter by scenario (blank for all):").ask())
-            if scenario is None:
-                continue
-            snap_mod.cmd_list(scenario=scenario or None, as_json=False)
+        try:
+            if choice == "List snaps":
+                scenario = _ask(lambda: questionary.text("Filter by scenario (blank for all):").ask())
+                snap_mod.cmd_list(scenario=scenario or None, as_json=False)
 
-        elif choice == "Show snap":
-            ref = _ask(lambda: questionary.text("Snap ref (scenario:version, snap_id prefix, or ghcr tag):").ask())
-            if not ref:
-                continue
-            snap_mod.cmd_show(ref)
+            elif choice == "Show snap":
+                ref = _ask(lambda: questionary.text("Snap ref (scenario:version, snap_id prefix, or ghcr tag):").ask())
+                if not ref:
+                    continue
+                snap_mod.cmd_show(ref)
 
-        elif choice == "Snap tree":
-            scenario = _ask(lambda: questionary.text("Restrict to scenario (blank for all):").ask())
-            if scenario is None:
-                continue
-            snap_mod.cmd_tree(scenario=scenario or None)
+            elif choice == "Snap tree":
+                scenario = _ask(lambda: questionary.text("Restrict to scenario (blank for all):").ask())
+                snap_mod.cmd_tree(scenario=scenario or None)
 
-        elif choice == "Add note to snap":
-            ref = _ask(lambda: questionary.text("Snap ref:").ask())
-            if not ref:
-                continue
-            text = _ask(lambda: questionary.text("Note text:").ask())
-            if not text:
-                continue
-            snap_mod.cmd_note(ref, text)
+            elif choice == "Add note to snap":
+                ref = _ask(lambda: questionary.text("Snap ref:").ask())
+                if not ref:
+                    continue
+                text = _ask(lambda: questionary.text("Note text:").ask())
+                if not text:
+                    continue
+                snap_mod.cmd_note(ref, text)
 
-        elif choice == "Take snap  (commit running env to ghcr.io)":
-            env_name = _ask(lambda: questionary.text("Env name:").ask())
-            if not env_name:
-                continue
-            message = _ask(lambda: questionary.text("Label (baked into snap):").ask())
-            if not message:
-                continue
-            note = _ask(lambda: questionary.text("Initial note (blank to skip):").ask())
-            version = _ask(lambda: questionary.text("Version override (blank for auto):").ask())
-            snap_mod.cmd_take(env_name, message=message, note=note or None, version=version or None)
+            elif choice == "Take snap  (commit running env to ghcr.io)":
+                env_name = _ask(lambda: questionary.text("Env name:").ask())
+                if not env_name:
+                    continue
+                message = _ask(lambda: questionary.text("Label (baked into snap):").ask())
+                if not message:
+                    continue
+                note = _ask(lambda: questionary.text("Initial note (blank to skip):").ask())
+                version = _ask(lambda: questionary.text("Version override (blank for auto):").ask())
+                snap_mod.cmd_take(env_name, message=message, note=note or None, version=version or None)
 
-        elif choice == "Fork snap  (start new env from a snap)":
-            from agentspace import db
-            snaps = db.list_snaps()
-            if not snaps:
-                print("  No snaps available. Build a World Root first, or 'Rebuild index'.")
-                continue
-            # Scrollable picker — no typing a ref. World roots (X.0) first, then
-            # the rest, each newest-relevant order from list_snaps (by created_at).
-            snaps.sort(key=lambda s: (not str(s["version"]).endswith(".0"), s["scenario"]))
-            snap_labels = [
-                f"{s['scenario']}:{s['version']}"
-                + ("  (world root)" if str(s["version"]).endswith(".0") else "")
-                + (f"  — {s['creation_message']}" if s.get("creation_message") else "")
-                for s in snaps
-            ]
-            pick = _ask(lambda: questionary.select(
-                "Snap to fork:", choices=snap_labels + [questionary.Separator(), "← Back"]
-            ).ask())
-            if pick is None or pick == "← Back":
-                continue
-            chosen = snaps[snap_labels.index(pick)]
-            ref = f"{chosen['scenario']}:{chosen['version']}"
-            new_name = _ask(lambda: questionary.text("New env name:").ask())
-            if not new_name:
-                continue
-            # (No model-override prompt: it set a single gateway-wide value that is
-            #  shadowed by the per-agent models baked into new-builder worlds, so it
-            #  did nothing. Per-agent model selection at fork is a planned feature —
-            #  see home/cc model-picker TODO.)
-            budget_str = _ask(lambda: questionary.text("Budget USD (blank to skip):").ask())
-            host = _ask(lambda: questionary.text("Host (blank for localhost):").ask())
-            existing_key = _ask(lambda: questionary.text("Existing OpenRouter key (blank to mint new):").ask())
-            souls_raw = _ask(lambda: questionary.text(
-                "Soul injections (agentId=path, comma-separated; blank to skip):"
-            ).ask())
-            souls = tuple(s.strip() for s in souls_raw.split(",") if s.strip()) if souls_raw else ()
-            # Fork creates the env DORMANT (agents not started) — beginning is a
-            # separate, deliberate action: Envs → "Wake agents". (No spend until then.)
-            snap_mod.cmd_fork(
-                ref, new_name,
-                souls=souls,
-                budget_usd=float(budget_str) if budget_str else None,
-                host=host or "localhost",
-                kick=False,
-                existing_key=existing_key or None,
-            )
-            print(f"  Env '{new_name}' created, agents dormant. "
-                  f"Begin it with Envs → 'Wake agents'.")
+            elif choice == "Fork snap  (start new env from a snap)":
+                from agentspace import db
+                snaps = db.list_snaps()
+                if not snaps:
+                    print("  No snaps available. Build a World Root first, or 'Rebuild index'.")
+                    continue
+                # Scrollable picker — no typing a ref. World roots (X.0) first, then
+                # the rest, each newest-relevant order from list_snaps (by created_at).
+                snaps.sort(key=lambda s: (not str(s["version"]).endswith(".0"), s["scenario"]))
+                snap_labels = [
+                    f"{s['scenario']}:{s['version']}"
+                    + ("  (world root)" if str(s["version"]).endswith(".0") else "")
+                    + (f"  — {s['creation_message']}" if s.get("creation_message") else "")
+                    for s in snaps
+                ]
+                pick = _ask(lambda: questionary.select(
+                    "Snap to fork:", choices=snap_labels + [questionary.Separator(), "← Back"]
+                ).ask())
+                if pick == "← Back":
+                    continue
+                chosen = snaps[snap_labels.index(pick)]
+                ref = f"{chosen['scenario']}:{chosen['version']}"
+                new_name = _ask(lambda: questionary.text("New env name:").ask())
+                if not new_name:
+                    continue
+                # (No model-override prompt: it set a single gateway-wide value that is
+                #  shadowed by the per-agent models baked into new-builder worlds, so it
+                #  did nothing. Per-agent model selection at fork is a planned feature —
+                #  see home/cc model-picker TODO.)
+                budget_str = _ask(lambda: questionary.text(
+                    f"Budget USD (blank = default ${snap_mod.DEFAULT_BUDGET_USD:.2f}):"
+                ).ask())
+                host = _ask(lambda: questionary.text("Host (blank for localhost):").ask())
+                existing_key = _ask(lambda: questionary.text("Existing OpenRouter key (blank to mint new):").ask())
+                souls_raw = _ask(lambda: questionary.text(
+                    "Soul injections (agentId=path, comma-separated; blank to skip):"
+                ).ask())
+                souls = tuple(s.strip() for s in souls_raw.split(",") if s.strip()) if souls_raw else ()
+                # Fork creates the env DORMANT (agents not started) — beginning is a
+                # separate, deliberate action: Envs → "Wake agents". (No spend until then.)
+                snap_mod.cmd_fork(
+                    ref, new_name,
+                    souls=souls,
+                    budget_usd=float(budget_str) if budget_str else None,
+                    host=host or "localhost",
+                    kick=False,
+                    existing_key=existing_key or None,
+                )
+                print(f"  Env '{new_name}' created, agents dormant. "
+                      f"Begin it with Envs → 'Wake agents'.")
 
-        elif choice == "Pull snap  (fetch from ghcr.io)":
-            tag = _ask(lambda: questionary.text("ghcr.io tag:").ask())
-            if not tag:
-                continue
-            snap_mod.cmd_pull(tag)
+            elif choice == "Pull snap  (fetch from ghcr.io)":
+                tag = _ask(lambda: questionary.text("ghcr.io tag:").ask())
+                if not tag:
+                    continue
+                snap_mod.cmd_pull(tag)
 
-        elif choice == "Push snap  (upload metadata to ghcr.io)":
-            ref = _ask(lambda: questionary.text("Snap ref:").ask())
-            if not ref:
-                continue
-            snap_mod.cmd_push(ref)
+            elif choice == "Push snap  (upload metadata to ghcr.io)":
+                ref = _ask(lambda: questionary.text("Snap ref:").ask())
+                if not ref:
+                    continue
+                snap_mod.cmd_push(ref)
 
-        elif choice == "Rebuild index":
-            repo = _ask(lambda: questionary.text("ghcr.io repo (blank for default):").ask())
-            snap_mod.cmd_rebuild_index(repo=repo or None)
+            elif choice == "Rebuild index":
+                repo = _ask(lambda: questionary.text("ghcr.io repo (blank for default):").ask())
+                snap_mod.cmd_rebuild_index(repo=repo or None)
+        except _Cancelled:
+            print("  (cancelled — back to menu)")
+            continue
 
 
 def menu_env():
     # NOTE: Add new env commands to this list AND as a handler below.
     from agentspace import env as env_mod
     while True:
-        choice = _ask(lambda: questionary.select(
-            "Envs — choose a command:",
-            choices=[
-                "List envs",
-                "Show env",
-                "Start env",
-                "Stop env",
-                "Wake agents  (begin / send bootstrap)",
-                "Kill env  (removes container)",
-                "Logs",
-                "Exec command in env",
-                questionary.Separator(),
-                "← Back",
-                "Quit",
-            ],
-        ).ask())
+        try:
+            choice = _ask(lambda: questionary.select(
+                "Envs — choose a command:",
+                choices=[
+                    "List envs",
+                    "Show env",
+                    "Start env",
+                    "Stop env",
+                    "Wake agents  (begin / send bootstrap)",
+                    "Kill env  (removes container)",
+                    "Logs",
+                    "Exec command in env",
+                    questionary.Separator(),
+                    "← Back",
+                    "Quit",
+                ],
+            ).ask())
+        except _Cancelled:
+            return  # cancel at the command list → back to the main menu
 
-        if choice is None or choice == "← Back":
+        if choice == "← Back":
             return
         if choice == "Quit":
             sys.exit(0)
 
-        if choice == "List envs":
-            env_mod.cmd_list()
+        try:
+            if choice == "List envs":
+                env_mod.cmd_list()
 
-        elif choice == "Show env":
-            name = _ask(lambda: questionary.text("Env name:").ask())
-            if not name:
-                continue
-            env_mod.cmd_show(name)
+            elif choice == "Show env":
+                name = _ask(lambda: questionary.text("Env name:").ask())
+                if not name:
+                    continue
+                env_mod.cmd_show(name)
 
-        elif choice == "Start env":
-            name = _ask(lambda: questionary.text("Env name:").ask())
-            if not name:
-                continue
-            env_mod.cmd_start(name)
+            elif choice == "Start env":
+                name = _ask(lambda: questionary.text("Env name:").ask())
+                if not name:
+                    continue
+                env_mod.cmd_start(name)
 
-        elif choice == "Stop env":
-            name = _ask(lambda: questionary.text("Env name:").ask())
-            if not name:
-                continue
-            env_mod.cmd_stop(name)
+            elif choice == "Stop env":
+                name = _ask(lambda: questionary.text("Env name:").ask())
+                if not name:
+                    continue
+                env_mod.cmd_stop(name)
 
-        elif choice.startswith("Wake agents"):
-            name = _ask(lambda: questionary.text("Env name:").ask())
-            if not name:
-                continue
-            msg = _ask(lambda: questionary.text("Message override (blank for scenario default):").ask())
-            env_mod.cmd_kick(name, message=msg or None)
+            elif choice.startswith("Wake agents"):
+                name = _ask(lambda: questionary.text("Env name:").ask())
+                if not name:
+                    continue
+                msg = _ask(lambda: questionary.text("Message override (blank for scenario default):").ask())
+                env_mod.cmd_kick(name, message=msg or None)
 
-        elif choice == "Kill env  (removes container)":
-            name = _ask(lambda: questionary.text("Env name:").ask())
-            if not name:
-                continue
-            confirmed = _ask(lambda: questionary.confirm(
-                f"Kill env '{name}'? The container will be removed (snap on ghcr.io is unaffected).",
-                default=False,
-            ).ask())
-            if confirmed:
-                env_mod.cmd_kill(name, force=True)
+            elif choice == "Kill env  (removes container)":
+                name = _ask(lambda: questionary.text("Env name:").ask())
+                if not name:
+                    continue
+                confirmed = _ask(lambda: questionary.confirm(
+                    f"Kill env '{name}'? The container will be removed (snap on ghcr.io is unaffected).",
+                    default=False,
+                ).ask())
+                if confirmed:
+                    env_mod.cmd_kill(name, force=True)
 
-        elif choice == "Logs":
-            name = _ask(lambda: questionary.text("Env name:").ask())
-            if not name:
-                continue
-            agent = _ask(lambda: questionary.text("Agent ID for session log (blank for gateway log):").ask())
-            follow = _ask(lambda: questionary.confirm("Follow (stream new lines)?", default=False).ask())
-            env_mod.cmd_logs(name, agent=agent or None, follow=follow or False)
+            elif choice == "Logs":
+                name = _ask(lambda: questionary.text("Env name:").ask())
+                if not name:
+                    continue
+                agent = _ask(lambda: questionary.text("Agent ID for session log (blank for gateway log):").ask())
+                follow = _ask(lambda: questionary.confirm("Follow (stream new lines)?", default=False).ask())
+                env_mod.cmd_logs(name, agent=agent or None, follow=follow or False)
 
-        elif choice == "Exec command in env":
-            name = _ask(lambda: questionary.text("Env name:").ask())
-            if not name:
-                continue
-            cmd_str = _ask(lambda: questionary.text("Command to run:").ask())
-            if not cmd_str:
-                continue
-            import shlex
-            env_mod.cmd_exec(name, shlex.split(cmd_str))
+            elif choice == "Exec command in env":
+                name = _ask(lambda: questionary.text("Env name:").ask())
+                if not name:
+                    continue
+                cmd_str = _ask(lambda: questionary.text("Command to run:").ask())
+                if not cmd_str:
+                    continue
+                import shlex
+                env_mod.cmd_exec(name, shlex.split(cmd_str))
+        except _Cancelled:
+            print("  (cancelled — back to menu)")
+            continue
 
 
 def menu_budget():
     # NOTE: Add new budget commands to this list AND as a handler below.
     from agentspace import budget as budget_mod
     while True:
-        choice = _ask(lambda: questionary.select(
-            "Budget — choose a command:",
-            choices=[
-                "Show budget",
-                "Top up budget",
-                questionary.Separator(),
-                "← Back",
-                "Quit",
-            ],
-        ).ask())
+        try:
+            choice = _ask(lambda: questionary.select(
+                "Budget — choose a command:",
+                choices=[
+                    "Show budget",
+                    "Top up budget",
+                    questionary.Separator(),
+                    "← Back",
+                    "Quit",
+                ],
+            ).ask())
+        except _Cancelled:
+            return  # cancel at the command list → back to the main menu
 
-        if choice is None or choice == "← Back":
+        if choice == "← Back":
             return
         if choice == "Quit":
             sys.exit(0)
 
-        if choice == "Show budget":
-            env_name = _ask(lambda: questionary.text("Env name (blank for all envs):").ask())
-            budget_mod.cmd_show(env_name or None)
+        try:
+            if choice == "Show budget":
+                env_name = _ask(lambda: questionary.text("Env name (blank for all envs):").ask())
+                budget_mod.cmd_show(env_name or None)
 
-        elif choice == "Top up budget":
-            env_name = _ask(lambda: questionary.text("Env name:").ask())
-            if not env_name:
-                continue
-            amount = _ask(lambda: questionary.text("Amount to add (USD):").ask())
-            if not amount:
-                continue
-            try:
-                budget_mod.cmd_topup(env_name, float(amount))
-            except ValueError:
-                print(f"  Invalid amount: {amount!r}")
+            elif choice == "Top up budget":
+                env_name = _ask(lambda: questionary.text("Env name:").ask())
+                if not env_name:
+                    continue
+                amount = _ask(lambda: questionary.text("Amount to add (USD):").ask())
+                if not amount:
+                    continue
+                try:
+                    budget_mod.cmd_topup(env_name, float(amount))
+                except ValueError:
+                    print(f"  Invalid amount: {amount!r}")
+        except _Cancelled:
+            print("  (cancelled — back to menu)")
+            continue
 
 
 def menu_new_world():
@@ -746,32 +786,42 @@ def launch_menu():
     if questionary is None:
         sys.exit("questionary is required for the interactive menu.\nInstall it with: pip install questionary")
 
-    print("\n  agentspace control panel\n  arrow keys to navigate · Enter to select · Ctrl-C to go back\n")
+    print("\n  agentspace control panel\n  arrow keys to navigate · Enter to select · Esc / Ctrl-C to cancel\n")
     while True:
-        choice = _ask(lambda: questionary.select(
-            "What would you like to do?",
-            choices=[
-                "New world — build a World Root from a scenario",
-                "Snaps     — manage frozen images; fork one to start an env",
-                "Envs      — manage running world containers",
-                "Budget    — OpenRouter credit limits",
-                questionary.Separator(),
-                "Quit",
-            ],
-        ).ask())
-
-        if choice is None or choice == "Quit":
+        try:
+            choice = _ask(lambda: questionary.select(
+                "What would you like to do?",
+                choices=[
+                    "New world — build a World Root from a scenario",
+                    "Snaps     — manage frozen images; fork one to start an env",
+                    "Envs      — manage running world containers",
+                    "Budget    — OpenRouter credit limits",
+                    questionary.Separator(),
+                    "Quit",
+                ],
+            ).ask())
+        except _Cancelled:
             print("Bye.")
             sys.exit(0)
 
-        if choice.startswith("New world"):
-            menu_new_world()
-        elif choice.startswith("Snaps"):
-            menu_snap()
-        elif choice.startswith("Envs"):
-            menu_env()
-        elif choice.startswith("Budget"):
-            menu_budget()
+        if choice == "Quit":
+            print("Bye.")
+            sys.exit(0)
+
+        # Submenus catch their own cancels; the New-world wizard lets _Cancelled
+        # propagate, so catch it here and just return to the main menu.
+        try:
+            if choice.startswith("New world"):
+                menu_new_world()
+            elif choice.startswith("Snaps"):
+                menu_snap()
+            elif choice.startswith("Envs"):
+                menu_env()
+            elif choice.startswith("Budget"):
+                menu_budget()
+        except _Cancelled:
+            print("  (cancelled)")
+            continue
 
 
 # ---- entry ----
