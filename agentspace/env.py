@@ -29,16 +29,40 @@ def _live_status(env: dict) -> str:
     """Best-effort live status check; falls back to last-known on unreachable host."""
     host = env["host"] or "localhost"
     name = env["name"]
+    # The agent-state exec doubles as the is-it-running probe (it fails if the
+    # container is down), so running envs need just one docker call, not two.
     try:
-        running = docker_host.container_running(host, name)
-        exists = running or docker_host.container_exists(host, name)
-        if running:
-            return "running"
-        if exists:
-            return "stopped"
-        return "missing"
+        return _agent_state(host, name)
     except docker_host.DockerError:
-        return f"unreachable (last: {env.get('status') or '?'})"
+        try:
+            return "stopped" if docker_host.container_exists(host, name) else "missing"
+        except docker_host.DockerError:
+            return f"unreachable (last: {env.get('status') or '?'})"
+
+
+# Status values where the container is UP (vs stopped/missing). Agent-level:
+#   active  = container up, gateway running, at least one agent has been kicked
+#   dormant = container up, but gateway down OR no agent kicked yet
+# (The user need not distinguish never-kicked from slept — both read "dormant".)
+_CONTAINER_UP = ("active", "dormant")
+
+
+def _is_up(status: str) -> bool:
+    return status in _CONTAINER_UP
+
+
+def _agent_state(host: str, name: str) -> str:
+    """'active' or 'dormant' for a running container — raises DockerError if the
+    container is down (the caller uses that as the running probe). active iff the
+    gateway is alive AND some agent has a session dir (was kicked). The trailing
+    `:` forces exit 0 so a running container never looks 'down' to the probe."""
+    out = docker_host.stdout(
+        host, "exec", name, "sh", "-c",
+        'pgrep -x openclaw >/dev/null 2>&1 && echo GW; '
+        '[ -n "$(ls -A /data/openclaw/agents 2>/dev/null)" ] && echo KICKED; :',
+    )
+    toks = out.split()
+    return "active" if ("GW" in toks and "KICKED" in toks) else "dormant"
 
 
 _STARTED_AT_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
@@ -51,7 +75,7 @@ def _started_at(env: dict, status: str) -> str:
     while running. Docker reports UTC (RFC3339Nano); we truncate the fractional
     seconds and render in local time.
     """
-    if status != "running":
+    if not _is_up(status):
         return "—"
     host = env["host"] or "localhost"
     try:
@@ -91,7 +115,7 @@ def _total_runtime(intervals: dict, name: str, status: str, now: datetime) -> st
     live one if running. '—' when we have no recorded runtime (see audit.py)."""
     info = intervals.get(name) or {}
     total = info.get("closed", 0.0)
-    if status == "running" and info.get("open_since") is not None:
+    if _is_up(status) and info.get("open_since") is not None:
         total += (now - info["open_since"]).total_seconds()
     return _fmt_duration(total)
 
@@ -142,7 +166,7 @@ def cmd_list():
             limit_str,
         )
         # Persist live status back for next time.
-        if status in ("running", "stopped", "missing"):
+        if status in ("active", "dormant", "stopped", "missing"):
             db.set_env_status(e["name"], status)
     console.print(table)
 
@@ -216,10 +240,9 @@ def cmd_start(name: str):
     openclaw.start_gateway(host, name)
     openclaw.wait_for_gateway(host, name)
 
-    db.set_env_status(name, "running")
     audit.log("env.start", name)
-    console.print(f"[green]✓[/green] env {name} is running. Agents are dormant; use "
-                  f"'agentspace env kick {name}' to resume them.")
+    console.print(f"[green]✓[/green] env {name} container started, gateway up. "
+                  f"Wake agents with 'agentspace env kick {name}' if needed.")
 
 
 def cmd_stop(name: str):
@@ -247,12 +270,40 @@ def cmd_kick(name: str, message: str | None = None):
     if not agents:
         raise click.ClickException(f"env {name!r} has no agents recorded on its snap.")
 
+    # A dormant or slept env may have its gateway stopped; waking must start it
+    # first. (start_gateway truncates the log, so wait_for_gateway is reliable.)
+    if not openclaw.gateway_running(host, name):
+        console.print("[dim]gateway not running; starting it …[/dim]")
+        openclaw.start_gateway(host, name)
+        openclaw.wait_for_gateway(host, name)
+
     text = message or openclaw.read_kick_message(host, name)
-    console.print(f"[dim]kicking {len(agents)} agent(s) with message {text!r} …[/dim]")
+    console.print(f"[dim]waking {len(agents)} agent(s) with message {text!r} …[/dim]")
     for agent_id in agents:
         openclaw.kick_agent(host, name, agent_id, text)
     audit.log("env.kick", name, args={"agents": agents, "message": text})
-    console.print(f"[green]✓[/green] kick sent.")
+    db.set_env_status(name, "active")
+    console.print(f"[green]✓[/green] env {name} is active — agents woken.")
+
+
+def cmd_sleep(name: str):
+    """Anti-wake: stop ONLY the gateway, leaving the container running. Agents go
+    dormant — no turns, no messaging, and (crucially) no heartbeat polling/spend —
+    but the filesystem and sessions are untouched. Wake again with cmd_kick."""
+    env = _require_env(name)
+    host = env["host"] or "localhost"
+    if not docker_host.container_running(host, name):
+        raise click.ClickException(
+            f"env {name!r} is not running (nothing to sleep). Use 'env start' first."
+        )
+    console.print(f"[dim]stopping gateway (container stays up) …[/dim]")
+    openclaw.stop_gateway(host, name)
+    db.set_env_status(name, "dormant")
+    audit.log("env.sleep", name)
+    console.print(
+        f"[green]✓[/green] env {name} is dormant — agents paused, container still "
+        f"running. Wake with 'agentspace env kick {name}'."
+    )
 
 
 # ---- kill ----
@@ -310,16 +361,42 @@ def cmd_kill(name: str, force: bool = False):
 
 # ---- logs ----
 
-def cmd_logs(name: str, agent: str | None = None, follow: bool = False):
+def env_agent_ids(name: str) -> list[str]:
+    """Agent ids for an env, from its snap's `agents` label (no docker call)."""
+    env = db.get_env(name)
+    if env is None:
+        return []
+    snap = db.get_snap_by_id(env["snap_id"])
+    return list((snap or {}).get("agents") or [])
+
+
+def cmd_logs(
+    name: str,
+    agent: str | None = None,
+    follow: bool = False,
+    all_agents: bool = False,
+    everything: bool = False,
+):
+    """Tail logs for an env.
+
+    Source (most specific wins): everything (all agents + gateway) > all_agents
+    (agents only) > agent=<id> (one agent) > gateway (default).
+    """
     env = _require_env(name)
     host = env["host"] or "localhost"
 
+    def _source(follow_: bool):
+        if everything or all_agents:
+            return openclaw.tail_combined(
+                host, name, env_agent_ids(name),
+                include_gateway=everything, follow=follow_,
+            )
+        if agent:
+            return openclaw.tail_agent_log(host, name, agent, follow=follow_)
+        return openclaw.tail_gateway_log(host, name, follow=follow_)
+
     if follow:
-        proc = (
-            openclaw.tail_agent_log(host, name, agent, follow=True)
-            if agent
-            else openclaw.tail_gateway_log(host, name, follow=True)
-        )
+        proc = _source(True)
         try:
             for line in proc.stdout:
                 click.echo(line, nl=False)
@@ -327,13 +404,11 @@ def cmd_logs(name: str, agent: str | None = None, follow: bool = False):
             pass
         finally:
             proc.terminate()
+            # docker exec doesn't propagate the kill to the in-container `tail`;
+            # reap it so idle followers don't pile up (tail is only ours here).
+            docker_host.run(host, "exec", name, "pkill", "-x", "tail", check=False)
     else:
-        text = (
-            openclaw.tail_agent_log(host, name, agent, follow=False)
-            if agent
-            else openclaw.tail_gateway_log(host, name, follow=False)
-        )
-        click.echo(text)
+        click.echo(_source(False))
 
 
 # ---- exec ----

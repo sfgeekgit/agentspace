@@ -265,9 +265,19 @@ def inject_soul(host: str, container: str, agent_id: str, soul_path_in_container
 
 
 def start_gateway(host: str, container: str):
-    """Start the gateway detached. Logs go to /tmp/gateway.log inside the container."""
+    """Start the gateway detached. Logs go to /tmp/gateway.log inside the container.
+    The `>` TRUNCATES the log each start, so wait_for_gateway never matches a stale
+    ready marker from a previous run."""
     cmd = f"openclaw gateway run > {GATEWAY_LOG_PATH} 2>&1"
     docker_host.run(host, "exec", "-d", container, "sh", "-c", cmd)
+
+
+def gateway_running(host: str, container: str) -> bool:
+    """True if the gateway process is alive in the container. Process name is
+    exactly `openclaw` (see stop_gateway). Used to tell active (gateway up) from
+    dormant (gateway down) and to decide whether a wake must start it first."""
+    r = docker_host.run(host, "exec", container, "pgrep", "-x", "openclaw", check=False)
+    return r.returncode == 0
 
 
 def stop_gateway(host: str, container: str):
@@ -354,6 +364,38 @@ def tail_agent_log(host: str, container: str, agent_id: str, follow: bool = Fals
         f"if [ -n \"$latest\" ]; then "
         f"  tail {'-f ' if follow else ''}-n 200 \"$latest\"; "
         f"else echo 'no sessions yet for {shlex.quote(agent_id)}'; fi"
+    )
+    args = ["exec", container, "sh", "-c", cmd]
+    if follow:
+        return docker_host.stream(host, *args)
+    return docker_host.stdout(host, *args, check=False)
+
+
+def tail_combined(
+    host: str,
+    container: str,
+    agent_ids: list[str],
+    include_gateway: bool,
+    follow: bool = False,
+):
+    """Tail several logs at once: each agent's latest session JSONL, plus the
+    gateway log if include_gateway. `tail` interleaves the files live and prints
+    a `==> file <==` marker when the active source switches (raw JSONL; basic but
+    functional). Agents with no session yet are skipped, not errored."""
+    parts = []
+    if include_gateway:
+        parts.append(f'files="$files {GATEWAY_LOG_PATH}"')
+    for aid in agent_ids:
+        sd = f"/data/openclaw/agents/{aid}/sessions"
+        parts.append(
+            f'f=$(ls -t {sd}/*.jsonl 2>/dev/null | head -n1); '
+            f'[ -n "$f" ] && files="$files $f"'
+        )
+    build = "files=''; " + "; ".join(parts)
+    cmd = (
+        f'{build}; '
+        f'if [ -z "$files" ]; then echo "no logs yet"; else '
+        f'tail {"-f " if follow else ""}-n 200 $files; fi'
     )
     args = ["exec", container, "sh", "-c", cmd]
     if follow:

@@ -231,9 +231,17 @@ def env_stop(name):
 @click.argument("name")
 @click.option("--message", default=None, help="Override the per-scenario kick message.")
 def env_kick(name, message):
-    """Send the bootstrap message to every agent in the env."""
+    """Wake every agent (starts the gateway first if it's stopped)."""
     from agentspace import env as env_mod
     env_mod.cmd_kick(name, message=message)
+
+
+@env.command("sleep")
+@click.argument("name")
+def env_sleep(name):
+    """Make an env dormant: stop the gateway only; the container keeps running."""
+    from agentspace import env as env_mod
+    env_mod.cmd_sleep(name)
 
 
 @env.command("kill")
@@ -248,11 +256,14 @@ def env_kill(name, force):
 @env.command("logs")
 @click.argument("name")
 @click.option("--agent", default=None, help="Tail a specific agent's session log instead of the gateway.")
+@click.option("--all-agents", is_flag=True, help="Tail all agents' session logs combined (no gateway).")
+@click.option("--all", "everything", is_flag=True, help="Tail all agents' logs AND the gateway, combined.")
 @click.option("-f", "--follow", is_flag=True)
-def env_logs(name, agent, follow):
-    """Tail gateway or agent session logs."""
+def env_logs(name, agent, all_agents, everything, follow):
+    """Tail gateway, one agent, all agents, or everything (--all)."""
     from agentspace import env as env_mod
-    env_mod.cmd_logs(name, agent=agent, follow=follow)
+    env_mod.cmd_logs(name, agent=agent, follow=follow,
+                     all_agents=all_agents, everything=everything)
 
 
 @env.command("exec")
@@ -319,6 +330,12 @@ class _Cancelled(Exception):
     at the command-list select it returns to the parent menu; during a
     multi-prompt action it aborts the action and redraws the command list.
     """
+
+
+def _show_error(e):
+    """Print an operational error from a menu action without crashing the menu."""
+    msg = e.format_message() if isinstance(e, click.ClickException) else str(e)
+    print(f"  Error: {msg}")
 
 
 def _ask(prompt_fn):
@@ -403,17 +420,17 @@ def menu_snap():
                 snap_mod.cmd_take(env_name, message=message, note=note or None, version=version or None)
 
             elif choice == "Fork snap  (start new env from a snap)":
-                from agentspace import db
+                from agentspace import db, versioning
                 snaps = db.list_snaps()
                 if not snaps:
                     print("  No snaps available. Build a World Root first, or 'Rebuild index'.")
                     continue
                 # Scrollable picker — no typing a ref. World roots (X.0) first, then
                 # the rest, each newest-relevant order from list_snaps (by created_at).
-                snaps.sort(key=lambda s: (not str(s["version"]).endswith(".0"), s["scenario"]))
+                snaps.sort(key=lambda s: (not versioning.is_world_root(s["version"]), s["scenario"]))
                 snap_labels = [
                     f"{s['scenario']}:{s['version']}"
-                    + ("  (world root)" if str(s["version"]).endswith(".0") else "")
+                    + ("  (world root)" if versioning.is_world_root(s["version"]) else "")
                     + (f"  — {s['creation_message']}" if s.get("creation_message") else "")
                     for s in snaps
                 ]
@@ -472,6 +489,9 @@ def menu_snap():
         except _Cancelled:
             print("  (cancelled — back to menu)")
             continue
+        except Exception as e:
+            _show_error(e)
+            continue
 
 
 def menu_env():
@@ -487,8 +507,9 @@ def menu_env():
                     "Start env",
                     "Stop env",
                     "Wake agents  (begin / send bootstrap)",
+                    "Sleep env  (pause agents, keep container)",
                     "Kill env  (removes container)",
-                    "Logs",
+                    "Watch logs  (gateway / agents / everything)",
                     "Exec command in env",
                     questionary.Separator(),
                     "← Back",
@@ -532,6 +553,12 @@ def menu_env():
                 msg = _ask(lambda: questionary.text("Message override (blank for scenario default):").ask())
                 env_mod.cmd_kick(name, message=msg or None)
 
+            elif choice.startswith("Sleep env"):
+                name = _ask(lambda: questionary.text("Env name:").ask())
+                if not name:
+                    continue
+                env_mod.cmd_sleep(name)
+
             elif choice == "Kill env  (removes container)":
                 name = _ask(lambda: questionary.text("Env name:").ask())
                 if not name:
@@ -543,13 +570,55 @@ def menu_env():
                 if confirmed:
                     env_mod.cmd_kill(name, force=True)
 
-            elif choice == "Logs":
-                name = _ask(lambda: questionary.text("Env name:").ask())
-                if not name:
+            elif choice.startswith("Watch logs"):
+                from agentspace import db
+                envs = db.list_envs()
+                if not envs:
+                    print("  No envs yet. Fork a snap first.")
                     continue
-                agent = _ask(lambda: questionary.text("Agent ID for session log (blank for gateway log):").ask())
-                follow = _ask(lambda: questionary.confirm("Follow (stream new lines)?", default=False).ask())
-                env_mod.cmd_logs(name, agent=agent or None, follow=follow or False)
+                env_names = [e["name"] for e in envs]
+                ename = _ask(lambda: questionary.select(
+                    "Watch which env?", choices=env_names + [questionary.Separator(), "← Back"]
+                ).ask())
+                if ename == "← Back":
+                    continue
+                ids = env_mod.env_agent_ids(ename)
+                src = _ask(lambda: questionary.select(
+                    f"Watch what in '{ename}'?",
+                    choices=[
+                        "Gateway log",
+                        "A specific agent",
+                        "All agents (no gateway)",
+                        "Everything (all agents + gateway)",
+                        questionary.Separator(),
+                        "← Back",
+                    ],
+                ).ask())
+                if src == "← Back":
+                    continue
+                agent = None
+                all_agents = everything = False
+                flag = []
+                if src.startswith("A specific"):
+                    if not ids:
+                        print("  No agents recorded for this env.")
+                        continue
+                    agent = _ask(lambda: questionary.select(
+                        "Which agent?", choices=ids
+                    ).ask())
+                    flag = ["--agent", agent]
+                elif src.startswith("All agents"):
+                    all_agents = True
+                    flag = ["--all-agents"]
+                elif src.startswith("Everything"):
+                    everything = True
+                    flag = ["--all"]
+                # Build the equivalent pasteable command, then stream it live.
+                cmd = " ".join(["python3 zookeeper.py env logs", ename, *flag, "-f"])
+                print(f"  Command:  {cmd}")
+                print("  (streaming — Ctrl-C to stop and return to the menu)\n")
+                env_mod.cmd_logs(ename, agent=agent, follow=True,
+                                 all_agents=all_agents, everything=everything)
 
             elif choice == "Exec command in env":
                 name = _ask(lambda: questionary.text("Env name:").ask())
@@ -562,6 +631,9 @@ def menu_env():
                 env_mod.cmd_exec(name, shlex.split(cmd_str))
         except _Cancelled:
             print("  (cancelled — back to menu)")
+            continue
+        except Exception as e:
+            _show_error(e)
             continue
 
 
@@ -607,6 +679,9 @@ def menu_budget():
         except _Cancelled:
             print("  (cancelled — back to menu)")
             continue
+        except Exception as e:
+            _show_error(e)
+            continue
 
 
 def menu_new_world():
@@ -642,7 +717,7 @@ def menu_new_world():
             choices=["Continue"] + list(disable_map)
                     + [questionary.Separator(), "← Back"],
         ).ask())
-        if choice is None or choice == "← Back":
+        if choice == "← Back":
             return
         if choice == "Continue":
             break
@@ -657,7 +732,7 @@ def menu_new_world():
     pick = _ask(lambda: questionary.select(
         "Scenario:", choices=labels + [questionary.Separator(), "← Back"]
     ).ask())
-    if pick is None or pick == "← Back":
+    if pick == "← Back":
         return
     scen = scens[labels.index(pick)]
 
@@ -666,8 +741,6 @@ def menu_new_world():
         raw = _ask(lambda: questionary.text(
             f"Number of agents ({scen['min_agents']}–{scen['max_agents']}):"
         ).ask())
-        if raw is None:
-            return
         try:
             n = int(raw)
         except ValueError:
@@ -687,13 +760,11 @@ def menu_new_world():
 
     def pick_persona(label):
         sel = _ask(lambda: questionary.select(label, choices=pchoices).ask())
-        return None if sel is None else personas[pchoices.index(sel)]["short_name"]
+        return personas[pchoices.index(sel)]["short_name"]
 
     DEFAULT_MODEL = "openrouter/anthropic/claude-haiku-4-5"
     same_model = _ask(lambda: questionary.confirm(
         "Use the same backend model for every agent?", default=True).ask())
-    if same_model is None:
-        return
     if same_model:
         m = _ask(lambda: questionary.text("Backend model:", default=DEFAULT_MODEL).ask())
         if not m:
@@ -710,20 +781,10 @@ def menu_new_world():
 
     same_persona = _ask(lambda: questionary.confirm(
         "Use the same persona for every agent?", default=True).ask())
-    if same_persona is None:
-        return
     if same_persona:
-        p = pick_persona("Persona for every agent:")
-        if p is None:
-            return
-        persona_list = [p] * n
+        persona_list = [pick_persona("Persona for every agent:")] * n
     else:
-        persona_list = []
-        for i in range(n):
-            p = pick_persona(f"Persona for agent {i + 1}/{n}:")
-            if p is None:
-                return
-            persona_list.append(p)
+        persona_list = [pick_persona(f"Persona for agent {i + 1}/{n}:") for i in range(n)]
 
     roster = [{"model": models[i], "persona": persona_list[i]} for i in range(n)]
 
@@ -733,14 +794,12 @@ def menu_new_world():
         if _ask(lambda: questionary.select(
             "Modules (none available yet):",
             choices=["Continue (no modules)", "← Back"],
-        ).ask()) in (None, "← Back"):
+        ).ask()) == "← Back":
             return
         selected_modules = ()
     else:
         sel = _ask(lambda: questionary.checkbox(
             "Modules to include:", choices=[m["name"] for m in modules]).ask())
-        if sel is None:
-            return
         selected_modules = tuple(sel)
 
     # 6. world name (blank → use the scen name as the identity). Validated inline
@@ -749,8 +808,6 @@ def menu_new_world():
         raw = _ask(lambda: questionary.text(
             f"World name (blank = '{scen['name']}'; lowercase/digits/underscore):"
         ).ask())
-        if raw is None:
-            return
         world_name = raw.strip() or None
         if world_name and not builder.valid_world_name(world_name):
             print("  Use lowercase letters, digits, and underscore only.")
@@ -822,6 +879,9 @@ def launch_menu():
                 menu_budget()
         except _Cancelled:
             print("  (cancelled)")
+            continue
+        except Exception as e:
+            _show_error(e)
             continue
 
 
