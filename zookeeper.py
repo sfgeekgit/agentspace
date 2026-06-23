@@ -440,18 +440,19 @@ def menu_snap():
                     "Soul injections (agentId=path, comma-separated; blank to skip):"
                 ).ask())
                 souls = tuple(s.strip() for s in souls_raw.split(",") if s.strip()) if souls_raw else ()
-                # Fork creates the env DORMANT (agents not started) — beginning is a
-                # separate, deliberate action: Envs → "Wake agents". (No spend until then.)
+                # Optionally begin the agents as soon as the env is ready. Default
+                # yes; if no, cmd_fork prints the reminder for how to wake later.
+                wake_now = _ask(lambda: questionary.confirm(
+                    "Wake agents now?", default=True
+                ).ask())
                 snap_mod.cmd_fork(
                     ref, new_name,
                     souls=souls,
                     budget_usd=float(budget_str) if budget_str else None,
                     host=host or "localhost",
-                    kick=False,
+                    kick=wake_now,
                     existing_key=existing_key or None,
                 )
-                print(f"  Env '{new_name}' created, agents dormant. "
-                      f"Begin it with Envs → 'Wake agents'.")
 
             elif choice == "Pull snap  (fetch from ghcr.io)":
                 tag = _ask(lambda: questionary.text("ghcr.io tag:").ask())
