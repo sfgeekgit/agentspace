@@ -19,14 +19,19 @@ python3 zookeeper.py snap take env7 -m "round 1 done"    # snapshot a moment
 
 Each environment is a Docker container — a complete, frozen world. You can
 snapshot it at any point, fork it, tweak the agents or the scenario, and run
-it again. Snapshots are published to a public container registry, so anyone
-can pull an environment and reproduce or extend an experiment exactly.
+it again. Change something big, something as small as a single character, or
+nothing at all — then fork one snapshot into twenty and run the variants side
+by side. Snapshots are published to a public container registry (ghcr.io), so
+anyone can pull an environment and reproduce or extend an experiment exactly.
 
 ## What it's for
 
 The core use case is studying how agents behave under controlled conditions —
 and how that behavior changes when you make small, precise modifications to
 their memory, instructions, or world state.
+
+Researchers design their own scenarios — defining the situation, the agents,
+and whatever mechanics they want — and populate the world however they like.
 
 Agentspace is best with agents whose entire memory (soul, prompt, history, etc)
 can be saved as part of the local filesystem (markdown, SQLite, etc). This
@@ -57,9 +62,22 @@ travels with the image.
 
 The control layer is a Python CLI (`zookeeper.py`) that lives in this repo.
 It handles creating and forking environments, taking and pushing snapshots,
-managing per-environment API keys and budgets, and tracking lineage. Agent
-configs, scenario definitions, and the base container Dockerfile are also
-here. See [`docs/`](docs/) for the full architecture.
+minting a fresh per-environment API key, spinning up new machines on demand (or
+running locally), tracking lineage, and tearing everything down afterward — so
+you can focus on the experiment, not the plumbing. Agent configs, scenario
+definitions, and the base container Dockerfile are also here. See
+[`docs/`](docs/) for the full architecture.
+
+## Watch what happens
+
+Every message and reasoning trace is logged. Review a run after the fact, or
+live-tail the logs while it runs — and with most scenarios you can chat with
+the agents mid-run.
+
+This is exploratory infrastructure by design. The most valuable findings tend
+to be "that's strange — why did it keep doing that?" rather than clean
+confirmations of a hypothesis. Agentspace is built to surface those moments,
+then re-run them to test whether the effect is real.
 
 ## Public snapshots
 
