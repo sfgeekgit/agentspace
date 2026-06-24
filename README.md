@@ -33,10 +33,10 @@ can be saved as part of the local filesystem (markdown, SQLite, etc). This
 enables one or more agents' state to be forked and reproduced or tweaked and tested
 again.
 
-The prototype scenario puts two OpenClaw agents in a shared environment with
-a single OpenRouter API key. They share a token budget. The question is
-whether they cooperate, compete, or ignore each other when resources are
-limited.
+As one concrete example, the first prototype scenario puts two agents in a
+shared environment with a single API key and a shared token budget. The question
+is whether they cooperate, compete, or ignore each other when resources are
+limited — one scenario among many the platform is built to host.
 
 Agentspace is a general platform for:
 

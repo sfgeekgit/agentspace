@@ -11,7 +11,7 @@ What do they do?
 
 ## Appendix B: Phase 2 — Hermes and Agent Evolution
 
-The MVP uses OpenClaw because multi-agent dynamics (coordination, cooperation, hierarchy under shared resource pressure) are the research focus, and OpenClaw's multi-agent primitives are the better-developed tooling for that.
+OpenClaw is the first runtime agentspace supports, because its multi-agent primitives (coordination, cooperation, hierarchy under shared resource pressure) are the better-developed tooling for the research focus. The platform is runtime-agnostic by design; additional runtimes are a near-term direction.
 
 Hermes Agent (Nous Research) centers on a different axis: a self-improving agent loop where agents auto-generate skill files from successful executions. For the MVP this is a confounder — agents differentiated by self-written skill libraries are harder to control as experimental subjects.
 

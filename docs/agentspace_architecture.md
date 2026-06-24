@@ -1,7 +1,6 @@
 # Agentspace — MVP Architecture
-## Cooperation Under Scarcity
 
-Empirical study of multi-agent cooperation/corrigibility under shared resource constraints. This doc covers infrastructure only; agent-level details (scenarios, inter-agent protocols, experimental design) are out of scope here.
+Infrastructure for running reproducible, forkable multi-agent experiments. This doc covers infrastructure only; agent-level details (scenarios, inter-agent protocols, experimental design) are out of scope here. Cooperation under scarcity was the first prototype scenario — one example, not the platform's purpose.
 
 ## Hierarchy
 
