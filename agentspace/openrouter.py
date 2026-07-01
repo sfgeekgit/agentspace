@@ -53,6 +53,18 @@ def _request(
         raise OpenRouterError(f"{method} {path}: {e.reason}") from e
 
 
+def list_models() -> list[str]:
+    """The public OpenRouter model catalog (no auth). Returns model ids
+    (unprefixed, e.g. 'anthropic/claude-haiku-4-5')."""
+    req = urllib.request.Request(f"{API_BASE}/models", method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read() or b"{}")
+    except (urllib.error.URLError, json.JSONDecodeError) as e:
+        raise OpenRouterError(f"GET /models: {e}") from e
+    return [m["id"] for m in (data.get("data") or []) if m.get("id")]
+
+
 def mint_key(env_name: str, limit_usd: float) -> dict[str, Any]:
     """Create a new inference key with a credit limit.
 

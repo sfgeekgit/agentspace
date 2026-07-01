@@ -51,6 +51,12 @@ def _is_up(status: str) -> bool:
     return status in _CONTAINER_UP
 
 
+def _enter_line(env: dict, status: str) -> str:
+    """Pasteable 'enter the container' command, with a hint if it isn't running."""
+    cmd = docker_host.enter_command(env["host"] or "localhost", env["name"])
+    return cmd if _is_up(status) else f"{cmd}   (start the env first)"
+
+
 def _agent_state(host: str, name: str) -> str:
     """'active' or 'dormant' for a running container — raises DockerError if the
     container is down (the caller uses that as the running probe). active iff the
@@ -204,6 +210,7 @@ def cmd_show(name: str):
         f"  Runtime:      {runtime_str}\n"
         f"  Created:      {env.get('created_at') or '—'}\n"
         f"  Budget used:  {used_str} / {limit_str}\n"
+        f"  Enter:        {_enter_line(env, status)}\n"
     )
     if snap:
         agents = snap.get("agents") or []
@@ -214,6 +221,12 @@ def cmd_show(name: str):
             f"  Model:        {snap.get('model') or '—'}\n"
         )
     console.print(Panel(body, title=name, expand=False))
+
+
+def cmd_enter(name: str):
+    """Print the pasteable shell command to enter the env's container."""
+    env = _require_env(name)
+    console.print("  " + _enter_line(env, _live_status(env)))
 
 
 # ---- start / stop ----

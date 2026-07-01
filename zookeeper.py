@@ -275,6 +275,14 @@ def env_exec(name, cmd):
     env_mod.cmd_exec(name, list(cmd))
 
 
+@env.command("enter")
+@click.argument("name")
+def env_enter(name):
+    """Print the pasteable `docker exec` command to open a shell in the env."""
+    from agentspace import env as env_mod
+    env_mod.cmd_enter(name)
+
+
 # ---- budget group ----
 # NOTE: When you add a budget subcommand here, add it to menu_budget() below too.
 
@@ -352,6 +360,47 @@ def _ask(prompt_fn):
     if result is None:
         raise _Cancelled()
     return result
+
+
+def _pick_env(prompt="Env name:"):
+    """Pick an existing env from a list. Returns the name, or None to abort
+    (no envs, or the user backed out)."""
+    from agentspace import db
+    envs = db.list_envs()
+    if not envs:
+        print("  No envs yet. Fork a snap first.")
+        return None
+    name = _ask(lambda: questionary.select(
+        prompt, choices=[e["name"] for e in envs] + [questionary.Separator(), "← Back"]
+    ).ask())
+    return None if name == "← Back" else name
+
+
+def _pick_model(label, prior=()):
+    """Progressive model picker — the user never types a full model path.
+
+    Top level: already-chosen models (for agents 2..N) + Haiku + Other.
+    Other → recently-used + 'See all'. See all → searchable live catalog.
+    `prior` = models already chosen this roster, offered as quick top choices.
+    Returns a model id (raises _Cancelled if the user backs out)."""
+    from agentspace.runtimes import openclaw
+    SEE_ALL, OTHER = "See all models (search)…", "Other…"
+    top = []
+    for m in (*prior, openclaw.DEFAULT_MODEL):
+        if m not in top:
+            top.append(m)
+    choice = _ask(lambda: questionary.select(label, choices=top + [OTHER]).ask())
+    if choice != OTHER:
+        return choice
+    recent = [m for m in openclaw.recent_models() if m not in top]
+    choice = _ask(lambda: questionary.select(label, choices=recent + [SEE_ALL]).ask())
+    if choice != SEE_ALL:
+        return choice
+    allm = openclaw.list_all_models()
+    return _ask(lambda: questionary.autocomplete(
+        "Type to filter models:", choices=allm,
+        validate=lambda v: v in allm or "pick a model from the list",
+    ).ask())
 
 
 def menu_snap():
@@ -511,6 +560,7 @@ def menu_env():
                     "Kill env  (removes container)",
                     "Watch logs  (gateway / agents / everything)",
                     "Exec command in env",
+                    "Enter env (bash)  (prints the copy-paste command)",
                     questionary.Separator(),
                     "← Back",
                     "Quit",
@@ -529,38 +579,38 @@ def menu_env():
                 env_mod.cmd_list()
 
             elif choice == "Show env":
-                name = _ask(lambda: questionary.text("Env name:").ask())
+                name = _pick_env()
                 if not name:
                     continue
                 env_mod.cmd_show(name)
 
             elif choice == "Start env":
-                name = _ask(lambda: questionary.text("Env name:").ask())
+                name = _pick_env()
                 if not name:
                     continue
                 env_mod.cmd_start(name)
 
             elif choice == "Stop env":
-                name = _ask(lambda: questionary.text("Env name:").ask())
+                name = _pick_env()
                 if not name:
                     continue
                 env_mod.cmd_stop(name)
 
             elif choice.startswith("Wake agents"):
-                name = _ask(lambda: questionary.text("Env name:").ask())
+                name = _pick_env()
                 if not name:
                     continue
                 msg = _ask(lambda: questionary.text("Message override (blank for scenario default):").ask())
                 env_mod.cmd_kick(name, message=msg or None)
 
             elif choice.startswith("Sleep env"):
-                name = _ask(lambda: questionary.text("Env name:").ask())
+                name = _pick_env()
                 if not name:
                     continue
                 env_mod.cmd_sleep(name)
 
             elif choice == "Kill env  (removes container)":
-                name = _ask(lambda: questionary.text("Env name:").ask())
+                name = _pick_env()
                 if not name:
                     continue
                 confirmed = _ask(lambda: questionary.confirm(
@@ -621,7 +671,7 @@ def menu_env():
                                  all_agents=all_agents, everything=everything)
 
             elif choice == "Exec command in env":
-                name = _ask(lambda: questionary.text("Env name:").ask())
+                name = _pick_env()
                 if not name:
                     continue
                 cmd_str = _ask(lambda: questionary.text("Command to run:").ask())
@@ -629,6 +679,12 @@ def menu_env():
                     continue
                 import shlex
                 env_mod.cmd_exec(name, shlex.split(cmd_str))
+
+            elif choice.startswith("Enter env"):
+                name = _pick_env()
+                if not name:
+                    continue
+                env_mod.cmd_enter(name)
         except _Cancelled:
             print("  (cancelled — back to menu)")
             continue
@@ -762,22 +818,14 @@ def menu_new_world():
         sel = _ask(lambda: questionary.select(label, choices=pchoices).ask())
         return personas[pchoices.index(sel)]["short_name"]
 
-    DEFAULT_MODEL = "openrouter/anthropic/claude-haiku-4-5"
     same_model = _ask(lambda: questionary.confirm(
         "Use the same backend model for every agent?", default=True).ask())
     if same_model:
-        m = _ask(lambda: questionary.text("Backend model:", default=DEFAULT_MODEL).ask())
-        if not m:
-            return
-        models = [m] * n
+        models = [_pick_model("Backend model:")] * n
     else:
         models = []
         for i in range(n):
-            m = _ask(lambda: questionary.text(
-                f"Model for agent {i + 1}/{n}:", default=DEFAULT_MODEL).ask())
-            if not m:
-                return
-            models.append(m)
+            models.append(_pick_model(f"Model for agent {i + 1}/{n}:", prior=models))
 
     same_persona = _ask(lambda: questionary.confirm(
         "Use the same persona for every agent?", default=True).ask())

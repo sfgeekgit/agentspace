@@ -107,3 +107,8 @@ def container_exists(host: str, name: str) -> bool:
 
 def exec_(host: str, container: str, *cmd: str, check: bool = True) -> str:
     return stdout(host, "exec", container, *cmd, check=check)
+
+
+def enter_command(host: str, name: str) -> str:
+    """The pasteable shell command to drop into a running env's container."""
+    return " ".join(_base_cmd(host or LOCALHOST)) + f" exec -it {name} bash"

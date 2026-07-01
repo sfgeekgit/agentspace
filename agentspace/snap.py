@@ -629,10 +629,9 @@ def cmd_fork(
 
         # Hand the operator everything needed to inspect / enter the new container.
         # On a remote host the docker CLI must be pointed at it over SSH.
-        docker_prefix = "docker" if host == "localhost" else f"docker --host ssh://root@{host}"
         console.print(f"  Container:  {container_id[:12]}   image: {ghcr_tag}")
         console.print(f"  Host:       {host}   budget: ${budget_usd:.2f}")
-        console.print(f"  Enter it:   [bold]{docker_prefix} exec -it {new_env_name} bash[/bold]")
+        console.print(f"  Enter it:   [bold]{docker_host.enter_command(host, new_env_name)}[/bold]")
         console.print(f"  Gateway log: python3 zookeeper.py env logs {new_env_name} -f")
         if kick:
             console.print(f"  Agents:     kicked (running).")

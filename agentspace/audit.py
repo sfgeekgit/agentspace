@@ -42,6 +42,25 @@ def log_error(verb: str, target: str, err: str, args: dict[str, Any] | None = No
     log(verb, target, args=args, result=f"error: {err}")
 
 
+def read_entries(verb: str | None = None) -> list[dict[str, Any]]:
+    """Parsed audit entries oldest→newest, optionally filtered to one verb.
+    Malformed lines are skipped."""
+    if not AUDIT_PATH.is_file():
+        return []
+    out: list[dict[str, Any]] = []
+    for line in AUDIT_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if verb is None or entry.get("verb") == verb:
+            out.append(entry)
+    return out
+
+
 # ---- runtime reconstruction ----
 #
 # Docker keeps no history of past start/stop cycles, so total runtime is rebuilt

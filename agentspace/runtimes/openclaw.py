@@ -42,6 +42,52 @@ ENV_PLACEHOLDER = "__ENV__"
 DEFAULT_KICK = "Read the .md files in your workspace."
 
 
+# ---- model choice (surfaced to the New World wizard) ----
+#
+# Model selection is a runtime concern (the "openrouter/" routing prefix + the
+# default both live here), kept out of zookeeper so the menu stays runtime-
+# agnostic. OC model ids are the OpenRouter id prefixed with "openrouter/".
+
+DEFAULT_MODEL = "openrouter/anthropic/claude-haiku-4-5"
+
+# Best-effort offline fallback for list_all_models() when the live catalog is
+# unreachable. The live list is authoritative; this only keeps the picker usable.
+_CURATED_MODELS = [
+    DEFAULT_MODEL,
+    "openrouter/anthropic/claude-sonnet-4-6",
+    "openrouter/anthropic/claude-opus-4-8",
+    "openrouter/openai/gpt-4o-mini",
+    "openrouter/google/gemini-2.5-flash",
+    "openrouter/deepseek/deepseek-chat",
+]
+
+
+def recent_models(limit: int = 5) -> list[str]:
+    """Distinct per-agent models from recent `world.create` audit entries, most
+    recent first, excluding the default. Empty when there's no history."""
+    from .. import audit
+    seen: list[str] = []
+    for entry in reversed(audit.read_entries("world.create")):
+        for a in entry.get("args", {}).get("roster", []):
+            m = a.get("model")
+            if m and m != DEFAULT_MODEL and m not in seen:
+                seen.append(m)
+                if len(seen) >= limit:
+                    return seen
+    return seen
+
+
+def list_all_models() -> list[str]:
+    """All selectable model ids ('openrouter/'-prefixed), sorted — live from
+    OpenRouter, falling back to a curated list when offline."""
+    from .. import openrouter
+    try:
+        live = sorted(f"openrouter/{i}" for i in openrouter.list_models())
+    except Exception:
+        live = []
+    return live or list(_CURATED_MODELS)
+
+
 # ---- world-root config generation ----
 #
 # render_config() produces a complete openclaw.json for a world root with N
