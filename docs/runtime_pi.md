@@ -41,6 +41,7 @@ line back. Agents use the CLI shim `runtime_pi/broker_client.py`:
     broker_client.py send <to> <text...>     {"op":"send","to":...,"text":...}
     broker_client.py post <text...>          {"op":"post_public","text":...}
     broker_client.py read-public [--since N] {"op":"read_public","since":N}
+    broker_client.py wake <to|*>             {"op":"wake","to":...}  (operator)
 
 - `send` — private message. Policy check → write to recipient's inbox spool
   (`/agents/<to>/inbox/<seq>.json`, owned by recipient, 0600) → audit → wake
@@ -54,6 +55,11 @@ line back. Agents use the CLI shim `runtime_pi/broker_client.py`:
   same per-sender rate cap as `send` (the public surface is not exempt).
 - `read_public` — returns entries with seq > since. A single malformed/torn
   line is skipped (and counted in the audit record), never fatal.
+- `wake` — **operator-only**. Wakes one agent (or all with `"*"`) with cause
+  `{"type":"operator"}` and delivers NO message; the agent runs and drains
+  whatever is already in its inbox. This is the explicit "wake" primitive that
+  the restart-and-wake flow (§4) opts into; agents calling it are refused
+  (`wake_denied`, reason `not_operator`).
 - Any `"from"` field in a request is ignored; the broker knows who you are.
 - Identity and privilege come from SO_PEERCRED, never from a name string.
   Operator privilege is derived from **uid 0 alone** (`Principal.is_operator`),
@@ -122,21 +128,32 @@ the only in-memory state agents could observe is the sequence counter, which
 filenames) at startup — so seqs never go backwards and inbox filenames never
 collide with leftover pre-snapshot files.
 
-A restart does **not** wake agents. Mail already in an inbox is not lost: it
-waits there and is swept up by the next legitimate wake (the drain-whole-inbox
-contract). Whether a restart should wake anyone is an operator/zookeeper
-decision ("restart and kick"), layered above the broker — the broker never
-manufactures a wake just because mail is present, as that would violate the
-reactive model and the "restart dormant" option.
+A restart does **not** wake agents — that is the DEFAULT and the broker has no
+code path that wakes on startup. Mail already in an inbox is not lost: it waits
+there and is swept up by the next legitimate wake (the drain-whole-inbox
+contract). The broker never manufactures a wake just because mail is present.
+
+Waking on restart is a **separate, explicit opt-in**, not a broker behavior:
+
+- The broker exposes the operator-only `wake` op (§2) — `wake <id>` or
+  `wake "*"` — which wakes agents with no message attached.
+- Zookeeper owns the policy: `restart` leaves agents dormant; a `--wake` flag
+  (or a separate `wake` subcommand) is what issues the wakes after the
+  container is back up. *(That zookeeper wiring is step 3; today the `wake` op
+  is callable directly by the operator via `broker_client.py wake`.)*
+
+So both behaviors are supported and the choice lives with the operator: restart
+quietly (default), or restart and then wake some/all agents.
 
 ## 5. Observability
 
 Everything under `/data/broker` (mode 0700 — unreachable by agents):
 
 - `audit.jsonl` — every send (incl. `send_denied` with reason and
-  `send_failed`), every public post/read, every wake with its causes, every
-  wake_end with rc/duration, and `broker_start` (with the recovered seq).
-  Every agent activation in the world has a logged cause here.
+  `send_failed`), every public post/read, every wake with its causes (incl.
+  operator `wake_requested` / `wake_denied`), every wake_end with rc/duration,
+  and `broker_start` (with the recovered seq). Every agent activation in the
+  world has a logged cause here.
 - `public.jsonl` — the public chat, append-only.
 - `policy.json` — current live policy.
 
@@ -165,12 +182,13 @@ Rules:
 
 Throwaway container (`openclaw-sandbox:bookworm-slim`, local, `--network
 none`), ~30s, zero tokens, exits nonzero on any failure. Run it after ANY
-broker change. It proves, with real `su` credentials (30 checks): PM
-round-trip + auto-wake + no ack ping-pong; public chat wakes nobody; 0700
-homes hold; broker state unreachable; sender spoofing impossible; live policy
-/ rate cap / size cap enforced + audited; wakes serialized under burst; and
-the inbox **symlink attack is refused** (no chown/write escape). The harness
-is mutation-tested: weakening a home to 755 turns the run red.
+broker change. It proves, with real `su` credentials: PM round-trip +
+auto-wake + no ack ping-pong; public chat wakes nobody; 0700 homes hold;
+broker state unreachable; sender spoofing impossible; live policy / rate cap /
+size cap enforced + audited; wakes serialized under burst; the operator `wake`
+primitive wakes without a message and is refused to agents; and the inbox
+**symlink attack is refused** (no chown/write escape). The harness is
+mutation-tested: weakening a home to 755 turns the run red.
 
 A companion script `checklist/verify_fixes.py` covers behaviors the
 single-broker gate can't reach — **broker restart** (seq recovery / snapshot

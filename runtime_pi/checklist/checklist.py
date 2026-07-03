@@ -170,15 +170,35 @@ def main():
     check("t9 operator sends audited as operator",
           audit_events("send")[-1]["frm"] == "operator")
 
-    print("T10: inbox symlink attack is refused (broker never follows it)")
+    print("T10: operator wake primitive (wake without delivering a message)")
+    wakes_before = len(audit_events("wake"))
+    sends_before = len(audit_events("send"))
+    r = as_operator(f"{CLIENT} wake a2")
+    check("t10 operator wake accepted", r.returncode == 0, r.stdout + r.stderr)
+    ok = wait_for(lambda: len(audit_events("wake")) > wakes_before)
+    last_wake = audit_events("wake")[-1]
+    check("t10 wake ran with operator cause", ok
+          and last_wake["agent"] == "a2"
+          and last_wake["causes"] == [{"type": "operator"}], json.dumps(last_wake))
+    check("t10 wake delivered no message", len(audit_events("send")) == sends_before)
+    r = as_agent("a1", f"{CLIENT} wake a2")
+    check("t10 agents cannot wake (operator-only)", r.returncode != 0, r.stdout)
+    check("t10 agent wake attempt audited", any(
+        e.get("reason") == "not_operator" for e in audit_events("wake_denied")))
+    r = as_operator(f"{CLIENT} wake '*'")
+    check("t10 wake-all accepted", r.returncode == 0, r.stdout + r.stderr)
+    # let the wake-all's on_wake processes finish before the destructive test
+    wait_for(lambda: not os.path.exists("/agents/a2/.wake_running"))
+
+    print("T11: inbox symlink attack is refused (broker never follows it)")
     # a2 redirects its own inbox at a victim dir; the broker must refuse rather
     # than chown/write through the symlink. (Runs last: it breaks a2's inbox.)
     victim_uid_before = os.stat("/agents/a1").st_uid
     as_agent("a2", 'rm -rf "$HOME/inbox" && ln -s /agents/a1 "$HOME/inbox"')
     r = as_operator(f'{CLIENT} send a2 "attack"')
-    check("t10 send through symlinked inbox refused", r.returncode != 0, r.stdout)
-    check("t10 refusal audited as send_failed", len(audit_events("send_failed")) >= 1)
-    check("t10 victim home ownership unchanged (no chown escape)",
+    check("t11 send through symlinked inbox refused", r.returncode != 0, r.stdout)
+    check("t11 refusal audited as send_failed", len(audit_events("send_failed")) >= 1)
+    check("t11 victim home ownership unchanged (no chown escape)",
           os.stat("/agents/a1").st_uid == victim_uid_before == pwd.getpwnam("u_a1").pw_uid)
 
     print()

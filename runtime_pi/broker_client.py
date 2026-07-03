@@ -7,6 +7,7 @@ Usage:
   broker_client.py send <to> <text...>
   broker_client.py post <text...>
   broker_client.py read-public [--since N]
+  broker_client.py wake <to|*>           # operator-only: wake without a message
   broker_client.py raw '<json>'          # send an arbitrary request (tests)
 
 Identity is NEVER an argument: the broker derives it from SO_PEERCRED.
@@ -48,6 +49,8 @@ def main(argv):
         if len(args) == 2 and args[0] == "--since":
             since = int(args[1])
         req = {"op": "read_public", "since": since}
+    elif cmd == "wake" and len(args) == 1:
+        req = {"op": "wake", "to": args[0]}
     elif cmd == "raw" and len(args) == 1:
         req = json.loads(args[0])
     else:

@@ -11,7 +11,8 @@ MVP surface:
   from the request body, never from a name string — spoofing and role
   escalation are impossible by construction; see peer_identity/Principal).
 - ops: send (PM: policy check -> inbox spool -> audit -> wake recipient),
-  post_public (append, wakes NOBODY), read_public (pull).
+  post_public (append, wakes NOBODY), read_public (pull), wake (operator-only:
+  wake an agent/all with no message — the explicit "restart and wake" primitive).
 - inbox delivery never follows a symlink the recipient could plant, and
   publishes each message atomically (temp + rename) so a concurrent drain
   never sees a half-written or root-owned file. See _deliver().
@@ -28,9 +29,10 @@ Restart transparency: a snapshot/restore is invisible to agents. All durable
 state (inboxes, public.jsonl, audit.jsonl, policy.json) is on disk; the only
 cross-restart in-memory state that agents could observe — the sequence
 counter — is rebuilt from disk at startup (recover_seq). A restart does NOT
-wake agents: mail waits in the inbox for the next legitimate wake, which
-drains the whole inbox. "Restart and wake" is an operator/zookeeper decision,
-not something the broker forces because mail happens to be present.
+wake agents (the DEFAULT): mail waits in the inbox for the next legitimate
+wake, which drains the whole inbox. Waking on restart is a separate, explicit
+opt-in owned by the operator/zookeeper — the `wake` op (op_wake) — never
+something the broker forces because mail happens to be present.
 
 Runs as root inside the env container. All broker state lives under
 STATE_DIR (mode 0700) — unreadable by agents by kernel permission bits.
@@ -448,7 +450,38 @@ def op_read_public(pr, req):
     return {"ok": True, "entries": entries}
 
 
-OPS = {"send": op_send, "post_public": op_post_public, "read_public": op_read_public}
+def op_wake(pr, req):
+    """Operator-only: wake an agent (or all with '*') WITHOUT delivering a
+    message. This is the explicit primitive for "restart and wake" — the broker
+    never auto-wakes on restart (see the module docstring), so zookeeper/the
+    operator uses this to opt in. The wake carries cause {"type":"operator"};
+    the agent runs and drains whatever is already in its inbox, nothing new is
+    injected. (Step 4's gm_wake generalizes this with a payload.)"""
+    if not pr.is_operator:
+        audit("wake_denied", frm=pr.identity, reason="not_operator")
+        return {"ok": False, "error": "wake is operator-only"}
+    to = req.get("to")
+    if not isinstance(to, str):
+        return {"ok": False, "error": "wake needs string 'to' (agent id or '*')"}
+    if to == "*":
+        targets = agent_ids()
+    else:
+        if to in RESERVED_IDS:
+            return {"ok": False, "error": f"reserved target: {to}"}
+        try:
+            pwd.getpwnam(USER_PREFIX + to)
+        except KeyError:
+            audit("wake_denied", frm=pr.identity, to=to, reason="no_such_agent")
+            return {"ok": False, "error": f"no such agent: {to}"}
+        targets = [to]
+    for aid in targets:
+        WAKES.wake(aid, {"type": "operator"})
+    audit("wake_requested", frm=pr.identity, targets=targets)
+    return {"ok": True, "woke": targets}
+
+
+OPS = {"send": op_send, "post_public": op_post_public,
+       "read_public": op_read_public, "wake": op_wake}
 
 
 def handle(conn):
