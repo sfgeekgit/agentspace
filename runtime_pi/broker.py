@@ -7,17 +7,30 @@ wake contract, checklist). Design history in the working notes:
 
 MVP surface:
 
-- unix-socket daemon; sender identity from SO_PEERCRED (never from the
-  request body — spoofing is impossible by construction).
+- unix-socket daemon; sender identity + privilege from SO_PEERCRED (never
+  from the request body, never from a name string — spoofing and role
+  escalation are impossible by construction; see peer_identity/Principal).
 - ops: send (PM: policy check -> inbox spool -> audit -> wake recipient),
   post_public (append, wakes NOBODY), read_public (pull).
+- inbox delivery never follows a symlink the recipient could plant, and
+  publishes each message atomically (temp + rename) so a concurrent drain
+  never sees a half-written or root-owned file. See _deliver().
 - wake = spawn /agents/<id>/on_wake as that agent's own user, serialized
   per agent (one wake at a time; messages arriving mid-wake trigger a
   follow-up wake, never a concurrent one).
 - policy (allow/deny pairs, rate cap, size cap) is re-read from disk on
   every request: LIVE policy changes, no restart — the OC pain, fixed.
+  Reads fail CLOSED (last-good policy, else deny-all); writes are atomic.
 - everything appends to one audit JSONL: every send (incl. denials),
   every post, every wake with its cause.
+
+Restart transparency: a snapshot/restore is invisible to agents. All durable
+state (inboxes, public.jsonl, audit.jsonl, policy.json) is on disk; the only
+cross-restart in-memory state that agents could observe — the sequence
+counter — is rebuilt from disk at startup (recover_seq). A restart does NOT
+wake agents: mail waits in the inbox for the next legitimate wake, which
+drains the whole inbox. "Restart and wake" is an operator/zookeeper decision,
+not something the broker forces because mail happens to be present.
 
 Runs as root inside the env container. All broker state lives under
 STATE_DIR (mode 0700) — unreadable by agents by kernel permission bits.
@@ -31,7 +44,8 @@ import subprocess
 import sys
 import threading
 import time
-from collections import defaultdict, deque
+from collections import defaultdict, deque, namedtuple
+from datetime import datetime, timezone
 
 SOCKET_PATH = os.environ.get("BROKER_SOCKET", "/run/broker/broker.sock")
 STATE_DIR = os.environ.get("BROKER_STATE", "/data/broker")
@@ -50,16 +64,37 @@ DEFAULT_POLICY = {
     "deny": [],      # list of [from, to] pairs
 }
 
+# What load_policy returns when the file is unreadable AND there is no last-good
+# policy to fall back on: deny everything. allow=[] means pair_allowed() is
+# False for every non-operator pair; the zero caps block sends/posts outright.
+FAILCLOSED_POLICY = {
+    "max_msg_bytes": 0,
+    "rate_limit_per_min": 0,
+    "allow": [],
+    "deny": [],
+}
+
+# Identity strings reserved for the broker/operator; a Linux user u_<name> whose
+# name collides with one of these is refused rather than allowed to impersonate.
+RESERVED_IDS = {"operator"}
+
+# A connected peer: its agent id (or "operator"), whether it holds operator
+# privilege, and its uid. Privilege rides on is_operator (derived from uid==0),
+# NEVER on the identity string — so an agent named "operator" cannot escalate.
+Principal = namedtuple("Principal", "identity is_operator uid")
+
 _audit_lock = threading.Lock()
 _public_lock = threading.Lock()
 _seq_lock = threading.Lock()
 _seq = 0
 _send_times = defaultdict(deque)  # sender -> deque of monotonic times
 _send_times_lock = threading.Lock()
+_policy_lock = threading.Lock()
+_last_good_policy = None
 
 
 def now_iso():
-    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()) + f".{int(time.time()*1000)%1000:03d}Z"
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def next_seq():
@@ -67,6 +102,47 @@ def next_seq():
     with _seq_lock:
         _seq += 1
         return _seq
+
+
+def _max_seq_in_jsonl(path):
+    m = 0
+    try:
+        with open(path) as f:
+            for line in f:
+                try:
+                    s = json.loads(line).get("seq")
+                except (json.JSONDecodeError, AttributeError):
+                    continue
+                if isinstance(s, int) and s > m:
+                    m = s
+    except FileNotFoundError:
+        pass
+    return m
+
+
+def recover_seq():
+    """Rebuild the sequence counter after a restart so it never goes backwards.
+
+    audit.jsonl is append-only and records every seq the broker ever issued
+    (send + post_public), so its max is a hard floor; public.jsonl and the
+    inbox/inbox_done spool filenames are belt-and-suspenders.
+    """
+    m = max(_max_seq_in_jsonl(AUDIT), _max_seq_in_jsonl(PUBLIC))
+    for aid in agent_ids():
+        try:
+            home = pwd.getpwnam(USER_PREFIX + aid).pw_dir
+        except KeyError:
+            continue
+        for sub in ("inbox", "inbox_done"):
+            try:
+                names = os.listdir(os.path.join(home, sub))
+            except OSError:
+                continue
+            for n in names:
+                stem = n[:-5] if n.endswith(".json") else ""
+                if stem.isdigit():
+                    m = max(m, int(stem))
+    return m
 
 
 def audit(event, **fields):
@@ -78,16 +154,48 @@ def audit(event, **fields):
     return rec
 
 
+def write_policy(pol, path=None):
+    """Write policy.json atomically (temp + rename) so a concurrent load never
+    sees a half-written file. Used by the broker and by scen/GM phase switches."""
+    path = path or POLICY
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w") as f:
+        json.dump(pol, f, indent=2)
+    os.replace(tmp, path)
+
+
 def load_policy():
+    """Re-read policy on every request (live changes, no restart). Fail CLOSED:
+    a transient half-written file (e.g. a GM rewriting phase allowlists) returns
+    the last-good policy; if there is no last-good, deny everything."""
+    global _last_good_policy
     try:
         with open(POLICY) as f:
             pol = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         audit("policy_load_error", error=str(e))
-        return dict(DEFAULT_POLICY)
+        with _policy_lock:
+            if _last_good_policy is not None:
+                return dict(_last_good_policy)
+        return dict(FAILCLOSED_POLICY)
     merged = dict(DEFAULT_POLICY)
     merged.update(pol)
+    with _policy_lock:
+        _last_good_policy = dict(merged)
     return merged
+
+
+def _rate_ok(sender, cap):
+    """Sliding 60s window per sender. cap<=0 blocks all (fail-closed policy)."""
+    with _send_times_lock:
+        q = _send_times[sender]
+        now = time.monotonic()
+        while q and now - q[0] > 60:
+            q.popleft()
+        if len(q) >= cap:
+            return False
+        q.append(now)
+        return True
 
 
 def pair_allowed(policy, sender, to):
@@ -111,18 +219,23 @@ def agent_ids():
 
 
 def peer_identity(conn):
-    """Map the connecting process's uid to an identity. Root = operator."""
+    """Derive the caller's Principal from SO_PEERCRED. Operator privilege comes
+    from uid==0 alone; agent identity comes from the u_<id> username. A uid that
+    is neither, or whose id lands in RESERVED_IDS, is rejected (identity=None)."""
     creds = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
     pid, uid, gid = struct.unpack("3i", creds)
     if uid == 0:
-        return "operator", uid
+        return Principal("operator", True, uid)
     try:
         name = pwd.getpwuid(uid).pw_name
     except KeyError:
-        return None, uid
+        return Principal(None, False, uid)
     if name.startswith(USER_PREFIX):
-        return name[len(USER_PREFIX):], uid
-    return None, uid
+        aid = name[len(USER_PREFIX):]
+        if aid in RESERVED_IDS:
+            return Principal(None, False, uid)
+        return Principal(aid, False, uid)
+    return Principal(None, False, uid)
 
 
 class WakeManager:
@@ -176,10 +289,13 @@ class WakeManager:
             # extra_groups=[] drops root's supplementary groups — without it
             # the child would keep root's group memberships and could read
             # peers' files. Load-bearing for isolation.
+            # stdout -> DEVNULL: a chatty on_wake (e.g. a Pi agent streaming
+            # model output) must not accumulate in the long-lived root broker's
+            # memory. Only the bounded stderr tail is kept for the audit record.
             r = subprocess.run(
                 [prog], user=pw.pw_uid, group=pw.pw_gid, extra_groups=[],
                 env=env, cwd=home, timeout=WAKE_TIMEOUT_S,
-                capture_output=True, text=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
             )
             audit("wake_end", agent=agent, rc=r.returncode,
                   dur_s=round(time.monotonic() - t0, 3),
@@ -191,12 +307,65 @@ class WakeManager:
 WAKES = WakeManager()
 
 
-def op_send(sender, req):
+def _deliver(pw, seq, msg):
+    """Write msg into the recipient's inbox as an agent-owned 0600 file without
+    ever following a symlink the recipient could have planted, and publish it
+    atomically so a concurrent inbox drain never sees a partial or root-owned
+    file.
+
+    Trust model: /agents is root-owned, so the recipient cannot swap the
+    /agents/<id> home-dir entry itself; but everything INSIDE the home is
+    agent-controlled. So we open the home with O_NOFOLLOW, then create/verify
+    the inbox and write the message using single-component paths relative to
+    dir fds with O_NOFOLLOW|O_EXCL — no path component the agent can redirect.
+    """
+    uid, gid = pw.pw_uid, pw.pw_gid
+    home_fd = os.open(pw.pw_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            inbox_fd = os.open("inbox", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                               dir_fd=home_fd)
+        except FileNotFoundError:
+            os.mkdir("inbox", mode=0o700, dir_fd=home_fd)
+            os.chown("inbox", uid, gid, dir_fd=home_fd, follow_symlinks=False)
+            inbox_fd = os.open("inbox", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                               dir_fd=home_fd)
+        try:
+            if os.fstat(inbox_fd).st_uid != uid:
+                raise PermissionError("inbox not owned by recipient")
+            data = (json.dumps(msg, sort_keys=True) + "\n").encode()
+            tmp = f".tmp.{seq:08d}.{os.getpid()}"
+            final = f"{seq:08d}.json"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=inbox_fd)
+            try:
+                os.write(fd, data)
+                os.fchown(fd, uid, gid)
+                os.fchmod(fd, 0o600)
+            finally:
+                os.close(fd)
+            # Atomic reveal: the final name appears only fully-written + owned.
+            # rename does not follow a symlink at either name and stays within
+            # the verified inbox dir fd, so the agent cannot redirect it out.
+            os.rename(tmp, final, src_dir_fd=inbox_fd, dst_dir_fd=inbox_fd)
+        finally:
+            os.close(inbox_fd)
+    finally:
+        os.close(home_fd)
+
+
+def op_send(pr, req):
+    sender = pr.identity
     to = req.get("to")
     text = req.get("text")
     if not isinstance(to, str) or not isinstance(text, str):
         return {"ok": False, "error": "send needs string 'to' and 'text'"}
-    if to not in agent_ids():
+    if to in RESERVED_IDS:
+        audit("send_denied", frm=sender, to=to, reason="reserved")
+        return {"ok": False, "error": f"reserved recipient: {to}"}
+    try:
+        pw = pwd.getpwnam(USER_PREFIX + to)
+    except KeyError:
         audit("send_denied", frm=sender, to=to, reason="no_such_agent")
         return {"ok": False, "error": f"no such agent: {to}"}
 
@@ -206,38 +375,29 @@ def op_send(sender, req):
         audit("send_denied", frm=sender, to=to, reason="size_cap",
               bytes=nbytes, cap=policy["max_msg_bytes"])
         return {"ok": False, "error": "message exceeds size cap"}
-    if sender != "operator":
+    if not pr.is_operator:
         if not pair_allowed(policy, sender, to):
             audit("send_denied", frm=sender, to=to, reason="policy")
             return {"ok": False, "error": "policy: not allowed to message this agent"}
-        cap = policy["rate_limit_per_min"]
-        with _send_times_lock:
-            q = _send_times[sender]
-            now = time.monotonic()
-            while q and now - q[0] > 60:
-                q.popleft()
-            if len(q) >= cap:
-                audit("send_denied", frm=sender, to=to, reason="rate_cap", cap=cap)
-                return {"ok": False, "error": "rate cap exceeded"}
-            q.append(now)
+        if not _rate_ok(sender, policy["rate_limit_per_min"]):
+            audit("send_denied", frm=sender, to=to, reason="rate_cap",
+                  cap=policy["rate_limit_per_min"])
+            return {"ok": False, "error": "rate cap exceeded"}
 
     seq = next_seq()
     msg = {"seq": seq, "ts": now_iso(), "from": sender, "to": to, "text": text}
-    pw = pwd.getpwnam(USER_PREFIX + to)
-    inbox = os.path.join(pw.pw_dir, "inbox")
-    os.makedirs(inbox, mode=0o700, exist_ok=True)
-    os.chown(inbox, pw.pw_uid, pw.pw_gid)
-    path = os.path.join(inbox, f"{seq:08d}.json")
-    with open(path, "w") as f:
-        f.write(json.dumps(msg, sort_keys=True) + "\n")
-    os.chmod(path, 0o600)
-    os.chown(path, pw.pw_uid, pw.pw_gid)
+    try:
+        _deliver(pw, seq, msg)
+    except Exception as e:
+        audit("send_failed", frm=sender, to=to, seq=seq, error=str(e)[:200])
+        return {"ok": False, "error": "delivery failed"}
     audit("send", frm=sender, to=to, seq=seq, bytes=nbytes)
     WAKES.wake(to, {"type": "pm", "from": sender, "seq": seq})
     return {"ok": True, "seq": seq}
 
 
-def op_post_public(sender, req):
+def op_post_public(pr, req):
+    sender = pr.identity
     text = req.get("text")
     if not isinstance(text, str):
         return {"ok": False, "error": "post_public needs string 'text'"}
@@ -245,6 +405,11 @@ def op_post_public(sender, req):
     if len(text.encode()) > policy["max_msg_bytes"]:
         audit("post_denied", frm=sender, reason="size_cap")
         return {"ok": False, "error": "message exceeds size cap"}
+    if not pr.is_operator and not _rate_ok(sender, policy["rate_limit_per_min"]):
+        # Same hard anti-flood backstop as send — the public surface is not exempt.
+        audit("post_denied", frm=sender, reason="rate_cap",
+              cap=policy["rate_limit_per_min"])
+        return {"ok": False, "error": "rate cap exceeded"}
     seq = next_seq()
     entry = {"seq": seq, "ts": now_iso(), "from": sender, "text": text}
     with _public_lock:
@@ -255,21 +420,31 @@ def op_post_public(sender, req):
     return {"ok": True, "seq": seq}
 
 
-def op_read_public(sender, req):
+def op_read_public(pr, req):
     since = req.get("since", 0)
     if not isinstance(since, int):
         return {"ok": False, "error": "'since' must be an integer seq"}
     entries = []
+    skipped = 0
     with _public_lock:
         try:
             with open(PUBLIC) as f:
                 for line in f:
-                    e = json.loads(line)
-                    if e["seq"] > since:
+                    if not line.strip():
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except json.JSONDecodeError:
+                        # One torn/partial line (e.g. a crash mid-append) must
+                        # not permanently break all public reads — skip it.
+                        skipped += 1
+                        continue
+                    if e.get("seq", 0) > since:
                         entries.append(e)
         except FileNotFoundError:
             pass
-    audit("read_public", frm=sender, since=since, returned=len(entries))
+    audit("read_public", frm=pr.identity, since=since,
+          returned=len(entries), skipped=skipped)
     return {"ok": True, "entries": entries}
 
 
@@ -278,10 +453,10 @@ OPS = {"send": op_send, "post_public": op_post_public, "read_public": op_read_pu
 
 def handle(conn):
     try:
-        sender, uid = peer_identity(conn)
-        if sender is None:
+        pr = peer_identity(conn)
+        if pr.identity is None:
             conn.sendall(b'{"ok": false, "error": "unknown peer"}\n')
-            audit("denied_peer", uid=uid)
+            audit("denied_peer", uid=pr.uid)
             return
         buf = b""
         conn.settimeout(10)
@@ -302,7 +477,7 @@ def handle(conn):
         if op is None:
             resp = {"ok": False, "error": f"unknown op: {req.get('op')!r}"}
         else:
-            resp = op(sender, req)
+            resp = op(pr, req)
         conn.sendall((json.dumps(resp) + "\n").encode())
     except Exception as e:
         audit("handler_error", error=str(e)[:500])
@@ -318,20 +493,23 @@ def main():
     if os.geteuid() != 0:
         sys.exit("broker must run as root")
     os.umask(0o077)
+    global _seq
     os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
     os.chmod(STATE_DIR, 0o700)
     if not os.path.exists(POLICY):
-        with open(POLICY, "w") as f:
-            json.dump(DEFAULT_POLICY, f, indent=2)
+        write_policy(DEFAULT_POLICY)
     os.makedirs(os.path.dirname(SOCKET_PATH), mode=0o755, exist_ok=True)
     os.chmod(os.path.dirname(SOCKET_PATH), 0o755)
     if os.path.exists(SOCKET_PATH):
         os.unlink(SOCKET_PATH)
+    # Resume the sequence counter from disk so a snapshot/restore is invisible
+    # to agents (no backwards seqs, no inbox-filename collisions).
+    _seq = recover_seq()
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     srv.bind(SOCKET_PATH)
     os.chmod(SOCKET_PATH, 0o666)  # world-connectable; identity via SO_PEERCRED
     srv.listen(64)
-    audit("broker_start", agents=agent_ids(), socket=SOCKET_PATH)
+    audit("broker_start", agents=agent_ids(), socket=SOCKET_PATH, seq=_seq)
     print(f"pi-runtime broker listening on {SOCKET_PATH}", flush=True)
     while True:
         conn, _ = srv.accept()

@@ -10,13 +10,19 @@ Docs: docs/runtime_pi.md §7. Ported from the OC-era 8-item sandbox checklist
 here.
 """
 import json
+import os
+import pwd
 import subprocess
 import sys
 import time
 
+sys.path.insert(0, "/runtime_pi")
+import broker  # same deployed dir; single source of defaults + state paths
+
 CLIENT = "python3 /runtime_pi/broker_client.py"
-AUDIT = "/data/broker/audit.jsonl"
-POLICY = "/data/broker/policy.json"
+AUDIT = broker.AUDIT
+POLICY = broker.POLICY
+PUBLIC = broker.PUBLIC
 RESULTS = []
 
 
@@ -63,10 +69,9 @@ def check(name, ok, detail=""):
 
 
 def set_policy(**overrides):
-    pol = {"max_msg_bytes": 16384, "rate_limit_per_min": 30, "allow": None, "deny": []}
+    pol = dict(broker.DEFAULT_POLICY)
     pol.update(overrides)
-    with open(POLICY, "w") as f:
-        json.dump(pol, f)
+    broker.write_policy(pol)   # atomic, and the same defaults the broker ships
 
 
 def main():
@@ -93,7 +98,13 @@ def main():
     time.sleep(2)
     check("t2 posting woke NOBODY", len(audit_events("wake")) == wakes_before)
     r = as_agent("a2", f"{CLIENT} read-public")
-    got = r.returncode == 0 and "public hello from a1" in r.stdout and '"from": "a1"' in r.stdout.replace('"from":"a1"', '"from": "a1"')
+    try:
+        resp = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        resp = {}
+    got = (r.returncode == 0 and resp.get("ok")
+           and any(e.get("text") == "public hello from a1" and e.get("from") == "a1"
+                   for e in resp.get("entries", [])))
     check("t2 peer can pull the post with true author", got, r.stdout + r.stderr)
 
     print("T3: filesystem isolation (0700 homes)")
@@ -105,10 +116,10 @@ def main():
     check("t3 a1 cannot write into a2's inbox directly", r.returncode != 0, r.stdout)
 
     print("T4: broker private state unreachable by agents")
-    for path in [AUDIT, POLICY, "/data/broker/public.jsonl"]:
+    for path in [AUDIT, POLICY, PUBLIC]:
         r = as_agent("a1", f"cat {path}")
         check(f"t4 a1 cannot read {path}", r.returncode != 0, r.stdout[:100])
-    r = as_agent("a1", "ls /data/broker/")
+    r = as_agent("a1", f"ls {broker.STATE_DIR}/")
     check("t4 a1 cannot list broker state dir", r.returncode != 0, r.stdout)
 
     print("T5: sender identity cannot be spoofed")
@@ -131,9 +142,14 @@ def main():
     check("t6 re-allowed after policy revert", r.returncode == 0, r.stdout + r.stderr)
 
     print("T7: rate cap")
+    # a3 has sent nothing yet, so its 60s window is empty — with cap=3 exactly
+    # the first 3 sends must succeed and the next 3 must be refused. (Using a
+    # sender already at the cap would let this pass even for a broker that
+    # denies every send.)
     set_policy(rate_limit_per_min=3)
-    outs = [as_agent("a1", f'{CLIENT} send a3 "flood {i}"').returncode for i in range(6)]
-    check("t7 flood partially refused", outs.count(0) <= 3 and 1 in outs, str(outs))
+    outs = [as_agent("a3", f'{CLIENT} send a1 "flood {i}"').returncode for i in range(6)]
+    check("t7 exactly cap sends allowed, rest refused",
+          outs == [0, 0, 0, 1, 1, 1], str(outs))
     check("t7 rate denial audited",
           any(d["reason"] == "rate_cap" for d in audit_events("send_denied")))
     set_policy()
@@ -153,6 +169,17 @@ def main():
     check("t9 zero overlapping wakes", "OVERLAP" not in agent_log("a2"))
     check("t9 operator sends audited as operator",
           audit_events("send")[-1]["frm"] == "operator")
+
+    print("T10: inbox symlink attack is refused (broker never follows it)")
+    # a2 redirects its own inbox at a victim dir; the broker must refuse rather
+    # than chown/write through the symlink. (Runs last: it breaks a2's inbox.)
+    victim_uid_before = os.stat("/agents/a1").st_uid
+    as_agent("a2", 'rm -rf "$HOME/inbox" && ln -s /agents/a1 "$HOME/inbox"')
+    r = as_operator(f'{CLIENT} send a2 "attack"')
+    check("t10 send through symlinked inbox refused", r.returncode != 0, r.stdout)
+    check("t10 refusal audited as send_failed", len(audit_events("send_failed")) >= 1)
+    check("t10 victim home ownership unchanged (no chown escape)",
+          os.stat("/agents/a1").st_uid == victim_uid_before == pwd.getpwnam("u_a1").pw_uid)
 
     print()
     failed = [r for r in RESULTS if not r[1]]
