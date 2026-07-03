@@ -17,12 +17,12 @@ import sys
 import time
 
 sys.path.insert(0, "/runtime_pi")
-import broker  # same deployed dir; single source of defaults + state paths
+import pi_gateway as gateway  # same deployed dir; single source of defaults + state paths
 
-CLIENT = "python3 /runtime_pi/broker_client.py"
-AUDIT = broker.AUDIT
-POLICY = broker.POLICY
-PUBLIC = broker.PUBLIC
+CLIENT = "python3 /runtime_pi/pi_gateway_client.py"
+AUDIT = gateway.AUDIT
+POLICY = gateway.POLICY
+PUBLIC = gateway.PUBLIC
 RESULTS = []
 
 
@@ -69,9 +69,9 @@ def check(name, ok, detail=""):
 
 
 def set_policy(**overrides):
-    pol = dict(broker.DEFAULT_POLICY)
+    pol = dict(gateway.DEFAULT_POLICY)
     pol.update(overrides)
-    broker.write_policy(pol)   # atomic, and the same defaults the broker ships
+    gateway.write_policy(pol)   # atomic, and the same defaults the gateway ships
 
 
 def main():
@@ -115,12 +115,12 @@ def main():
     r = as_agent("a1", "touch /agents/a2/inbox/evil.json")
     check("t3 a1 cannot write into a2's inbox directly", r.returncode != 0, r.stdout)
 
-    print("T4: broker private state unreachable by agents")
+    print("T4: gateway private state unreachable by agents")
     for path in [AUDIT, POLICY, PUBLIC]:
         r = as_agent("a1", f"cat {path}")
         check(f"t4 a1 cannot read {path}", r.returncode != 0, r.stdout[:100])
-    r = as_agent("a1", f"ls {broker.STATE_DIR}/")
-    check("t4 a1 cannot list broker state dir", r.returncode != 0, r.stdout)
+    r = as_agent("a1", f"ls {gateway.STATE_DIR}/")
+    check("t4 a1 cannot list gateway state dir", r.returncode != 0, r.stdout)
 
     print("T5: sender identity cannot be spoofed")
     spoof = json.dumps({"op": "send", "to": "a3", "from": "a2", "text": "spoofed"})
@@ -134,7 +134,7 @@ def main():
     print("T6: LIVE policy change (no restart)")
     set_policy(deny=[["a1", "a3"]])
     r = as_agent("a1", f'{CLIENT} send a3 "should be blocked"')
-    check("t6 denied pair refused without broker restart", r.returncode != 0, r.stdout)
+    check("t6 denied pair refused without gateway restart", r.returncode != 0, r.stdout)
     denied = audit_events("send_denied")
     check("t6 denial audited", any(d["reason"] == "policy" for d in denied))
     set_policy()
@@ -144,7 +144,7 @@ def main():
     print("T7: rate cap")
     # a3 has sent nothing yet, so its 60s window is empty — with cap=3 exactly
     # the first 3 sends must succeed and the next 3 must be refused. (Using a
-    # sender already at the cap would let this pass even for a broker that
+    # sender already at the cap would let this pass even for a gateway that
     # denies every send.)
     set_policy(rate_limit_per_min=3)
     outs = [as_agent("a3", f'{CLIENT} send a1 "flood {i}"').returncode for i in range(6)]
@@ -190,8 +190,8 @@ def main():
     # let the wake-all's on_wake processes finish before the destructive test
     wait_for(lambda: not os.path.exists("/agents/a2/.wake_running"))
 
-    print("T11: inbox symlink attack is refused (broker never follows it)")
-    # a2 redirects its own inbox at a victim dir; the broker must refuse rather
+    print("T11: inbox symlink attack is refused (gateway never follows it)")
+    # a2 redirects its own inbox at a victim dir; the gateway must refuse rather
     # than chown/write through the symlink. (Runs last: it breaks a2's inbox.)
     victim_uid_before = os.stat("/agents/a1").st_uid
     as_agent("a2", 'rm -rf "$HOME/inbox" && ln -s /agents/a1 "$HOME/inbox"')

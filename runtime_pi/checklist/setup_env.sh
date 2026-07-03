@@ -1,6 +1,6 @@
 #!/bin/bash
 # Step-1 container setup: create agent users + 0700 homes, install dummy
-# agents, start the broker. Run as root inside the env container with the
+# agents, start the gateway. Run as root inside the env container with the
 # repo's runtime_pi/ dir mounted at /runtime_pi.
 set -euo pipefail
 
@@ -14,14 +14,14 @@ for id in $AGENTS; do
     chmod 700 "/agents/$id" "/agents/$id/inbox" "/agents/$id/on_wake"
 done
 
-mkdir -p /data/broker /run/broker
-chmod 700 /data/broker
+mkdir -p /data/gateway /run/gateway
+chmod 700 /data/gateway
 
-python3 /runtime_pi/broker.py >/var/log/broker.log 2>&1 &
+python3 /runtime_pi/pi_gateway.py >/var/log/gateway.log 2>&1 &
 
 for i in $(seq 1 50); do
-    [ -S /run/broker/broker.sock ] && break
+    [ -S /run/gateway/gateway.sock ] && break
     sleep 0.1
 done
-[ -S /run/broker/broker.sock ] || { echo "broker failed to start"; cat /var/log/broker.log; exit 1; }
-echo "setup done: agents [$AGENTS], broker up"
+[ -S /run/gateway/gateway.sock ] || { echo "gateway failed to start"; cat /var/log/gateway.log; exit 1; }
+echo "setup done: agents [$AGENTS], gateway up"

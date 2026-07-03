@@ -4,7 +4,7 @@ Single source of truth for the PI runtime, agentspace's second runtime
 (alongside OpenClaw — see `runtime_openclaw.md`). Runtime OCI label: `pi`.
 Menu name: "PI".
 
-**STATUS (2026-07-03): partially built.** The broker + isolation skeleton
+**STATUS (2026-07-03): partially built.** The gateway + isolation skeleton
 exists and passes its gate (27/27). Pi integration, zookeeper wiring, and the
 GM interface are designed but NOT built — this runtime cannot yet be selected
 in New World. Build plan and gate history live in the working notes:
@@ -21,27 +21,31 @@ captures everything; no workspace tar). Inside it:
   Isolation is kernel permission bits, not sibling containers: an agent's
   processes literally cannot read a peer's files, and there is no docker
   socket, no DooD, no sandbox-name collision class.
-- **A privileged broker** (root, `runtime_pi/broker.py`) — the ONLY path for
+- **A privileged gateway** (root, `runtime_pi/pi_gateway.py`) — the ONLY path for
   inter-agent interaction. Unix-socket daemon; sender identity comes from
   SO_PEERCRED, never from the request body, so spoofing is impossible by
-  construction.
+  construction. Named for its role parallel with the OC gateway (the single
+  privileged daemon agents talk through) — but the parallel is ROLE-ONLY: the
+  PI gateway is deliberately thin (deliver / wake / audit; no LLM sessions, no
+  containers, no heartbeats, no TUI) and never initiates anything on its own.
+  Game logic never lives here; it belongs in scen code (the GM, step 4).
 - **Per-agent brains: Pi** (`@earendil-works/pi-coding-agent`, EXACT-pinned —
   see §6). Agents are purely reactive: no heartbeats, no polling; every
-  activation is a broker wake with a logged cause. *(Not yet integrated —
+  activation is a gateway wake with a logged cause. *(Not yet integrated —
   step 2.)*
 - **Optionally a scen-provided GM** — deterministic control code driving the
-  world through a privileged broker API. *(Not yet built — step 4.)*
+  world through a privileged gateway API. *(Not yet built — step 4.)*
 
-## 2. Broker protocol (agent-facing)
+## 2. Gateway protocol (agent-facing)
 
-Socket: `/run/broker/broker.sock` (mode 0666; identity via peercred, policy
+Socket: `/run/gateway/gateway.sock` (mode 0666; identity via peercred, policy
 enforced server-side). One JSON request line per connection, one JSON response
-line back. Agents use the CLI shim `runtime_pi/broker_client.py`:
+line back. Agents use the CLI shim `runtime_pi/pi_gateway_client.py`:
 
-    broker_client.py send <to> <text...>     {"op":"send","to":...,"text":...}
-    broker_client.py post <text...>          {"op":"post_public","text":...}
-    broker_client.py read-public [--since N] {"op":"read_public","since":N}
-    broker_client.py wake <to|*>             {"op":"wake","to":...}  (operator)
+    pi_gateway_client.py send <to> <text...>     {"op":"send","to":...,"text":...}
+    pi_gateway_client.py post <text...>          {"op":"post_public","text":...}
+    pi_gateway_client.py read-public [--since N] {"op":"read_public","since":N}
+    pi_gateway_client.py wake <to|*>             {"op":"wake","to":...}  (operator)
 
 - `send` — private message. Policy check → write to recipient's inbox spool
   (`/agents/<to>/inbox/<seq>.json`, owned by recipient, 0600) → audit → wake
@@ -60,7 +64,7 @@ line back. Agents use the CLI shim `runtime_pi/broker_client.py`:
   whatever is already in its inbox. This is the explicit "wake" primitive that
   the restart-and-wake flow (§4) opts into; agents calling it are refused
   (`wake_denied`, reason `not_operator`).
-- Any `"from"` field in a request is ignored; the broker knows who you are.
+- Any `"from"` field in a request is ignored; the gateway knows who you are.
 - Identity and privilege come from SO_PEERCRED, never from a name string.
   Operator privilege is derived from **uid 0 alone** (`Principal.is_operator`),
   not from the identity text — so an agent that happens to be named `operator`
@@ -70,8 +74,8 @@ line back. Agents use the CLI shim `runtime_pi/broker_client.py`:
 
 ## 3. Policy — live, no restarts
 
-`/data/broker/policy.json`, re-read on EVERY request — editing it takes
-effect on the next message with no broker restart (unlike OC's static A2A
+`/data/gateway/policy.json`, re-read on EVERY request — editing it takes
+effect on the next message with no gateway restart (unlike OC's static A2A
 allowlists). Fields:
 
     {
@@ -87,23 +91,23 @@ size_cap / no_such_agent / reserved).
 
 Policy reads **fail closed** and writes are **atomic**. `write_policy()` writes
 via temp + rename so a reader never sees a half-written file. If a read fails
-anyway, the broker returns the last-good policy it successfully parsed; if there
-is no last-good yet (a cold broker whose first read fails), it denies
+anyway, the gateway returns the last-good policy it successfully parsed; if there
+is no last-good yet (a cold gateway whose first read fails), it denies
 everything (`FAILCLOSED_POLICY`) rather than falling open to allow-all. A GM
 switching phase allowlists at runtime should call `write_policy()`.
 
 ## 4. Wake contract
 
-Wake = the broker spawns `/agents/<id>/on_wake` **as that agent's user** via
+Wake = the gateway spawns `/agents/<id>/on_wake` **as that agent's user** via
 `subprocess.run(user=, group=, extra_groups=[])`. `extra_groups=[]` is
 LOAD-BEARING: without it the child inherits root's supplementary groups and
 can read peers' files.
 
 - Env provided (this list is exhaustive): `HOME`, `USER`, `AGENT_ID`,
-  `BROKER_SOCKET`, `WAKE_CAUSES` (JSON list, e.g.
+  `GATEWAY_SOCKET`, `WAKE_CAUSES` (JSON list, e.g.
   `[{"type":"pm","from":"a1","seq":7}]`), and `PATH`
   (`/usr/local/bin:/usr/bin:/bin`). No `PI_*` prefix on purpose — that
-  namespace belongs to the Pi tool. The child also inherits the broker's
+  namespace belongs to the Pi tool. The child also inherits the gateway's
   `umask 077`; keep it, so agent-created files are not group-readable (all
   agents share one primary group under `useradd --no-user-group`).
 - **Serialized per agent**: at most one on_wake process per agent at a time.
@@ -115,7 +119,7 @@ can read peers' files.
   a message spooled but not yet processed is picked up by whatever wake comes
   next. The step-2 `agentd` must honor this (the dummy checklist agent does).
 - Timeout 120s; on_wake stdout is discarded (a chatty agent must not buffer in
-  the root broker); exit code, duration, and a bounded stderr tail go to audit.
+  the root gateway); exit code, duration, and a bounded stderr tail go to audit.
 - In step 2, `on_wake` becomes the `agentd` wrapper that assembles the prompt
   sandwich and runs a Pi turn; today it's whatever the env installs (the
   checklist uses dummy shell agents).
@@ -128,31 +132,31 @@ the only in-memory state agents could observe is the sequence counter, which
 filenames) at startup — so seqs never go backwards and inbox filenames never
 collide with leftover pre-snapshot files.
 
-A restart does **not** wake agents — that is the DEFAULT and the broker has no
+A restart does **not** wake agents — that is the DEFAULT and the gateway has no
 code path that wakes on startup. Mail already in an inbox is not lost: it waits
 there and is swept up by the next legitimate wake (the drain-whole-inbox
-contract). The broker never manufactures a wake just because mail is present.
+contract). The gateway never manufactures a wake just because mail is present.
 
-Waking on restart is a **separate, explicit opt-in**, not a broker behavior:
+Waking on restart is a **separate, explicit opt-in**, not a gateway behavior:
 
-- The broker exposes the operator-only `wake` op (§2) — `wake <id>` or
+- The gateway exposes the operator-only `wake` op (§2) — `wake <id>` or
   `wake "*"` — which wakes agents with no message attached.
 - Zookeeper owns the policy: `restart` leaves agents dormant; a `--wake` flag
   (or a separate `wake` subcommand) is what issues the wakes after the
   container is back up. *(That zookeeper wiring is step 3; today the `wake` op
-  is callable directly by the operator via `broker_client.py wake`.)*
+  is callable directly by the operator via `pi_gateway_client.py wake`.)*
 
 So both behaviors are supported and the choice lives with the operator: restart
 quietly (default), or restart and then wake some/all agents.
 
 ## 5. Observability
 
-Everything under `/data/broker` (mode 0700 — unreachable by agents):
+Everything under `/data/gateway` (mode 0700 — unreachable by agents):
 
 - `audit.jsonl` — every send (incl. `send_denied` with reason and
   `send_failed`), every public post/read, every wake with its causes (incl.
   operator `wake_requested` / `wake_denied`), every wake_end with rc/duration,
-  and `broker_start` (with the recovered seq). Every agent activation in the
+  and `gateway_start` (with the recovered seq). Every agent activation in the
   world has a logged cause here.
 - `public.jsonl` — the public chat, append-only.
 - `policy.json` — current live policy.
@@ -182,18 +186,18 @@ Rules:
 
 Throwaway container (`openclaw-sandbox:bookworm-slim`, local, `--network
 none`), ~30s, zero tokens, exits nonzero on any failure. Run it after ANY
-broker change. It proves, with real `su` credentials: PM round-trip +
+gateway change. It proves, with real `su` credentials: PM round-trip +
 auto-wake + no ack ping-pong; public chat wakes nobody; 0700 homes hold;
-broker state unreachable; sender spoofing impossible; live policy / rate cap /
+gateway state unreachable; sender spoofing impossible; live policy / rate cap /
 size cap enforced + audited; wakes serialized under burst; the operator `wake`
 primitive wakes without a message and is refused to agents; and the inbox
 **symlink attack is refused** (no chown/write escape). The harness is
 mutation-tested: weakening a home to 755 turns the run red.
 
 A companion script `checklist/verify_fixes.py` covers behaviors the
-single-broker gate can't reach — **broker restart** (seq recovery / snapshot
+single-gateway gate can't reach — **gateway restart** (seq recovery / snapshot
 transparency), the **reserved-name collision** (`u_operator` refused),
-**fail-closed policy** on a cold broker with a corrupt file, and the
+**fail-closed policy** on a cold gateway with a corrupt file, and the
 **public rate cap**. Run it the same way:
 
     docker run --rm --network none --user 0:0 \

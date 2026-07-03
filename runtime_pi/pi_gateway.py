@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""pi-runtime broker — the only privileged piece of the PI runtime.
+"""The PI gateway — the only privileged piece of the PI runtime.
+
+Named for its role parallel with the OpenClaw gateway: the single privileged
+daemon every agent talks through. The parallel is ROLE-ONLY — this one is
+deliberately thin (deliver, wake, audit; no LLM sessions, no containers, no
+heartbeats, no TUI) and it never initiates anything on its own: every wake it
+performs was caused by a message, a GM call, or an operator command. Game
+logic never lives here — it belongs in scen code (GM, step 4).
 
 Docs: docs/runtime_pi.md (single source of truth — protocol, policy format,
 wake contract, checklist). Design history in the working notes:
@@ -32,9 +39,9 @@ counter — is rebuilt from disk at startup (recover_seq). A restart does NOT
 wake agents (the DEFAULT): mail waits in the inbox for the next legitimate
 wake, which drains the whole inbox. Waking on restart is a separate, explicit
 opt-in owned by the operator/zookeeper — the `wake` op (op_wake) — never
-something the broker forces because mail happens to be present.
+something the gateway forces because mail happens to be present.
 
-Runs as root inside the env container. All broker state lives under
+Runs as root inside the env container. All gateway state lives under
 STATE_DIR (mode 0700) — unreadable by agents by kernel permission bits.
 """
 import json
@@ -49,9 +56,9 @@ import time
 from collections import defaultdict, deque, namedtuple
 from datetime import datetime, timezone
 
-SOCKET_PATH = os.environ.get("BROKER_SOCKET", "/run/broker/broker.sock")
-STATE_DIR = os.environ.get("BROKER_STATE", "/data/broker")
-AGENTS_DIR = os.environ.get("BROKER_AGENTS_DIR", "/agents")
+SOCKET_PATH = os.environ.get("GATEWAY_SOCKET", "/run/gateway/gateway.sock")
+STATE_DIR = os.environ.get("GATEWAY_STATE", "/data/gateway")
+AGENTS_DIR = os.environ.get("GATEWAY_AGENTS_DIR", "/agents")
 USER_PREFIX = "u_"
 WAKE_TIMEOUT_S = 120
 
@@ -76,7 +83,7 @@ FAILCLOSED_POLICY = {
     "deny": [],
 }
 
-# Identity strings reserved for the broker/operator; a Linux user u_<name> whose
+# Identity strings reserved for the gateway/operator; a Linux user u_<name> whose
 # name collides with one of these is refused rather than allowed to impersonate.
 RESERVED_IDS = {"operator"}
 
@@ -125,7 +132,7 @@ def _max_seq_in_jsonl(path):
 def recover_seq():
     """Rebuild the sequence counter after a restart so it never goes backwards.
 
-    audit.jsonl is append-only and records every seq the broker ever issued
+    audit.jsonl is append-only and records every seq the gateway ever issued
     (send + post_public), so its max is a hard floor; public.jsonl and the
     inbox/inbox_done spool filenames are belt-and-suspenders.
     """
@@ -158,7 +165,7 @@ def audit(event, **fields):
 
 def write_policy(pol, path=None):
     """Write policy.json atomically (temp + rename) so a concurrent load never
-    sees a half-written file. Used by the broker and by scen/GM phase switches."""
+    sees a half-written file. Used by the gateway and by scen/GM phase switches."""
     path = path or POLICY
     tmp = f"{path}.tmp.{os.getpid()}"
     with open(tmp, "w") as f:
@@ -284,7 +291,7 @@ class WakeManager:
             "PATH": "/usr/local/bin:/usr/bin:/bin",
             "USER": pw.pw_name,
             "AGENT_ID": agent,
-            "BROKER_SOCKET": SOCKET_PATH,
+            "GATEWAY_SOCKET": SOCKET_PATH,
             "WAKE_CAUSES": json.dumps(causes),
         }
         try:
@@ -292,7 +299,7 @@ class WakeManager:
             # the child would keep root's group memberships and could read
             # peers' files. Load-bearing for isolation.
             # stdout -> DEVNULL: a chatty on_wake (e.g. a Pi agent streaming
-            # model output) must not accumulate in the long-lived root broker's
+            # model output) must not accumulate in the long-lived root gateway's
             # memory. Only the bounded stderr tail is kept for the audit record.
             r = subprocess.run(
                 [prog], user=pw.pw_uid, group=pw.pw_gid, extra_groups=[],
@@ -452,7 +459,7 @@ def op_read_public(pr, req):
 
 def op_wake(pr, req):
     """Operator-only: wake an agent (or all with '*') WITHOUT delivering a
-    message. This is the explicit primitive for "restart and wake" — the broker
+    message. This is the explicit primitive for "restart and wake" — the gateway
     never auto-wakes on restart (see the module docstring), so zookeeper/the
     operator uses this to opt in. The wake carries cause {"type":"operator"};
     the agent runs and drains whatever is already in its inbox, nothing new is
@@ -524,7 +531,7 @@ def handle(conn):
 
 def main():
     if os.geteuid() != 0:
-        sys.exit("broker must run as root")
+        sys.exit("gateway must run as root")
     os.umask(0o077)
     global _seq
     os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
@@ -542,8 +549,8 @@ def main():
     srv.bind(SOCKET_PATH)
     os.chmod(SOCKET_PATH, 0o666)  # world-connectable; identity via SO_PEERCRED
     srv.listen(64)
-    audit("broker_start", agents=agent_ids(), socket=SOCKET_PATH, seq=_seq)
-    print(f"pi-runtime broker listening on {SOCKET_PATH}", flush=True)
+    audit("gateway_start", agents=agent_ids(), socket=SOCKET_PATH, seq=_seq)
+    print(f"pi-runtime gateway listening on {SOCKET_PATH}", flush=True)
     while True:
         conn, _ = srv.accept()
         threading.Thread(target=handle, args=(conn,), daemon=True).start()

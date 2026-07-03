@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-"""pi-runtime CLI — the bash-to-broker shim agents (and the operator) use.
+"""pi-runtime CLI — the bash-to-gateway shim agents (and the operator) use.
 
 Docs: docs/runtime_pi.md §2.
 
 Usage:
-  broker_client.py send <to> <text...>
-  broker_client.py post <text...>
-  broker_client.py read-public [--since N]
-  broker_client.py wake <to|*>           # operator-only: wake without a message
-  broker_client.py raw '<json>'          # send an arbitrary request (tests)
+  pi_gateway_client.py send <to> <text...>
+  pi_gateway_client.py post <text...>
+  pi_gateway_client.py read-public [--since N]
+  pi_gateway_client.py wake <to|*>           # operator-only: wake without a message
+  pi_gateway_client.py raw '<json>'          # send an arbitrary request (tests)
 
-Identity is NEVER an argument: the broker derives it from SO_PEERCRED.
-Prints the broker's JSON response; exits 1 if ok=false.
+Identity is NEVER an argument: the gateway derives it from SO_PEERCRED.
+Prints the gateway's JSON response; exits 1 if ok=false.
 """
 import json
 import os
 import socket
 import sys
 
-SOCKET_PATH = os.environ.get("BROKER_SOCKET", "/run/broker/broker.sock")
+SOCKET_PATH = os.environ.get("GATEWAY_SOCKET", "/run/gateway/gateway.sock")
 
 
 def request(obj):
