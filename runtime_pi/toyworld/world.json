@@ -3,5 +3,6 @@
   "pi_bin": "/pi/node_modules/.bin/pi",
   "thinking": "low",
   "require_scratchpad": true,
-  "messaging_norms": true
+  "messaging_norms": true,
+  "max_tokens": 16384
 }

@@ -10,12 +10,20 @@ required for agent-to-agent. This translator never writes `tools.allow` from fea
 
 import json
 import shlex
+import shutil
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 from .. import docker_host
 
 NAME = "openclaw"
+MENU_NAME = "openclaw"
+BASE_IMAGE = "agentspace:base"
+
+# Feature flags every OC world root carries (parity with simple2agent 4.0).
+DEFAULT_FEATURE_FLAGS = {"agent_to_agent": True, "fs_isolation": "sandbox"}
 
 GATEWAY_LOG_PATH = "/tmp/gateway.log"
 KICK_FILE_PATH = "/data/scenario_kick.txt"  # set by snap.cmd_fork if present
@@ -159,6 +167,79 @@ def render_config(
         },
     }
     return json.dumps(config, indent=2) + "\n"
+
+
+def _peers_md(self_id: str, all_ids: list[str]) -> str:
+    """Self-describing peers file: who else is here and the key to message them.
+    OC-specific (sessions_send key; sessions_list is denied per-agent, so the
+    key must be given directly). PI worlds use the gateway `who` op instead."""
+    peers = [a for a in all_ids if a != self_id]
+    lines = [
+        "# Peers",
+        "",
+        f"You are agent `{self_id}`. You share this world with "
+        f"{len(peers)} other agent(s).",
+    ]
+    for other in peers:
+        lines += [
+            "",
+            f"## {other}",
+            f"- Agent ID: `{other}`",
+            "- To send them a message, use the `sessions_send` tool with:",
+            f'  `sessionKey = "agent:{other}:main"`',
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def bake(host, container, *, agents, seeds, world_md, kick_text):
+    """Assemble the OC world inside the build container: render openclaw.json,
+    stage /data (config, world.md, kick, per-agent seed workspaces incl. the
+    OC-specific PEERS.md), one `docker cp`. (Moved from builder._stage_world —
+    the staging LAYOUT is runtime knowledge.)"""
+    config_text = render_config([{"id": a["id"], "model": a["model"]} for a in agents])
+    ids = [a["id"] for a in agents]
+    stage = Path(tempfile.mkdtemp(prefix="oc-bake-"))
+    try:
+        data = stage / "data"
+        (data / "openclaw").mkdir(parents=True)
+        (data / "openclaw" / "openclaw.json").write_text(config_text, encoding="utf-8")
+        if world_md is not None:
+            (data / "world.md").write_text(world_md, encoding="utf-8")
+        (data / "scenario_kick.txt").write_text(kick_text, encoding="utf-8")
+        for agent_id, files in seeds.items():
+            ws = data / "seed" / "agents" / agent_id / "workspace"
+            ws.mkdir(parents=True, exist_ok=True)
+            for fname, contents in files.items():
+                (ws / fname).write_text(contents, encoding="utf-8")
+            (ws / "PEERS.md").write_text(_peers_md(agent_id, ids), encoding="utf-8")
+        docker_host.run(host, "exec", container, "mkdir", "-p", "/data")
+        docker_host.run(host, "cp", f"{stage}/data/.", f"{container}:/data")
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def post_fork(host, container, env_name):
+    """No OC-specific fork step (key arrives via container env; OC reads it)."""
+
+
+def soul_dest(agent_id: str) -> str:
+    """--soul destination for NON-sandboxed envs (sandboxed dest is the host
+    workspace tree; snap.cmd_fork handles that branch)."""
+    return f"/data/openclaw/agents/{agent_id}/workspace/SOUL.md"
+
+
+def agent_state(host, container) -> str:
+    """'active' or 'dormant' for a running container — raises DockerError if
+    the container is down (callers use that as the running probe). active iff
+    the gateway is alive AND some agent has a session dir (was kicked). The
+    trailing `:` forces exit 0 so a running container never looks 'down'."""
+    out = docker_host.stdout(
+        host, "exec", container, "sh", "-c",
+        'pgrep -x openclaw >/dev/null 2>&1 && echo GW; '
+        '[ -n "$(ls -A /data/openclaw/agents 2>/dev/null)" ] && echo KICKED; :',
+    )
+    toks = out.split()
+    return "active" if ("GW" in toks and "KICKED" in toks) else "dormant"
 
 
 def env_fs_root(env_name: str) -> str:

@@ -4,12 +4,14 @@ Single source of truth for the PI runtime, agentspace's second runtime
 (alongside OpenClaw — see `runtime_openclaw.md`). Runtime OCI label: `pi`.
 Menu name: "PI".
 
-**STATUS (2026-07-03): agents think, worlds run — no zookeeper yet.** The
-gateway + isolation skeleton passes its gate (41/41) and the Pi integration
-(agentd + 3-agent toy world) passes its gate — but zookeeper wiring and the
-GM interface are NOT built, so this runtime cannot yet be selected in New
-World. Build plan and gate history live in the working notes:
-`/home/cc/2026-07-03_plan_pi_runtime.md` (steps 0–2 done, steps 3–6 pending);
+**STATUS (2026-07-04): fully operable from zookeeper — no GM yet.** The
+gateway + isolation skeleton passes its gate (41/41), the Pi integration
+(agentd + toy world) passes its gate, and zookeeper wiring is DONE: "PI" is a
+runtime choice in New World, `runtimes/pi.py` implements the standard runtime
+surface, and PI envs fork/wake/chat/roll/snapshot from the normal CLI/menu.
+The GM interface (step 4) is designed but NOT built. Build plan and gate
+history: `/home/cc/2026-07-03_plan_pi_runtime.md` (steps 0–3 done, 4–6
+pending);
 design sources `/home/cc/PLAN_C_no_openclaw.md`,
 `/home/cc/2026-07-02_thoughts_on_agent_driving_for_games.md`.
 
@@ -213,8 +215,26 @@ append its thinking for the turn to `scratch/thoughts.md` before acting — a
 deliberate, re-readable reflection log alongside the involuntary thinking
 blocks. Soft-enforced: compliance is visible per turn in `budget.jsonl`.
 
-Config from `/world/world.json` (`model`, `pi_bin`, `thinking`,
-`require_scratchpad`, `messaging_norms`); OpenRouter key at `/world/openrouter_key`
+**`max_tokens`** (world.json, DEFAULT 16384): per-turn output ceiling, written
+by agentd into the agent's `~/.pi/agent/models.json` as a `modelOverrides`
+entry. Two reasons it exists: (1) without it Pi requests the model's catalog
+maxTokens (64k for haiku) on EVERY call, and OpenRouter pre-reserves that
+against the key's remaining credit — a near-empty key 402s even though the
+actual turn would cost a fraction of a cent; (2) it bounds the worst-case
+cost of a single runaway turn. **Cost philosophy: it is a safety rail, not a
+leash** — the default is deliberately roomy (thinking tokens count as output),
+agents get space to work, and the instrument for watching spend is
+`budget.jsonl` per-agent attribution, not tight caps. **Hitting the cap is
+LOUD**: a turn truncated at the cap (Pi `stopReason: "length"`) writes
+`hit_max_tokens: true` into that turn's budget.jsonl record and a MAX_TOKENS
+HIT line to stderr → the audit `wake_end` record. If it recurs, raise the
+world's cap — don't leave agents clipped. GOTCHA (verified on 0.80.3):
+`modelOverrides` in `settings.json` is silently ignored — it only works in
+`models.json`.
+
+Config from `/world/world.json` (`model`, per-agent `models` map, `pi_bin`,
+`thinking`, `require_scratchpad`, `messaging_norms`, `max_tokens`);
+OpenRouter key at `/world/openrouter_key`
 (world-readable in-container, like OC's env key). agentd env knobs use the
 `AGENTD_*` prefix — never `PI_*` (that namespace belongs to the Pi tool).
 Local trace in `$HOME/agentd.log`.
@@ -267,6 +287,21 @@ Everything under `/data/gateway` (mode 0700 — unreachable by agents):
 Plus per-agent inbox spools (delivered message files) in each home. All under
 paths captured by `docker commit` → snaps stay complete observability bundles.
 
+## 5a. Zookeeper surface (step 3)
+
+PI worlds are built and driven through the normal zookeeper flow: New World →
+runtime "PI" → scen/roster → fork → wake. Runtime dispatch rides the snap's
+`runtime` OCI label (`agentspace/runtimes/pi.py`). PI-specific env commands:
+
+    zookeeper env kick <env> [--message ...]   # bare wake, or operator PM
+    zookeeper env chat <env> <agent>           # REPL: PM in, transcript reply out
+    zookeeper env post <env> "<text>"          # operator post to the public board
+    zookeeper env roll-sessions <env> [--agent a] # archive transcripts + sysprompt
+
+`env kill` removes ONE container — no sandbox siblings exist to clean.
+world.json `max_tokens` (§4a) caps per-turn output; the builder writes a
+per-agent `models` map so mixed-model rosters work per agent.
+
 ## 6. Pi version pinning
 
 `@earendil-works/pi-coding-agent`, currently **0.80.3** (npm; the unscoped
@@ -314,6 +349,5 @@ This is the successor of the OC-era 8-item sandbox checklist
 
 ## 8. Not built yet (do not assume)
 
-- `runtimes/pi.py` + New World menu entry + operator REPL (step 3), GM API
-  + `gmlib` (step 4), game scens (steps 5–6), session-rollover triggers.
-  Until step 3 lands, zookeeper knows nothing about this runtime.
+- GM API + `gmlib` (step 4), game scens (steps 5–6), GM-triggered session
+  rollover (operator `env roll-sessions` EXISTS; the gmlib call is step 4).

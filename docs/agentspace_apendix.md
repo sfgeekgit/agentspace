@@ -11,7 +11,7 @@ What do they do?
 
 ## Appendix B: Phase 2 — Hermes and Agent Evolution
 
-OpenClaw is the first runtime agentspace supports, because its multi-agent primitives (coordination, cooperation, hierarchy under shared resource pressure) are the better-developed tooling for the research focus. The platform is runtime-agnostic by design; additional runtimes are a near-term direction.
+OpenClaw was the first runtime agentspace supported. The platform is runtime-agnostic by design, and a second runtime — PI (`runtime_pi.md`): Pi-brained agents as per-agent Linux users behind a small owned gateway — landed 2026-07-04 and is the growth runtime; OC remains fully supported.
 
 Hermes Agent (Nous Research) centers on a different axis: a self-improving agent loop where agents auto-generate skill files from successful executions. For the MVP this is a confounder — agents differentiated by self-written skill libraries are harder to control as experimental subjects.
 

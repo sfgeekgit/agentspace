@@ -266,6 +266,34 @@ def env_logs(name, agent, all_agents, everything, follow):
                      all_agents=all_agents, everything=everything)
 
 
+@env.command("chat")
+@click.argument("name")
+@click.argument("agent")
+def env_chat(name, agent):
+    """Chat with one agent (PI runtime): operator PMs in, transcript replies out."""
+    from agentspace import env as env_mod
+    env_mod.cmd_chat(name, agent)
+
+
+@env.command("post")
+@click.argument("name")
+@click.argument("message")
+def env_post(name, message):
+    """Post to the env's public board as the operator (PI runtime)."""
+    from agentspace import env as env_mod
+    env_mod.cmd_post(name, message)
+
+
+@env.command("roll-sessions")
+@click.argument("name")
+@click.option("--agent", default=None, help="One agent (default: all).")
+def env_roll_sessions(name, agent):
+    """Archive session transcripts; next wake starts fresh with re-rendered
+    files (PI runtime). World-event-driven — never automatic."""
+    from agentspace import env as env_mod
+    env_mod.cmd_roll_sessions(name, agent=agent)
+
+
 @env.command("exec")
 @click.argument("name")
 @click.argument("cmd", nargs=-1, required=True)
@@ -376,27 +404,28 @@ def _pick_env(prompt="Env name:"):
     return None if name == "← Back" else name
 
 
-def _pick_model(label, prior=()):
+def _pick_model(label, prior=(), rt=None):
     """Progressive model picker — the user never types a full model path.
 
-    Top level: already-chosen models (for agents 2..N) + Haiku + Other.
-    Other → recently-used + 'See all'. See all → searchable live catalog.
-    `prior` = models already chosen this roster, offered as quick top choices.
-    Returns a model id (raises _Cancelled if the user backs out)."""
-    from agentspace.runtimes import openclaw
+    Top level: already-chosen models (for agents 2..N) + the runtime's default
+    + Other. Other → recently-used + 'See all'. See all → searchable live
+    catalog. `prior` = models already chosen this roster; `rt` = the runtime
+    module (model-id format is a runtime concern; default openclaw)."""
+    if rt is None:
+        from agentspace.runtimes import openclaw as rt
     SEE_ALL, OTHER = "See all models (search)…", "Other…"
     top = []
-    for m in (*prior, openclaw.DEFAULT_MODEL):
+    for m in (*prior, rt.DEFAULT_MODEL):
         if m not in top:
             top.append(m)
     choice = _ask(lambda: questionary.select(label, choices=top + [OTHER]).ask())
     if choice != OTHER:
         return choice
-    recent = [m for m in openclaw.recent_models() if m not in top]
+    recent = [m for m in rt.recent_models() if m not in top]
     choice = _ask(lambda: questionary.select(label, choices=recent + [SEE_ALL]).ask())
     if choice != SEE_ALL:
         return choice
-    allm = openclaw.list_all_models()
+    allm = rt.list_all_models()
     return _ask(lambda: questionary.autocomplete(
         "Type to filter models:", choices=allm,
         validate=lambda v: v in allm or "pick a model from the list",
@@ -556,6 +585,9 @@ def menu_env():
                     "Start env",
                     "Stop env",
                     "Wake agents  (begin / send bootstrap)",
+                    "Chat with an agent  (PI runtime)",
+                    "Post to public board  (PI runtime)",
+                    "Roll sessions  (PI runtime: fresh transcripts)",
                     "Sleep env  (pause agents, keep container)",
                     "Kill env  (removes container)",
                     "Watch logs  (gateway / agents / everything)",
@@ -602,6 +634,29 @@ def menu_env():
                     continue
                 msg = _ask(lambda: questionary.text("Message override (blank for scenario default):").ask())
                 env_mod.cmd_kick(name, message=msg or None)
+
+            elif choice.startswith("Chat with an agent"):
+                name = _pick_env()
+                if not name:
+                    continue
+                agent = _ask(lambda: questionary.text("Agent id:").ask())
+                if agent:
+                    env_mod.cmd_chat(name, agent.strip())
+
+            elif choice.startswith("Post to public board"):
+                name = _pick_env()
+                if not name:
+                    continue
+                msg = _ask(lambda: questionary.text("Message:").ask())
+                if msg:
+                    env_mod.cmd_post(name, msg)
+
+            elif choice.startswith("Roll sessions"):
+                name = _pick_env()
+                if not name:
+                    continue
+                agent = _ask(lambda: questionary.text("Agent id (blank for all):").ask())
+                env_mod.cmd_roll_sessions(name, agent=(agent.strip() or None) if agent else None)
 
             elif choice.startswith("Sleep env"):
                 name = _pick_env()
@@ -748,11 +803,17 @@ def menu_new_world():
     """
     from agentspace import registry, builder
 
-    # 1. runtime — only openclaw exists today, so default it SILENTLY (no prompt).
-    #    The arch still supports others (builder/registry take a runtime, and
-    #    runtimes.get dispatches): when a second runtime lands, add a
-    #    questionary.select here over the available runtimes.
-    runtime = "openclaw"
+    # 1. runtime — pick by menu name (runtime label ↔ display name lives in
+    #    each runtime module).
+    from agentspace import runtimes as rt_registry
+    rt_names = {m.MENU_NAME: n for n, m in rt_registry.REGISTRY.items()}
+    pick = _ask(lambda: questionary.select(
+        "Runtime:", choices=list(rt_names) + [questionary.Separator(), "← Back"]
+    ).ask())
+    if pick == "← Back":
+        return
+    runtime = rt_names[pick]
+    rt_module = rt_registry.get(runtime)
 
     # 2. scen — surface any broken scens (with a one-key "disable" so the warning
     #    isn't a permanent nag), then pick from the active ones.
@@ -821,11 +882,11 @@ def menu_new_world():
     same_model = _ask(lambda: questionary.confirm(
         "Use the same backend model for every agent?", default=True).ask())
     if same_model:
-        models = [_pick_model("Backend model:")] * n
+        models = [_pick_model("Backend model:", rt=rt_module)] * n
     else:
         models = []
         for i in range(n):
-            models.append(_pick_model(f"Model for agent {i + 1}/{n}:", prior=models))
+            models.append(_pick_model(f"Model for agent {i + 1}/{n}:", prior=models, rt=rt_module))
 
     same_persona = _ask(lambda: questionary.confirm(
         "Use the same persona for every agent?", default=True).ask())

@@ -59,12 +59,12 @@ pm_woken = {w["agent"] for w in wakes
 for a in AGENTS:
     check(f"g4 {a} woke on a pm delivery", a in pm_woken)
 
-print("G5: no-ack norm — greetings did not ping-pong")
-check("g5 total agent sends <= 4 (3 greetings + slack, no ack storm)",
-      len(sends) <= 4, f"sends={[(s['frm'], s['to']) for s in sends]}")
-extra = {(s["frm"], s["to"]) for s in sends} - GREETING_PAIRS
-check("g5 no reply-to-greeting pairs", not (
-    {(t, f) for f, t in GREETING_PAIRS} & extra), str(extra))
+print("G5: no unbounded ping-pong (soft norms; agents may chat, not storm)")
+# After the minimal-SOUL decision (2026-07-04, user: freedom over restriction)
+# a few greeting-replies are ACCEPTED behavior; the hard requirement is only
+# that conversation is bounded — no ack storm. Rate cap is the true backstop.
+check("g5 total agent sends bounded (<= 3 per agent)",
+      len(sends) <= 3 * len(AGENTS), f"sends={[(s['frm'], s['to']) for s in sends]}")
 
 print("G6: per-agent spend attribution in budget.jsonl")
 for a in AGENTS:

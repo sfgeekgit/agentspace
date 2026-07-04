@@ -25,7 +25,7 @@ A brand-new world (`X.0` snap) is built from a **scen** via the menu:
 python3 zookeeper.py        # → "New world"
 ```
 
-The wizard picks a runtime (openclaw), a scen, the agent count, a per-agent model
+The wizard picks a runtime (PI or openclaw), a scen, the agent count, a per-agent model
 + persona, modules (none yet), and a world name, then builds a local World Root.
 This is distinct from **Fork** (snap → env) and **Take** (env → snap). Scens and
 personas are authored as files in the repo — see `authoring_scenarios.md`. The
@@ -39,6 +39,8 @@ underlying call is `agentspace.builder.build_world_root(...)`.
 - Docker (see `droplet-setup.md`)
 - Python 3.10+ with `click` and `rich` installed
 - The base runtime image: `docker build -t agentspace:base /opt/agentspace-ctl`
+- For PI-runtime worlds, the PI base image (agentspace:base + node + Pi,
+  EXACT-pinned): `docker build -t pi-world:step2 /opt/agentspace-ctl/runtime_pi/toyworld`
 - For sandboxed scenarios (`fs_isolation: "sandbox"`), one-time host setup:
   - `sudo install -d -o $USER -g $USER /var/agentspace-envs` — per-env agent
     workspace trees live here (the CLI itself never needs root: contents written
@@ -91,6 +93,9 @@ snap rebuild-index [--repo <repo>]         # rebuild SQLite from ghcr.io labels
 
 ```
 env list                                   # table with live status, started time, runtime + budget
+env chat <env> <agent>                     # PI: operator REPL (PM in, transcript reply out)
+env post <env> "<text>"                    # PI: operator post to the public board
+env roll-sessions <env> [--agent <id>]     # PI: archive transcripts; fresh session next wake
 env show <name>                            # detail panel
 # STARTED is Docker's last-start time (local tz). RUNTIME is total time started,
 # summed from the audit log — approximate: it only counts starts/stops done

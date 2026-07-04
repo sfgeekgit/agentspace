@@ -10,10 +10,14 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from . import audit, db, docker_host, openrouter
-from .runtimes import openclaw
+from . import audit, db, docker_host, openrouter, runtimes
 
 console = Console()
+
+
+def _rt(env: dict):
+    """Runtime module for an env (via its snap's `runtime` label)."""
+    return runtimes.for_snap(db.get_snap_by_id(env["snap_id"]))
 
 
 def _require_env(name: str) -> dict:
@@ -32,7 +36,7 @@ def _live_status(env: dict) -> str:
     # The agent-state exec doubles as the is-it-running probe (it fails if the
     # container is down), so running envs need just one docker call, not two.
     try:
-        return _agent_state(host, name)
+        return _rt(env).agent_state(host, name)
     except docker_host.DockerError:
         try:
             return "stopped" if docker_host.container_exists(host, name) else "missing"
@@ -55,20 +59,6 @@ def _enter_line(env: dict, status: str) -> str:
     """Pasteable 'enter the container' command, with a hint if it isn't running."""
     cmd = docker_host.enter_command(env["host"] or "localhost", env["name"])
     return cmd if _is_up(status) else f"{cmd}   (start the env first)"
-
-
-def _agent_state(host: str, name: str) -> str:
-    """'active' or 'dormant' for a running container — raises DockerError if the
-    container is down (the caller uses that as the running probe). active iff the
-    gateway is alive AND some agent has a session dir (was kicked). The trailing
-    `:` forces exit 0 so a running container never looks 'down' to the probe."""
-    out = docker_host.stdout(
-        host, "exec", name, "sh", "-c",
-        'pgrep -x openclaw >/dev/null 2>&1 && echo GW; '
-        '[ -n "$(ls -A /data/openclaw/agents 2>/dev/null)" ] && echo KICKED; :',
-    )
-    toks = out.split()
-    return "active" if ("GW" in toks and "KICKED" in toks) else "dormant"
 
 
 _STARTED_AT_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
@@ -240,6 +230,7 @@ def cmd_start(name: str):
             f"env {name!r} references unknown snap_id {env['snap_id']!r}"
         )
 
+    rt = runtimes.for_snap(snap)
     console.print(f"[dim]docker start {name} …[/dim]")
     docker_host.run(host, "start", name)
 
@@ -247,11 +238,11 @@ def cmd_start(name: str):
     agents = snap.get("agents") or []
     if flags:
         console.print(f"[dim]re-translating flags from snap labels …[/dim]")
-        openclaw.translate_flags(host, name, flags, agents)
+        rt.translate_flags(host, name, flags, agents)
 
     console.print(f"[dim]starting gateway …[/dim]")
-    openclaw.start_gateway(host, name)
-    openclaw.wait_for_gateway(host, name)
+    rt.start_gateway(host, name)
+    rt.wait_for_gateway(host, name)
 
     audit.log("env.start", name)
     console.print(f"[green]✓[/green] env {name} container started, gateway up. "
@@ -263,7 +254,7 @@ def cmd_stop(name: str):
     host = env["host"] or "localhost"
 
     console.print(f"[dim]stopping gateway …[/dim]")
-    openclaw.stop_gateway(host, name)
+    _rt(env).stop_gateway(host, name)
 
     console.print(f"[dim]docker stop {name} …[/dim]")
     docker_host.run(host, "stop", name)
@@ -285,15 +276,17 @@ def cmd_kick(name: str, message: str | None = None):
 
     # A dormant or slept env may have its gateway stopped; waking must start it
     # first. (start_gateway truncates the log, so wait_for_gateway is reliable.)
-    if not openclaw.gateway_running(host, name):
+    rt = runtimes.for_snap(snap)
+    if not rt.gateway_running(host, name):
         console.print("[dim]gateway not running; starting it …[/dim]")
-        openclaw.start_gateway(host, name)
-        openclaw.wait_for_gateway(host, name)
+        rt.start_gateway(host, name)
+        rt.wait_for_gateway(host, name)
 
-    text = message or openclaw.read_kick_message(host, name)
-    console.print(f"[dim]waking {len(agents)} agent(s) with message {text!r} …[/dim]")
+    text = message or rt.read_kick_message(host, name)
+    what = f"message {text!r}" if text else "a bare wake (no message)"
+    console.print(f"[dim]waking {len(agents)} agent(s) with {what} …[/dim]")
     for agent_id in agents:
-        openclaw.kick_agent(host, name, agent_id, text)
+        rt.kick_agent(host, name, agent_id, text)
     audit.log("env.kick", name, args={"agents": agents, "message": text})
     db.set_env_status(name, "active")
     console.print(f"[green]✓[/green] env {name} is active — agents woken.")
@@ -310,7 +303,7 @@ def cmd_sleep(name: str):
             f"env {name!r} is not running (nothing to sleep). Use 'env start' first."
         )
     console.print(f"[dim]stopping gateway (container stays up) …[/dim]")
-    openclaw.stop_gateway(host, name)
+    _rt(env).stop_gateway(host, name)
     db.set_env_status(name, "dormant")
     audit.log("env.sleep", name)
     console.print(
@@ -332,34 +325,35 @@ def cmd_kill(name: str, force: bool = False):
 
     host = env["host"] or "localhost"
     snap = db.get_snap_by_id(env["snap_id"])
+    rt = runtimes.for_snap(snap)
     sandboxed = bool(snap) and (snap.get("feature_flags") or {}).get("fs_isolation") == "sandbox"
 
     if sandboxed:
         # 1. Sandbox siblings OUTLIVE the env container — remove them explicitly
         #    (matched by mounted workspace path, not by OC's generated names).
-        for sbx in openclaw.find_sandbox_containers(host, name):
+        for sbx in rt.find_sandbox_containers(host, name):
             console.print(f"[dim]removing sandbox container {sbx} …[/dim]")
             docker_host.run(host, "rm", "-f", sbx, check=False)
         # 2. Workspace contents are root-owned (written by sandboxes) — delete
         #    them as root through the env container's own mount, BEFORE the
         #    container goes away. Start it briefly if stopped (no gateway,
         #    no spend).
-        env_root = openclaw.env_fs_root(name)
+        env_root = rt.env_fs_root(name)
         if docker_host.container_exists(host, name):
             if not docker_host.container_running(host, name):
                 docker_host.run(host, "start", name, check=False)
             console.print(f"[dim]clearing workspace tree {env_root} …[/dim]")
-            openclaw.clear_env_fs(host, name, name)
+            rt.clear_env_fs(host, name, name)
 
     docker_host.run(host, "stop", name, check=False)
     docker_host.run(host, "rm", name, check=False)
 
     if sandboxed:
         # 3. The now-empty dirs are operator-owned (created at fork) — plain rmdir.
-        shutil.rmtree(openclaw.env_fs_root(name), ignore_errors=True)
-        if os.path.isdir(openclaw.env_fs_root(name)):
+        shutil.rmtree(rt.env_fs_root(name), ignore_errors=True)
+        if os.path.isdir(rt.env_fs_root(name)):
             console.print(
-                f"[yellow]could not fully remove {openclaw.env_fs_root(name)} "
+                f"[yellow]could not fully remove {rt.env_fs_root(name)} "
                 f"(root-owned leftovers?). Remove manually, e.g. with sudo.[/yellow]"
             )
 
@@ -397,16 +391,17 @@ def cmd_logs(
     """
     env = _require_env(name)
     host = env["host"] or "localhost"
+    rt = _rt(env)
 
     def _source(follow_: bool):
         if everything or all_agents:
-            return openclaw.tail_combined(
+            return rt.tail_combined(
                 host, name, env_agent_ids(name),
                 include_gateway=everything, follow=follow_,
             )
         if agent:
-            return openclaw.tail_agent_log(host, name, agent, follow=follow_)
-        return openclaw.tail_gateway_log(host, name, follow=follow_)
+            return rt.tail_agent_log(host, name, agent, follow=follow_)
+        return rt.tail_gateway_log(host, name, follow=follow_)
 
     if follow:
         proc = _source(True)
@@ -433,3 +428,78 @@ def cmd_exec(name: str, cmd: list[str]):
     # Pass through stdin/stdout/stderr by NOT capturing.
     result = docker_host.run(host, "exec", name, *cmd, capture=False, check=False)
     raise SystemExit(result.returncode)
+
+
+# ---- PI-runtime operator surface: chat / post / roll-sessions ----
+
+def _require_pi(env: dict):
+    rt = _rt(env)
+    if rt.NAME != "pi":
+        raise click.ClickException(
+            f"this command is PI-runtime only (env runs {rt.NAME!r})."
+        )
+    return rt
+
+
+def cmd_post(name: str, message: str):
+    """Post to the env's public board as the operator."""
+    env = _require_env(name)
+    rt = _require_pi(env)
+    host = env["host"] or "localhost"
+    rt.post_public(host, name, message)
+    audit.log("env.post", name, args={"message": message})
+    console.print("[green]✓[/green] posted to the public board.")
+
+
+def cmd_roll_sessions(name: str, agent: str | None = None):
+    """Archive session transcripts + frozen sysprompt so the next wake starts a
+    fresh session with re-rendered files. World-event-driven, never wall-clock
+    (docs/runtime_pi.md §4a)."""
+    env = _require_env(name)
+    rt = _require_pi(env)
+    host = env["host"] or "localhost"
+    targets = [agent] if agent else env_agent_ids(name)
+    if not targets:
+        raise click.ClickException(f"env {name!r} has no agents recorded on its snap.")
+    rt.roll_sessions(host, name, targets)
+    audit.log("env.roll_sessions", name, args={"agents": targets})
+    console.print(f"[green]✓[/green] rolled sessions for {', '.join(targets)} — "
+                  f"fresh session (and re-rendered files) at each agent's next wake.")
+
+
+def cmd_chat(name: str, agent: str):
+    """Minimal operator REPL: each line is sent as an operator PM; the agent's
+    reply is read from its session transcript once the wake ends. Ctrl-D/empty
+    line to leave. Shares the agent's ONE session with everything else."""
+    import time as _time
+    env = _require_env(name)
+    rt = _require_pi(env)
+    host = env["host"] or "localhost"
+    if agent not in env_agent_ids(name):
+        raise click.ClickException(f"no agent {agent!r} in env {name!r}.")
+    if not rt.gateway_running(host, name):
+        console.print("[dim]gateway not running; starting it …[/dim]")
+        rt.start_gateway(host, name)
+        rt.wait_for_gateway(host, name)
+    console.print(f"[dim]chatting with {agent} — empty line to quit. Each turn "
+                  f"costs tokens; replies can take ~10-60s.[/dim]")
+    while True:
+        try:
+            line = input(f"you → {agent}: ").strip()
+        except EOFError:
+            break
+        if not line:
+            break
+        mark = rt.audit_line_count(host, name)
+        rt.kick_agent(host, name, agent, line)
+        deadline = _time.monotonic() + 300
+        while _time.monotonic() < deadline:
+            if rt.wake_ended_since(host, name, agent, mark):
+                break
+            _time.sleep(2)
+        else:
+            console.print("[yellow]no wake_end within 300s — see env logs.[/yellow]")
+            continue
+        reply = rt.last_assistant_text(host, name, agent)
+        console.print(f"[bold]{agent}[/bold]: {reply or '(no reply text — norms allow silence)'}")
+    audit.log("env.chat", name, args={"agent": agent})

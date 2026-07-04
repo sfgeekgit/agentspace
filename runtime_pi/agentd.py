@@ -252,6 +252,30 @@ def scratch_mtime(home):
     return m
 
 
+def ensure_pi_settings(home, cfg):
+    """Cap the model's max output tokens via a modelOverrides entry in
+    ~/.pi/agent/models.json (NOT settings.json — verified 0.80.3: overrides in
+    settings.json are silently ignored). Without a cap Pi requests the model's
+    catalog maxTokens (64k for haiku) on EVERY call; OpenRouter pre-reserves
+    that against the key's remaining credit and 402s when it can't — and it is
+    also the per-turn cost ceiling. `max_tokens` is a world.json knob
+    (default 16384): a SAFETY RAIL, deliberately roomy — agents get space to
+    work (incl. thinking tokens, which count as output); the observability for
+    runaway spend is budget.jsonl, not a tight cap. Idempotent."""
+    cap = cfg.get("max_tokens", 16384)
+    model = cfg.get("model", "anthropic/claude-haiku-4.5")
+    models = home / ".pi" / "agent" / "models.json"
+    want = {"providers": {"openrouter": {"modelOverrides": {model: {"maxTokens": cap}}}}}
+    try:
+        cur = json.loads(models.read_text())
+    except (OSError, json.JSONDecodeError):
+        cur = None
+    if cur == want:
+        return
+    models.parent.mkdir(parents=True, exist_ok=True)
+    models.write_text(json.dumps(want, indent=2))
+
+
 def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
     """One prompt -> agent_end round trip over Pi RPC (strict-LF JSONL).
     Returns (ok, usage_totals, n_assistant_msgs)."""
@@ -274,7 +298,7 @@ def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
                             stderr=subprocess.DEVNULL, env=env, cwd=str(home),
                             text=True, bufsize=1)
     totals = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0,
-              "cost_total": 0.0}
+              "cost_total": 0.0, "hit_max_tokens": False}
     n_msgs = 0
     ok = False
     deadline = time.monotonic() + TURN_DEADLINE_S
@@ -303,6 +327,18 @@ def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
                     totals["cost_total"] += (u.get("cost") or {}).get("total") or 0
                     if m.get("stopReason") == "error":
                         log(f"pi turn error: {m.get('errorMessage', '')[:200]}")
+                    if m.get("stopReason") == "length":
+                        # Output truncated by the max_tokens cap. LOUD on
+                        # purpose: stderr lands in the audit wake_end record,
+                        # and hit_max_tokens lands in budget.jsonl — if this
+                        # repeats, raise world.json max_tokens (it is a safety
+                        # rail, not a leash; see docs/runtime_pi.md §4a).
+                        totals["hit_max_tokens"] = True
+                        msg = (f"MAX_TOKENS HIT: turn output truncated at the "
+                               f"world.json max_tokens cap ({cfg.get('max_tokens', 16384)}). "
+                               f"If this recurs, raise the cap.")
+                        log(msg)
+                        print(msg, file=sys.stderr)
             elif t == "agent_end":
                 ok = True
                 break
@@ -324,9 +360,14 @@ def main():
     home = Path.home()
     causes = json.loads(os.environ.get("WAKE_CAUSES", "[]"))
     cfg = json.loads((WORLD_DIR / "world.json").read_text())
+    # Per-agent model map (builder-written) overrides the world default.
+    per_agent = (cfg.get("models") or {}).get(agent_id)
+    if per_agent:
+        cfg["model"] = per_agent
 
     t0 = time.monotonic()
     first_wake = scaffold(home, agent_id)
+    ensure_pi_settings(home, cfg)
     msgs, spool_paths = drain_inbox(home)
     log(f"wake: causes={[c.get('type') for c in causes]} msgs={len(msgs)} "
         f"first={first_wake}")

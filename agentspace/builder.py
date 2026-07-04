@@ -19,36 +19,25 @@ operator pushes (mirrors build_scenario.sh). Forking/snapshotting are unchanged.
 
 import random
 import re
-import shutil
-import tempfile
+
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from . import audit, db, docker_host, oci, registry, runtimes, versioning
-from .runtimes import openclaw  # for DEFAULT_KICK constant
-
-BASE_IMAGE = "agentspace:base"
-
-# Feature flags every world root carries today (parity with simple2agent 4.0).
-DEFAULT_FEATURE_FLAGS = {"agent_to_agent": True, "fs_isolation": "sandbox"}
 
 # A world name becomes the snap's scenario identity (the tag is snap-<name>-<ver>),
 # so it must be a safe tag component: lowercase letters, digits, underscore.
 WORLD_NAME_PATTERN = r"^[a-z0-9_]+$"
 _NAME_RE = re.compile(WORLD_NAME_PATTERN)
 
-
 def valid_world_name(name: str) -> bool:
     """Single source of truth for world-name validity (used by the builder and
     the menu wizard so the two never drift)."""
     return bool(_NAME_RE.match(name))
 
-
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
 
 def generate_agent_ids(n: int, rng: random.Random) -> list[str]:
     """n generic, non-sequential, unique agent IDs (HARD minimal-comms rule):
@@ -57,29 +46,6 @@ def generate_agent_ids(n: int, rng: random.Random) -> list[str]:
     while len(ids) < n:
         ids.add(f"a{rng.randint(10000, 99999)}")
     return list(ids)
-
-
-def _peers_md(self_id: str, all_ids: list[str]) -> str:
-    """Self-describing peers file: who else is here and the key to message them.
-    Minimal and factual — no framing, no 'game'. sessions_list is denied
-    per-agent, so the key must be given directly."""
-    peers = [a for a in all_ids if a != self_id]
-    lines = [
-        "# Peers",
-        "",
-        f"You are agent `{self_id}`. You share this world with "
-        f"{len(peers)} other agent(s).",
-    ]
-    for other in peers:
-        lines += [
-            "",
-            f"## {other}",
-            f"- Agent ID: `{other}`",
-            "- To send them a message, use the `sessions_send` tool with:",
-            f'  `sessionKey = "agent:{other}:main"`',
-        ]
-    return "\n".join(lines) + "\n"
-
 
 def _assign_roles(
     logic: Any, n: int, params: dict[str, Any], rng: random.Random
@@ -95,34 +61,6 @@ def _assign_roles(
         )
     return list(roles)
 
-
-def _stage_world(
-    stage: Path,
-    *,
-    config_text: str,
-    world_md: str | None,
-    kick_text: str,
-    seeds: dict[str, dict[str, str]],   # agent_id -> {filename: contents}
-):
-    """Write the generated /data subtree into `stage` for one `docker cp`. The
-    scen corpus is NOT staged here — it's copied straight into the container (it
-    may be gigabytes; staging would copy it twice)."""
-    data = stage / "data"
-    (data / "openclaw").mkdir(parents=True, exist_ok=True)
-    (data / "openclaw" / "openclaw.json").write_text(config_text, encoding="utf-8")
-
-    if world_md is not None:
-        (data / "world.md").write_text(world_md, encoding="utf-8")
-
-    (data / "scenario_kick.txt").write_text(kick_text, encoding="utf-8")
-
-    for agent_id, files in seeds.items():
-        ws = data / "seed" / "agents" / agent_id / "workspace"
-        ws.mkdir(parents=True, exist_ok=True)
-        for fname, contents in files.items():
-            (ws / fname).write_text(contents, encoding="utf-8")
-
-
 def build_world_root(
     scen_name: str,
     roster: list[dict[str, str]],
@@ -134,7 +72,7 @@ def build_world_root(
     seed: int | None = None,
     version: str | None = None,
     host: str = "localhost",
-    base_image: str = BASE_IMAGE,
+    base_image: str | None = None,
 ) -> dict[str, Any]:
     """Build a world-root (X.0) snap LOCALLY from a scen + roster.
 
@@ -201,20 +139,11 @@ def build_world_root(
             }
         )
 
-    # ---- runtime-native config (OC knowledge stays in the runtime module) ----
-    config_text = rt.render_config(
-        [{"id": a["id"], "model": a["model"]} for a in agents]
-    )
-
-    # ---- per-agent seed files ----
-    # NOTE: the persona is baked as a seed SOUL.md (copied to the workspace at
-    # fork by restore_env_fs, before first turn). runtime_openclaw.md §11 verified
-    # a fork-time-injected SOUL.md survives OC scaffolding; the seed path lands at
-    # the same place/time, but survival through a gateway-routed first turn is not
-    # yet re-verified — confirm on the first real fork.
+    # ---- per-agent seed files (universal; runtime-specific extras — e.g.
+    # OC's PEERS.md — are added by rt.bake) ----
     seeds: dict[str, dict[str, str]] = {}
     for a in agents:
-        files = {"SOUL.md": a["soul_text"], "PEERS.md": _peers_md(a["id"], ids)}
+        files = {"SOUL.md": a["soul_text"]}
         if a["role"] is not None:
             files["ROLE.md"] = a["role_briefing"]
         seeds[a["id"]] = files
@@ -224,7 +153,7 @@ def build_world_root(
     if scen["has_kick"]:
         kick_text = (scen["dir"] / "kick.txt").read_text(encoding="utf-8").strip()
     else:
-        kick_text = openclaw.DEFAULT_KICK
+        kick_text = rt.DEFAULT_KICK
 
     # ---- version + identity ----
     version = version or versioning.next_root_version(identity)
@@ -236,47 +165,45 @@ def build_world_root(
     ghcr_tag = versioning.ghcr_tag(identity, version)
     now = _now()
 
-    # ---- assemble the image: run base -> mkdir -> cp staged tree -> commit ----
+    # ---- assemble the image: run base -> rt.bake -> commit ----
     tmp_container = f"as-build-{snap_id[:12]}"
-    stage = Path(tempfile.mkdtemp(prefix="as-build-"))
+    if base_image is None:
+        base_image = rt.BASE_IMAGE
+    # `docker run` is INSIDE the try so a partial create is still cleaned up
+    # by the finally (otherwise the container name leaks and retries collide).
     try:
-        _stage_world(
-            stage,
-            config_text=config_text,
+        docker_host.run(host, "run", "-d", "--name", tmp_container, base_image)
+        # The runtime owns its staging layout (openclaw.json + seed
+        # workspaces for OC; /world + per-agent Linux users for PI).
+        rt.bake(
+            host, tmp_container,
+            agents=[{"id": a["id"], "model": a["model"]} for a in agents],
+            seeds=seeds,
             world_md=world_md,
             kick_text=kick_text if kick_text.endswith("\n") else kick_text + "\n",
-            seeds=seeds,
         )
-        # `docker run` is INSIDE the try so a partial create is still cleaned up
-        # by the finally (otherwise the container name leaks and retries collide).
-        try:
-            docker_host.run(host, "run", "-d", "--name", tmp_container, base_image)
-            docker_host.run(host, "exec", tmp_container, "mkdir", "-p", "/data")
-            docker_host.run(host, "cp", f"{stage}/data/.", f"{tmp_container}:/data")
-            # Corpus copied straight from the scen dir into the container (NOT
-            # staged) — it may be gigabytes; staging would copy it a second time.
-            if scen["data_dir"] is not None:
-                docker_host.run(host, "exec", tmp_container, "mkdir", "-p", "/data/corpus")
-                docker_host.run(
-                    host, "cp", f"{scen['data_dir']}/.", f"{tmp_container}:/data/corpus"
-                )
-
-            # Snap-level `model` is a display field; a world can run different
-            # models per agent, so show the shared model if uniform else "mixed"
-            # (per-agent models live in the build record + baked openclaw.json).
-            distinct_models = {a["model"] for a in agents}
-            model_label = next(iter(distinct_models)) if len(distinct_models) == 1 else "mixed"
-            snap = _snap_dict(
-                snap_id=snap_id, scenario=identity, scen=scen_name, version=version,
-                ghcr_tag=ghcr_tag, now=now, runtime=runtime,
-                agents=agents, model_label=model_label,
+        # Corpus copied straight from the scen dir into the container (NOT
+        # staged) — it may be gigabytes; staging would copy it a second time.
+        if scen["data_dir"] is not None:
+            docker_host.run(host, "exec", tmp_container, "mkdir", "-p", "/data/corpus")
+            docker_host.run(
+                host, "cp", f"{scen['data_dir']}/.", f"{tmp_container}:/data/corpus"
             )
-            labels = oci.make_labels(snap)
-            oci.commit_with_labels(host, tmp_container, ghcr_tag, labels)
-        finally:
-            docker_host.run(host, "rm", "-f", tmp_container, check=False)
+
+        # Snap-level `model` is a display field; a world can run different
+        # models per agent, so show the shared model if uniform else "mixed"
+        # (per-agent models live in the build record + baked openclaw.json).
+        distinct_models = {a["model"] for a in agents}
+        model_label = next(iter(distinct_models)) if len(distinct_models) == 1 else "mixed"
+        snap = _snap_dict(
+            snap_id=snap_id, scenario=identity, scen=scen_name, version=version,
+            ghcr_tag=ghcr_tag, now=now, runtime=runtime,
+            agents=agents, model_label=model_label,
+        )
+        labels = oci.make_labels(snap)
+        oci.commit_with_labels(host, tmp_container, ghcr_tag, labels)
     finally:
-        shutil.rmtree(stage, ignore_errors=True)
+        docker_host.run(host, "rm", "-f", tmp_container, check=False)
 
     # ---- index + provenance ----
     snap["indexed_at"] = now
@@ -302,7 +229,6 @@ def build_world_root(
         },
     )
     return snap
-
 
 def _snap_dict(
     *, snap_id, scenario, scen, version, ghcr_tag, now, runtime, agents, model_label
@@ -331,7 +257,7 @@ def _snap_dict(
         # labels are readable via `docker inspect`; roles live in audit.log + the
         # agent's own ROLE.md only.
         "soul_files": {a["id"]: f"persona:{a['persona']}" for a in agents},
-        "feature_flags": dict(DEFAULT_FEATURE_FLAGS),
+        "feature_flags": dict(runtimes.get(runtime).DEFAULT_FEATURE_FLAGS),
         "budget_usd": None,
         "budget_used": None,
         "agentspace_ver": __version__,

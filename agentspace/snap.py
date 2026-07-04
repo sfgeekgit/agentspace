@@ -20,7 +20,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from . import audit, db, docker_host, oci, openrouter, versioning
-from .runtimes import openclaw
+from . import runtimes
 
 REPO_ROOT = Path(__file__).resolve().parent.parent  # /opt/agentspace-ctl
 GHCR_REPO_DEFAULT = versioning.GHCR_REPO_DEFAULT
@@ -323,6 +323,7 @@ def cmd_take(
     # pre-commit so the pushed image is the complete env. The env container
     # itself does the (root) tar through its own mount — start it briefly if
     # stopped (CMD is `sleep infinity`; the gateway is NOT started, no spend).
+    rt = runtimes.for_snap(parent_snap)
     if (parent_snap.get("feature_flags") or {}).get("fs_isolation") == "sandbox":
         console.print(f"[dim]capturing host workspace tree into container …[/dim]")
         # Use env_name (the container NAME): container_running matches names,
@@ -330,7 +331,7 @@ def cmd_take(
         was_running = docker_host.container_running(host, env_name)
         if not was_running:
             docker_host.run(host, "start", env_name)
-        openclaw.capture_env_fs(host, env_name, env_name)
+        rt.capture_env_fs(host, env_name, env_name)
         if not was_running:
             docker_host.run(host, "stop", env_name, check=False)
 
@@ -480,10 +481,11 @@ def cmd_fork(
     if kick is None:
         kick = is_world
 
+    rt = runtimes.for_snap(snap)
     flags = snap.get("feature_flags") or {}
     agents = snap.get("agents") or []
     sandboxed = flags.get("fs_isolation") == "sandbox"
-    env_root = openclaw.env_fs_root(new_env_name)
+    env_root = rt.env_fs_root(new_env_name) if sandboxed else None
 
     if sandboxed and host != "localhost":
         raise click.ClickException(
@@ -496,10 +498,10 @@ def cmd_fork(
 
     if sandboxed:
         # The sandbox image is local-only (not on any registry; OC won't pull it).
-        result = docker_host.run(host, "image", "inspect", openclaw.SANDBOX_IMAGE, check=False)
+        result = docker_host.run(host, "image", "inspect", rt.SANDBOX_IMAGE, check=False)
         if result.returncode != 0:
             raise click.ClickException(
-                f"sandbox image {openclaw.SANDBOX_IMAGE!r} not found on {host}. "
+                f"sandbox image {rt.SANDBOX_IMAGE!r} not found on {host}. "
                 f"Build it from OpenClaw's official sandbox Dockerfile first "
                 f"(see docs/runtime_openclaw.md §4)."
             )
@@ -513,7 +515,7 @@ def cmd_fork(
         except PermissionError:
             raise click.ClickException(
                 f"cannot create {env_root}. One-time setup: "
-                f"sudo install -d -o $USER {openclaw.WORKSPACE_ROOT}"
+                f"sudo install -d -o $USER {rt.WORKSPACE_ROOT}"
             )
 
     if existing_key:
@@ -558,12 +560,13 @@ def cmd_fork(
         run_args.append(ghcr_tag)
         docker_host.run(host, *run_args)
         container_started = True
+        rt.post_fork(host, new_env_name, new_env_name)
 
         if sandboxed:
             console.print(f"[dim]rewriting workspace paths → {env_root} …[/dim]")
-            openclaw.rewrite_workspace_paths(host, new_env_name, new_env_name)
+            rt.rewrite_workspace_paths(host, new_env_name, new_env_name)
             console.print(f"[dim]populating workspaces (seed or snapshot tar) …[/dim]")
-            openclaw.restore_env_fs(host, new_env_name, new_env_name)
+            rt.restore_env_fs(host, new_env_name, new_env_name)
 
         # Inject souls.
         for soul_spec in souls:
@@ -582,27 +585,28 @@ def cmd_fork(
             if sandboxed:
                 dest = f"{env_root}/{agent_id}/workspace/SOUL.md"
             else:
-                dest = f"/data/openclaw/agents/{agent_id}/workspace/SOUL.md"
+                dest = rt.soul_dest(agent_id)
             console.print(f"[dim]injecting soul {agent_id} ← {soul_file}[/dim]")
             docker_host.run(host, "cp", str(soul_file), f"{new_env_name}:{dest}")
+            rt.inject_soul(host, new_env_name, agent_id, dest)
 
         if model:
             console.print(f"[dim]patching model = {model}[/dim]")
-            openclaw.patch_model(host, new_env_name, model)
+            rt.patch_model(host, new_env_name, model)
 
         if flags:
-            console.print(f"[dim]translating feature flags → openclaw config …[/dim]")
-            openclaw.translate_flags(host, new_env_name, flags, agents)
+            console.print(f"[dim]translating feature flags → runtime config …[/dim]")
+            rt.translate_flags(host, new_env_name, flags, agents)
 
         console.print(f"[dim]starting gateway …[/dim]")
-        openclaw.start_gateway(host, new_env_name)
-        openclaw.wait_for_gateway(host, new_env_name)
+        rt.start_gateway(host, new_env_name)
+        rt.wait_for_gateway(host, new_env_name)
 
         if kick:
-            kick_text = openclaw.read_kick_message(host, new_env_name)
+            kick_text = rt.read_kick_message(host, new_env_name)
             console.print(f"[dim]kicking agents with message {kick_text!r} …[/dim]")
             for agent_id in agents:
-                openclaw.kick_agent(host, new_env_name, agent_id, kick_text)
+                rt.kick_agent(host, new_env_name, agent_id, kick_text)
 
         container_id = docker_host.stdout(
             host, "inspect", "--format", "{{.Id}}", new_env_name

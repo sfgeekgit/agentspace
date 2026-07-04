@@ -123,7 +123,7 @@ scen blacklist.
 python3 zookeeper.py        # then choose "New world"
 ```
 
-The wizard: pick runtime (openclaw) → scen → agent count (within min/max) →
+The wizard: pick runtime (PI or openclaw) → scen → agent count (within min/max) →
 per-agent model + persona → modules → world name → build. It produces a **local
 World Root (`X.0`) snap**; push it with the snap tooling when ready. You can also
 call `agentspace.builder.build_world_root(...)` directly.
