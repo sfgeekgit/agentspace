@@ -163,8 +163,11 @@ can read peers' files.
    The **preamble is runtime-owned physics** (you have bash as your own user,
    the `gateway`/`check_budget` commands incl. `gateway who` discovery, the
    reactive wake model, the two-tier memory: MEMORY.md = push, scratch/ =
-   pull) — persona files carry personality/scen content only, never
-   mechanics, so they stay portable across runtimes (plan decision 11).
+   pull) plus the baseline messaging norms (world.json `messaging_norms`,
+   default on; a scen may opt out) — persona files carry personality/scen
+   content only, never mechanics, so they stay portable across runtimes
+   (plan decision 11). The default SOUL.md is deliberately minimal
+   (research validity).
    Files are INJECTED, never "please read your home dir". Scens may add ANY
    md files; they describe themselves.
 
@@ -211,7 +214,7 @@ deliberate, re-readable reflection log alongside the involuntary thinking
 blocks. Soft-enforced: compliance is visible per turn in `budget.jsonl`.
 
 Config from `/world/world.json` (`model`, `pi_bin`, `thinking`,
-`require_scratchpad`); OpenRouter key at `/world/openrouter_key`
+`require_scratchpad`, `messaging_norms`); OpenRouter key at `/world/openrouter_key`
 (world-readable in-container, like OC's env key). agentd env knobs use the
 `AGENTD_*` prefix — never `PI_*` (that namespace belongs to the Pi tool).
 Local trace in `$HOME/agentd.log`.

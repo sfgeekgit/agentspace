@@ -69,8 +69,7 @@ Your tools (read/write/edit/bash) run as your own user in your home.
 ## Your files
 
 - Every top-level `*.md` file in your home is part of your context on every
-  wake — including this text and everything below it. Add or edit these
-  files freely; they describe themselves. Keep them small: you carry them
+  wake. Add or edit these files freely. Keep them small: you carry them
   every turn.
 - `MEMORY.md` is your always-present memory — durable facts you need at hand
   every wake. Keep it tight.
@@ -94,12 +93,25 @@ Messages sent to you appear in your wake context automatically; processed
 mail is archived in `inbox_done/`.
 """
 
+# Baseline anti-ping-pong norms. Injected after the preamble unless the world
+# opts out (world.json "messaging_norms": false) — e.g. a scen where acking is
+# required or chatter itself is the studied variable.
+MESSAGING_NORMS = """\
+## Messaging norms
+
+- A private message needs no reply unless it asks you a direct question or
+  gives you a task; never send a message just to acknowledge or to keep a
+  conversation going.
+- The public board is for things addressed to everyone; private messages are
+  for one person.
+"""
+
 SCRATCH_REQUIRED = """\
 ## Required: think in your scratchpad
 
 After reading your messages, BEFORE doing anything else, append your thinking
-for this turn to `scratch/thoughts.md`: your read of the situation, your plan,
-your doubts. If you have afterthoughts at the end of the turn, add those too.
+for this turn to `scratch/thoughts.md`. If you have afterthoughts at the end
+of the turn, add those too.
 """
 
 
@@ -173,6 +185,8 @@ def render_sandwich(home, agent_id, cfg):
     excluded — it is one-time birth content, delivered in the birth user
     message instead."""
     parts = [PREAMBLE.format(agent_id=agent_id, home=home)]
+    if cfg.get("messaging_norms", True):
+        parts.append(MESSAGING_NORMS)
     if cfg.get("require_scratchpad", True):
         parts.append(SCRATCH_REQUIRED)
     names = sorted(p.name for p in home.glob("*.md")
@@ -181,7 +195,7 @@ def render_sandwich(home, agent_id, cfg):
                 [n for n in names if n not in ("SOUL.md", "MEMORY.md")] + \
                 [n for n in names if n == "MEMORY.md"]:
         parts.append(f"# {name}\n\n{(home / name).read_text().strip()}")
-    return "\n\n---\n\n".join(parts)
+    return "\n\n---\n\n".join(p.strip() for p in parts)
 
 
 def session_sandwich(home, agent_id, cfg):

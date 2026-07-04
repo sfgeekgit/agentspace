@@ -2,5 +2,6 @@
   "model": "anthropic/claude-haiku-4.5",
   "pi_bin": "/pi/node_modules/.bin/pi",
   "thinking": "low",
-  "require_scratchpad": true
+  "require_scratchpad": true,
+  "messaging_norms": true
 }
