@@ -1,0 +1,12 @@
+# hello_pi — the minimal no-GM scen (the simple2agent shape, PI-first).
+#
+# No logic.py, no roles, no world.md: agents get only their persona SOUL.md
+# and the runtime physics. The default kick is a bare wake — what they do with
+# it is up to them. Useful as a smoke world for any runtime and as the
+# template to copy when starting a new scen (decision 8: copy, don't abstract).
+
+active = true
+description = "Minimal free-form world: N agents, no roles, no GM."
+min_agents = 2
+max_agents = 8
+module_blacklist = []
