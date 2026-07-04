@@ -1,6 +1,13 @@
 # Authoring scenarios and personas
 
-How to create the building blocks a **World Root** is made from. A new world is:
+How to create the building blocks a **World Root** is made from.
+
+> **Runtime note (2026-07-03):** this doc currently describes the scen
+> surface as the OC runtime consumes it. The PI runtime (see
+> `runtime_pi.md`) adds scen-facing pieces — `FIRST_WAKE.md`, `world.json`
+> flags (`require_scratchpad`, `thinking`), `gm.py`/`gmlib` incl. session
+> rollover, a `requires:` field — which will be documented HERE when the
+> zookeeper/builder wiring for them lands (plan steps 3–4). A new world is:
 
 > **scen × runtime × modules × roster → a World Root (`X.0` snap)**
 

@@ -8,6 +8,7 @@ Usage:
   pi_gateway_client.py post <text...>
   pi_gateway_client.py read-public [--since N]
   pi_gateway_client.py wake <to|*>           # operator-only: wake without a message
+  pi_gateway_client.py who                   # list agent ids in this world
   pi_gateway_client.py raw '<json>'          # send an arbitrary request (tests)
 
 Identity is NEVER an argument: the gateway derives it from SO_PEERCRED.
@@ -51,6 +52,8 @@ def main(argv):
         req = {"op": "read_public", "since": since}
     elif cmd == "wake" and len(args) == 1:
         req = {"op": "wake", "to": args[0]}
+    elif cmd == "who":
+        req = {"op": "who"}
     elif cmd == "raw" and len(args) == 1:
         req = json.loads(args[0])
     else:

@@ -190,6 +190,31 @@ def main():
     # let the wake-all's on_wake processes finish before the destructive test
     wait_for(lambda: not os.path.exists("/agents/a2/.wake_running"))
 
+    print("T12: log_usage — spend attribution cannot be forged")
+    spoof_usage = json.dumps({"op": "log_usage",
+                              "usage": {"cost_total": 0.5, "agent": "a2", "model": "x"}})
+    r = as_agent("a1", f"{CLIENT} raw '{spoof_usage}'")
+    check("t12 log_usage accepted", r.returncode == 0, r.stdout + r.stderr)
+    with open(gateway.BUDGET) as f:
+        last = json.loads(f.readlines()[-1])
+    check("t12 budget entry carries TRUE agent id (spoofed 'agent' overridden)",
+          last["agent"] == "a1" and last["cost_total"] == 0.5, json.dumps(last))
+    bad = json.dumps({"op": "log_usage", "usage": {"nested": {"a": 1}}})
+    r = as_agent("a1", f"{CLIENT} raw '{bad}'")
+    check("t12 non-scalar usage refused", r.returncode != 0, r.stdout)
+    r = as_agent("a1", f"cat {gateway.BUDGET}")
+    check("t12 budget log unreachable by agents", r.returncode != 0, r.stdout[:100])
+
+    print("T13: who — agents can discover the roster")
+    r = as_agent("a1", f"{CLIENT} who")
+    try:
+        who = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        who = {}
+    check("t13 who returns the full agent roster",
+          r.returncode == 0 and who.get("agents") == ["a1", "a2", "a3"],
+          r.stdout + r.stderr)
+
     print("T11: inbox symlink attack is refused (gateway never follows it)")
     # a2 redirects its own inbox at a victim dir; the gateway must refuse rather
     # than chown/write through the symlink. (Runs last: it breaks a2's inbox.)

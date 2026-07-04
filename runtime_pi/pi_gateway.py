@@ -19,7 +19,9 @@ MVP surface:
   escalation are impossible by construction; see peer_identity/Principal).
 - ops: send (PM: policy check -> inbox spool -> audit -> wake recipient),
   post_public (append, wakes NOBODY), read_public (pull), wake (operator-only:
-  wake an agent/all with no message — the explicit "restart and wake" primitive).
+  wake an agent/all with no message — the explicit "restart and wake" primitive),
+  log_usage (agentd reports per-turn model usage/cost -> budget.jsonl, agent id
+  from peercred so spend attribution cannot be forged).
 - inbox delivery never follows a symlink the recipient could plant, and
   publishes each message atomically (temp + rename) so a concurrent drain
   never sees a half-written or root-owned file. See _deliver().
@@ -60,11 +62,14 @@ SOCKET_PATH = os.environ.get("GATEWAY_SOCKET", "/run/gateway/gateway.sock")
 STATE_DIR = os.environ.get("GATEWAY_STATE", "/data/gateway")
 AGENTS_DIR = os.environ.get("GATEWAY_AGENTS_DIR", "/agents")
 USER_PREFIX = "u_"
-WAKE_TIMEOUT_S = 120
+# Real Pi turns (LLM + tool calls) need more than the 120s the dummy agents
+# did; a turn that overruns is killed and audited as wake_error.
+WAKE_TIMEOUT_S = int(os.environ.get("GATEWAY_WAKE_TIMEOUT_S", "300"))
 
 AUDIT = os.path.join(STATE_DIR, "audit.jsonl")
 PUBLIC = os.path.join(STATE_DIR, "public.jsonl")
 POLICY = os.path.join(STATE_DIR, "policy.json")
+BUDGET = os.path.join(STATE_DIR, "budget.jsonl")
 
 DEFAULT_POLICY = {
     "max_msg_bytes": 16384,
@@ -487,8 +492,50 @@ def op_wake(pr, req):
     return {"ok": True, "woke": targets}
 
 
+def op_who(pr, req):
+    """Discovery: list the agent ids that exist in this world. Read-only,
+    derived from the user database — always true, nothing to maintain. This
+    (not a PEERS file) is how agents learn who they can message."""
+    return {"ok": True, "agents": agent_ids()}
+
+
+_budget_lock = threading.Lock()
+
+
+def op_log_usage(pr, req):
+    """agentd reports one turn's model usage/cost; appended to budget.jsonl
+    with the PEERCRED-derived agent id — an agent cannot attribute spend to a
+    peer. Values are shallow-validated (small flat dict of scalars) so a
+    hostile agent cannot bloat root-owned state; flooding is rate-capped on a
+    separate counter from send (usage logging must not compete with mail)."""
+    usage = req.get("usage")
+    if not isinstance(usage, dict) or len(usage) > 24:
+        return {"ok": False, "error": "log_usage needs a small dict 'usage'"}
+    clean = {}
+    for k, v in usage.items():
+        if not isinstance(k, str) or len(k) > 64:
+            return {"ok": False, "error": "bad usage key"}
+        if not isinstance(v, (bool, int, float, str, type(None))):
+            return {"ok": False, "error": f"usage[{k!r}] must be a scalar"}
+        if isinstance(v, str) and len(v) > 200:
+            return {"ok": False, "error": f"usage[{k!r}] too long"}
+        clean[k] = v
+    if not pr.is_operator and not _rate_ok(f"usage:{pr.identity}",
+                                           load_policy()["rate_limit_per_min"]):
+        audit("usage_denied", frm=pr.identity, reason="rate_cap")
+        return {"ok": False, "error": "rate cap exceeded"}
+    # clean first, protected fields last — a usage dict containing "agent"
+    # or "ts" must not override the peercred-derived values.
+    rec = {**clean, "ts": now_iso(), "agent": pr.identity}
+    with _budget_lock:
+        with open(BUDGET, "a") as f:
+            f.write(json.dumps(rec, sort_keys=True) + "\n")
+    return {"ok": True}
+
+
 OPS = {"send": op_send, "post_public": op_post_public,
-       "read_public": op_read_public, "wake": op_wake}
+       "read_public": op_read_public, "wake": op_wake,
+       "log_usage": op_log_usage, "who": op_who}
 
 
 def handle(conn):

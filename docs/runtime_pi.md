@@ -4,11 +4,12 @@ Single source of truth for the PI runtime, agentspace's second runtime
 (alongside OpenClaw — see `runtime_openclaw.md`). Runtime OCI label: `pi`.
 Menu name: "PI".
 
-**STATUS (2026-07-03): partially built.** The gateway + isolation skeleton
-exists and passes its gate (27/27). Pi integration, zookeeper wiring, and the
-GM interface are designed but NOT built — this runtime cannot yet be selected
-in New World. Build plan and gate history live in the working notes:
-`/home/cc/2026-07-03_plan_pi_runtime.md` (steps 0–1 done, steps 2–6 pending);
+**STATUS (2026-07-03): agents think, worlds run — no zookeeper yet.** The
+gateway + isolation skeleton passes its gate (41/41) and the Pi integration
+(agentd + 3-agent toy world) passes its gate — but zookeeper wiring and the
+GM interface are NOT built, so this runtime cannot yet be selected in New
+World. Build plan and gate history live in the working notes:
+`/home/cc/2026-07-03_plan_pi_runtime.md` (steps 0–2 done, steps 3–6 pending);
 design sources `/home/cc/PLAN_C_no_openclaw.md`,
 `/home/cc/2026-07-02_thoughts_on_agent_driving_for_games.md`.
 
@@ -30,11 +31,19 @@ captures everything; no workspace tar). Inside it:
   containers, no heartbeats, no TUI) and never initiates anything on its own.
   Game logic never lives here; it belongs in scen code (the GM, step 4).
 - **Per-agent brains: Pi** (`@earendil-works/pi-coding-agent`, EXACT-pinned —
-  see §6). Agents are purely reactive: no heartbeats, no polling; every
-  activation is a gateway wake with a logged cause. *(Not yet integrated —
-  step 2.)*
+  see §6), driven by the `agentd` wrapper (§4a): one wake = one Pi turn.
+  Agents are purely reactive: no heartbeats, no polling; every activation is
+  a gateway wake with a logged cause.
 - **Optionally a scen-provided GM** — deterministic control code driving the
-  world through a privileged gateway API. *(Not yet built — step 4.)*
+  world through a privileged gateway API. *(Not yet built — step 4.)* Scens
+  are meant to be runtime-agnostic: `gm.py` is written against a
+  runtime-neutral `gmlib` interface with the pi_gateway calls in an adapter
+  behind it, scen files (SOUL/ROLE/…) carry persona/scen content only —
+  never messaging mechanics, which agentd injects as a runtime-owned preamble
+  ("physics from the runtime, personality from files"). Scens declare a
+  minimal `requires:` (e.g. `no-heartbeat`, rarely `live_policy`), which may
+  be conditional on build-time params collected by the New World wizard —
+  one scen definition can build differently-configured world roots.
 
 ## 2. Gateway protocol (agent-facing)
 
@@ -46,6 +55,7 @@ line back. Agents use the CLI shim `runtime_pi/pi_gateway_client.py`:
     pi_gateway_client.py post <text...>          {"op":"post_public","text":...}
     pi_gateway_client.py read-public [--since N] {"op":"read_public","since":N}
     pi_gateway_client.py wake <to|*>             {"op":"wake","to":...}  (operator)
+    (agentd only)                                {"op":"log_usage","usage":{...}}
 
 - `send` — private message. Policy check → write to recipient's inbox spool
   (`/agents/<to>/inbox/<seq>.json`, owned by recipient, 0600) → audit → wake
@@ -64,6 +74,14 @@ line back. Agents use the CLI shim `runtime_pi/pi_gateway_client.py`:
   whatever is already in its inbox. This is the explicit "wake" primitive that
   the restart-and-wake flow (§4) opts into; agents calling it are refused
   (`wake_denied`, reason `not_operator`).
+- `who` — list the agent ids in this world (read-only, straight from the
+  user database). This is discovery: there is no required PEERS file; an
+  agent learns who exists by asking.
+- `log_usage` — agentd reports one turn's model usage/cost after each wake;
+  appended to `budget.jsonl` with the **peercred-derived** agent id, so spend
+  attribution cannot be forged (a spoofed `"agent"` field is overridden).
+  Values are shallow-validated scalars; flooding is rate-capped on a separate
+  counter from `send`.
 - Any `"from"` field in a request is ignored; the gateway knows who you are.
 - Identity and privilege come from SO_PEERCRED, never from a name string.
   Operator privilege is derived from **uid 0 alone** (`Principal.is_operator`),
@@ -118,11 +136,92 @@ can read peers' files.
   `WAKE_CAUSES`. This is what makes delivery robust across restarts (below):
   a message spooled but not yet processed is picked up by whatever wake comes
   next. The step-2 `agentd` must honor this (the dummy checklist agent does).
-- Timeout 120s; on_wake stdout is discarded (a chatty agent must not buffer in
-  the root gateway); exit code, duration, and a bounded stderr tail go to audit.
-- In step 2, `on_wake` becomes the `agentd` wrapper that assembles the prompt
-  sandwich and runs a Pi turn; today it's whatever the env installs (the
-  checklist uses dummy shell agents).
+- Timeout 300s (`GATEWAY_WAKE_TIMEOUT_S`; real Pi turns with tool calls need
+  more than the dummy agents did); on_wake stdout is discarded (a chatty agent
+  must not buffer in the root gateway); exit code, duration, and a bounded
+  stderr tail go to audit.
+- `on_wake` is the `agentd` wrapper (§4a); the checklist still uses dummy
+  shell agents (zero tokens).
+
+## 4a. agentd — one wake = one Pi turn
+
+`runtime_pi/agentd.py`, spawned by the gateway as the agent's user. Per wake:
+
+1. **Scaffolding** — fill gaps, NEVER overwrite (the OC lesson): `SOUL.md`
+   copied from `/world/persona_default/` if missing, `MEMORY.md` written if
+   missing (carries the birth timestamp), `scratch/` created. That is the
+   ENTIRE hardcoded home contract; everything else in the home is scen-owned.
+2. **Drain the whole inbox** — every spooled message goes into this turn, not
+   just `WAKE_CAUSES`. Mail moves to `inbox_done/` only AFTER the turn
+   succeeds; a failed turn leaves it in place and the next wake retries.
+3. **Prompt sandwich** via Pi's `--system-prompt` (replaces Pi's default
+   coding prompt entirely):
+
+       [runtime preamble] + every top-level *.md in the home
+       (SOUL.md first, MEMORY.md last, others alphabetical)
+
+   The **preamble is runtime-owned physics** (you have bash as your own user,
+   the `gateway`/`check_budget` commands incl. `gateway who` discovery, the
+   reactive wake model, the two-tier memory: MEMORY.md = push, scratch/ =
+   pull) — persona files carry personality/scen content only, never
+   mechanics, so they stay portable across runtimes (plan decision 11).
+   Files are INJECTED, never "please read your home dir". Scens may add ANY
+   md files; they describe themselves.
+
+   **Frozen per session:** the sandwich is rendered once when a session
+   starts, saved as `sessions/.sysprompt`, and reused byte-identically every
+   later wake. A mid-session MEMORY.md edit therefore never invalidates the
+   prompt cache for the whole conversation history — the edit is already IN
+   the history. Files refresh at the next session rollover.
+
+   **Sessions are deliberately basic today: ONE session per agent, and it
+   never ends.** Every interaction — game turns, operator chat, everything —
+   appends to the same transcript; there is NO rollover code yet. Backstops:
+   prompt caching keeps growth affordable; Pi's built-in compactor fires on
+   true overflow (logged marker event). Rollover will be world-event-driven,
+   NEVER wall-clock (a frozen world restarted a month later must not think
+   "a day passed"): an operator command (step 3), a GM/scen trigger via
+   gmlib (step 4), eventually a size threshold — a function of world
+   activity, snapshot-proof. Rolling = archive the JSONL + remove
+   `.sysprompt`; the next wake starts fresh with re-rendered files (the
+   controlled-compaction point). Multiple concurrent sessions per agent
+   (e.g. a TUI chat separate from game context — Pi RPC has
+   switch_session/fork) is a known someday, not a current capability.
+4. **Birth** (the very first wake): the scen's `FIRST_WAKE.md`, if present,
+   is delivered in the birth USER message — rich one-time onboarding without
+   polluting the frozen system prompt — then archived as
+   `.FIRST_WAKE.md.done`. Later wakes carry only new mail. (OC's nearest
+   concept is the first-turn scaffold + kick; here birth and kick are
+   separate: kick is just an operator send/wake.)
+5. **One Pi turn** over `pi --mode rpc` (strict-LF JSONL): session JSONL in
+   `$HOME/sessions/`, reopened with `--continue` — long-lived session ≠
+   long-lived process. `--thinking` is ON by default (`world.json`
+   `"thinking"`, default `low`): real chain-of-thought, captured in the
+   session JSONL, zero runtime code. The turn gets a 240s deadline inside
+   the gateway's 300s wake timeout.
+6. **Cost report** — sums usage across the turn's assistant messages and
+   sends `log_usage` to the gateway → `budget.jsonl` (per-agent spend
+   attribution, an OC-era impossibility), including a `scratch_updated`
+   compliance bit.
+
+**`require_scratchpad`** (world.json, DEFAULT true — every scen author must
+actively decide): adds a standard preamble paragraph requiring the agent to
+append its thinking for the turn to `scratch/thoughts.md` before acting — a
+deliberate, re-readable reflection log alongside the involuntary thinking
+blocks. Soft-enforced: compliance is visible per turn in `budget.jsonl`.
+
+Config from `/world/world.json` (`model`, `pi_bin`, `thinking`,
+`require_scratchpad`); OpenRouter key at `/world/openrouter_key`
+(world-readable in-container, like OC's env key). agentd env knobs use the
+`AGENTD_*` prefix — never `PI_*` (that namespace belongs to the Pi tool).
+Local trace in `$HOME/agentd.log`.
+
+### Conventions
+
+- **Agent ids**: `a` + 5 random digits (`a48291`) — deliberately hierarchy-
+  free (`a1`, `a2` implies an ordering). A CONVENTION, not a rule; a scen may
+  break it on purpose.
+- **Names in agent-facing files** state capabilities only.
 
 ### Restart transparency (snapshot/restore)
 
@@ -160,6 +259,7 @@ Everything under `/data/gateway` (mode 0700 — unreachable by agents):
   world has a logged cause here.
 - `public.jsonl` — the public chat, append-only.
 - `policy.json` — current live policy.
+- `budget.jsonl` — per-turn model usage/cost per agent (via `log_usage`).
 
 Plus per-agent inbox spools (delivered message files) in each home. All under
 paths captured by `docker commit` → snaps stay complete observability bundles.
@@ -211,6 +311,6 @@ This is the successor of the OC-era 8-item sandbox checklist
 
 ## 8. Not built yet (do not assume)
 
-- `agentd` / Pi integration (step 2), `runtimes/pi.py` + New World menu
-  entry + operator REPL (step 3), GM API + `gmlib` (step 4), game scens
-  (steps 5–6). Until step 3 lands, zookeeper knows nothing about this runtime.
+- `runtimes/pi.py` + New World menu entry + operator REPL (step 3), GM API
+  + `gmlib` (step 4), game scens (steps 5–6), session-rollover triggers.
+  Until step 3 lands, zookeeper knows nothing about this runtime.
