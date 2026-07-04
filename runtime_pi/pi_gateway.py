@@ -47,6 +47,7 @@ Runs as root inside the env container. All gateway state lives under
 STATE_DIR (mode 0700) — unreadable by agents by kernel permission bits.
 """
 import json
+import math
 import os
 import pwd
 import socket
@@ -517,6 +518,11 @@ def op_log_usage(pr, req):
             return {"ok": False, "error": "bad usage key"}
         if not isinstance(v, (bool, int, float, str, type(None))):
             return {"ok": False, "error": f"usage[{k!r}] must be a scalar"}
+        # NaN/Infinity pass isinstance(float) but json.dumps emits the literal
+        # tokens NaN/Infinity — invalid JSON that would poison root-owned
+        # budget.jsonl for any strict parser. Reject non-finite floats.
+        if isinstance(v, float) and not math.isfinite(v):
+            return {"ok": False, "error": f"usage[{k!r}] must be finite"}
         if isinstance(v, str) and len(v) > 200:
             return {"ok": False, "error": f"usage[{k!r}] too long"}
         clean[k] = v

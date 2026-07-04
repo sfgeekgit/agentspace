@@ -141,7 +141,8 @@ def gateway_request(obj):
 
 def scaffold(home, agent_id):
     """Fill gaps, never overwrite — a pre-baked or agent-edited file always
-    survives. Returns True on the agent's very first wake (birth)."""
+    survives. (Birth is decided separately, from the `.born` marker, so a
+    failed first turn retries birth instead of losing it — see main.)"""
     born = []
     soul = home / "SOUL.md"
     seed = WORLD_DIR / "persona_default" / "SOUL.md"
@@ -366,7 +367,14 @@ def main():
         cfg["model"] = per_agent
 
     t0 = time.monotonic()
-    first_wake = scaffold(home, agent_id)
+    scaffold(home, agent_id)
+    # Birth persists until a turn SUCCEEDS. Deriving it from a durable marker
+    # (not from scaffold's file-creation side effect) means a failed first wake
+    # — dead key, timeout, crash — retries birth, incl. re-delivering
+    # FIRST_WAKE.md, instead of losing onboarding forever. `.FIRST_WAKE.md.done`
+    # covers agents born before this marker existed.
+    first_wake = not (home / ".born").exists() and \
+        not (home / ".FIRST_WAKE.md.done").exists()
     ensure_pi_settings(home, cfg)
     msgs, spool_paths = drain_inbox(home)
     log(f"wake: causes={[c.get('type') for c in causes]} msgs={len(msgs)} "
@@ -386,9 +394,14 @@ def main():
         done = home / "inbox_done"
         for p in spool_paths:
             os.replace(p, done / p.name)
-        fw = home / "FIRST_WAKE.md"
-        if first_wake and fw.exists():
-            os.replace(fw, home / ".FIRST_WAKE.md.done")
+        if first_wake:
+            # Mark birth complete ONLY now (after success) so a failed first
+            # wake retries birth on the next wake.
+            (home / ".born").write_text(
+                time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + "\n")
+            fw = home / "FIRST_WAKE.md"
+            if fw.exists():
+                os.replace(fw, home / ".FIRST_WAKE.md.done")
 
     usage.update(model=cfg.get("model", ""), turn_ok=ok, assistant_msgs=n_msgs,
                  msgs_drained=len(msgs), first_wake=first_wake,

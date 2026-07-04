@@ -315,14 +315,30 @@ def audit_line_count(host, container) -> int:
 
 
 def wake_ended_since(host, container, agent_id, since_line: int) -> bool:
-    """True once a wake_end for agent_id was audited after line `since_line`."""
-    out = docker_host.stdout(
-        host, "exec", container, "sh", "-c",
-        f"tail -n +{since_line + 1} /data/gateway/audit.jsonl 2>/dev/null | "
-        f"grep -F '\"wake_end\"' | grep -cF '\"agent\": \"{agent_id}\"' || true",
-        check=False,
+    """True once a wake that STARTED after line `since_line` has ended for
+    agent_id. Correlating to a wake-start (not just any wake_end) skips the
+    wake_end of a turn that was already in flight when the operator sent — the
+    gateway serializes wakes per agent, so the operator's message is drained by
+    a wake that begins after their send. Without this, `env chat` could surface
+    a concurrent/prior turn's reply instead of the answer to the operator."""
+    reader = (
+        "import json,sys\n"
+        f"since={since_line}; agent={agent_id!r}; started=False\n"
+        "try: lines=open('/data/gateway/audit.jsonl').readlines()[since:]\n"
+        "except FileNotFoundError: lines=[]\n"
+        "for ln in lines:\n"
+        "    try: e=json.loads(ln)\n"
+        "    except Exception: continue\n"
+        "    if e.get('agent')!=agent: continue\n"
+        "    ev=e.get('event')\n"
+        "    if ev=='wake': started=True\n"
+        "    elif ev in ('wake_end','wake_error') and started:\n"
+        "        print('1'); sys.exit(0)\n"
+        "print('0')\n"
     )
-    return bool(out.strip() and int(out.strip()) > 0)
+    out = docker_host.stdout(host, "exec", "-i", container,
+                             "python3", "-", input=reader, check=False).strip()
+    return out == "1"
 
 
 # ---- logs ----

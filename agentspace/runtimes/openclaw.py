@@ -78,7 +78,10 @@ def recent_models(limit: int = 5) -> list[str]:
     for entry in reversed(audit.read_entries("world.create")):
         for a in entry.get("args", {}).get("roster", []):
             m = a.get("model")
-            if m and m != DEFAULT_MODEL and m not in seen:
+            # The world.create audit is shared across runtimes; other runtimes
+            # (PI) log prefix-less ids. OC ids are always 'openrouter/'-prefixed
+            # — filter to those so a PI id never leaks in as an unroutable pick.
+            if m and m.startswith("openrouter/") and m != DEFAULT_MODEL and m not in seen:
                 seen.append(m)
                 if len(seen) >= limit:
                     return seen
