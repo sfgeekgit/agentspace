@@ -14,21 +14,8 @@ cp "$TW/world.json" /world/
 cp -r "$TW/persona_default" /world/
 install -m 0444 /run/key_src /world/openrouter_key
 
-# --- CLI shims on PATH (the physics the preamble documents) ---
-cat > /usr/local/bin/gateway <<'EOF'
-#!/bin/sh
-exec /usr/bin/python3 /runtime_pi/pi_gateway_client.py "$@"
-EOF
-cat > /usr/local/bin/check_budget <<'EOF'
-#!/usr/bin/env python3
-import json, urllib.request
-key = open("/world/openrouter_key").read().strip()
-req = urllib.request.Request("https://openrouter.ai/api/v1/auth/key",
-                             headers={"Authorization": "Bearer " + key})
-d = json.load(urllib.request.urlopen(req, timeout=15))["data"]
-print(json.dumps({"usage_usd": d.get("usage"), "limit_usd": d.get("limit")}))
-EOF
-chmod 0755 /usr/local/bin/gateway /usr/local/bin/check_budget
+# --- CLI shims on PATH (same source files the builder bakes) ---
+install -m 0755 /runtime_pi/shims/gateway /runtime_pi/shims/check_budget /usr/local/bin/
 
 # --- agents: user + 0700 home + seeds + on_wake -> agentd ---
 for A in $AGENTS; do

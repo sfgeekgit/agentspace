@@ -43,7 +43,6 @@ import sys
 import time
 from pathlib import Path
 
-RUNTIME_DIR = Path(os.environ.get("AGENTD_RUNTIME_DIR", "/runtime_pi"))
 WORLD_DIR = Path(os.environ.get("AGENTD_WORLD_DIR", "/world"))
 
 # The Pi turn must finish inside the gateway's wake timeout (default 300s),
@@ -190,11 +189,12 @@ def render_sandwich(home, agent_id, cfg):
         parts.append(MESSAGING_NORMS)
     if cfg.get("require_scratchpad", True):
         parts.append(SCRATCH_REQUIRED)
-    names = sorted(p.name for p in home.glob("*.md")
-                   if not p.name.startswith(".") and p.name != "FIRST_WAKE.md")
-    for name in [n for n in names if n == "SOUL.md"] + \
-                [n for n in names if n not in ("SOUL.md", "MEMORY.md")] + \
-                [n for n in names if n == "MEMORY.md"]:
+    # SOUL.md first, MEMORY.md last, everything else alphabetical between.
+    names = sorted(
+        (p.name for p in home.glob("*.md")
+         if not p.name.startswith(".") and p.name != "FIRST_WAKE.md"),
+        key=lambda n: (n != "SOUL.md", n == "MEMORY.md", n))
+    for name in names:
         parts.append(f"# {name}\n\n{(home / name).read_text().strip()}")
     return "\n\n---\n\n".join(p.strip() for p in parts)
 

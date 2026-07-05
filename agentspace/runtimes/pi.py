@@ -37,6 +37,9 @@ DEFAULT_KICK = ""
 # Source of the runtime files baked into every world image.
 RUNTIME_SRC = Path(__file__).resolve().parents[2] / "runtime_pi"
 RUNTIME_FILES = ("pi_gateway.py", "pi_gateway_client.py", "agentd.py")
+# Agent-facing CLI shims (real files, single source of truth — the toy-world
+# setup script copies the same ones); land in /usr/local/bin, mode 0755.
+SHIMS = ("gateway", "check_budget")
 
 # ---- model choice (PI uses raw OpenRouter ids — DOTS, no "openrouter/" prefix) ----
 
@@ -107,6 +110,12 @@ def bake(host, container, *, agents, seeds, world_md, kick_text):
         }, indent=2) + "\n")
         (world / "kick.txt").write_text(kick_text or "")
 
+        # CLI shims → staged /usr/local/bin (real files, not escaped strings).
+        bindir = stage / "usr" / "local" / "bin"
+        bindir.mkdir(parents=True)
+        for shim in SHIMS:
+            shutil.copyfile(RUNTIME_SRC / "shims" / shim, bindir / shim)
+
         for a in agents:
             home = stage / "agents" / a["id"]
             home.mkdir(parents=True)
@@ -122,19 +131,11 @@ def bake(host, container, *, agents, seeds, world_md, kick_text):
     finally:
         shutil.rmtree(stage, ignore_errors=True)
 
+    # Ownership + perms are the only steps that must run as root in-container
+    # (against /etc/passwd and the agent homes).
     ids = " ".join(a["id"] for a in agents)
     script = (
         'set -e; '
-        'printf "#!/bin/sh\\nexec /usr/bin/python3 /runtime_pi/pi_gateway_client.py \\"\\$@\\"\\n"'
-        ' > /usr/local/bin/gateway; '
-        'printf "#!/usr/bin/env python3\\n'
-        'import json, urllib.request\\n'
-        'key = open(\\"/world/openrouter_key\\").read().strip()\\n'
-        'req = urllib.request.Request(\\"https://openrouter.ai/api/v1/auth/key\\",'
-        ' headers={\\"Authorization\\": \\"Bearer \\" + key})\\n'
-        'd = json.load(urllib.request.urlopen(req, timeout=15))[\\"data\\"]\\n'
-        'print(json.dumps({\\"usage_usd\\": d.get(\\"usage\\"), \\"limit_usd\\": d.get(\\"limit\\")}))\\n"'
-        ' > /usr/local/bin/check_budget; '
         'chmod 0755 /usr/local/bin/gateway /usr/local/bin/check_budget; '
         f'for A in {ids}; do '
         '  useradd --no-user-group -M -d "/agents/$A" "u_$A"; '
