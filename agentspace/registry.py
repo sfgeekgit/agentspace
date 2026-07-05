@@ -57,6 +57,7 @@ def _optional_parts(scen_dir: Path) -> dict[str, Any]:
         "has_world": (scen_dir / "world.md").is_file(),
         "has_logic": (scen_dir / "logic.py").is_file(),
         "has_kick": (scen_dir / "kick.txt").is_file(),
+        "has_gm": (scen_dir / "gm.py").is_file(),   # scen ships a game master (PI)
         "roles_dir": (scen_dir / "roles") if (scen_dir / "roles").is_dir() else None,
         "data_dir": (scen_dir / "data") if (scen_dir / "data").is_dir() else None,
     }
@@ -93,6 +94,10 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
         "min_agents": min_agents,
         "max_agents": max_agents,
         "module_blacklist": list(blacklist),
+        # Build-time param schema (decision 12): the wizard collects these; the
+        # SAME scen builds different world roots per value set. Typed + defaulted;
+        # see validate_params. A scen with no [[params]] gets an empty schema.
+        "params_schema": list(data.get("params", [])),
         **_optional_parts(scen_dir),
     }
 
@@ -225,6 +230,35 @@ def load_scen_logic(scen: dict[str, Any]) -> ModuleType | None:
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def validate_params(schema: list[dict[str, Any]], values: dict[str, Any] | None) -> dict[str, Any]:
+    """Coerce + validate build-time params against a scen's params_schema,
+    filling defaults for anything absent. Returns a clean dict; raises
+    ValueError on a bad value. Foundation (decision 12): handles type 'int' and
+    falls back to string — add types here as scens need them."""
+    out: dict[str, Any] = {}
+    values = values or {}
+    for spec in schema:
+        name = spec["name"]
+        if values.get(name) is None:
+            out[name] = spec.get("default")
+            continue
+        raw = values[name]
+        if spec.get("type") == "int":
+            try:
+                v = int(raw)
+            except (TypeError, ValueError):
+                raise RegistryError(f"param {name!r} must be an integer")
+            lo, hi = spec.get("min"), spec.get("max")
+            if lo is not None and v < lo:
+                raise RegistryError(f"param {name!r} must be >= {lo}")
+            if hi is not None and v > hi:
+                raise RegistryError(f"param {name!r} must be <= {hi}")
+            out[name] = v
+        else:
+            out[name] = str(raw)
+    return out
 
 
 # ---------------------------------------------------------------------------

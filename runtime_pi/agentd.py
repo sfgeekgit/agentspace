@@ -105,6 +105,23 @@ MESSAGING_NORMS = """\
   for one person.
 """
 
+# Injected only in GM worlds (world.json "has_gm"). The GM is the game master:
+# deterministic control code that drives rounds and messages you as `world`/`gm`.
+# HOW to submit is runtime physics (this text); WHAT to submit (the move format)
+# comes from the GM's message / your role — so souls stay portable (decision 11).
+GM_PREAMBLE = """\
+## The game master
+
+This world has a game master (GM) — the messages you receive from `gm` or see
+on the board from `world` are it running the game. When the GM asks you for a
+move, vote, or other choice, submit it with:
+
+- `submit "<action>"` — hand the GM your structured action for this round.
+
+The exact format is stated in the GM's message. The GM only reads what you
+`submit` — not your chat — so a choice you don't submit doesn't count.
+"""
+
 SCRATCH_REQUIRED = """\
 ## Required: think in your scratchpad
 
@@ -185,6 +202,8 @@ def render_sandwich(home, agent_id, cfg):
     excluded — it is one-time birth content, delivered in the birth user
     message instead."""
     parts = [PREAMBLE.format(agent_id=agent_id, home=home)]
+    if cfg.get("has_gm"):
+        parts.append(GM_PREAMBLE)
     if cfg.get("messaging_norms", True):
         parts.append(MESSAGING_NORMS)
     if cfg.get("require_scratchpad", True):

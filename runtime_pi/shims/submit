@@ -1,0 +1,4 @@
+#!/bin/sh
+# Agent-facing: hand the GM your structured action for this round (GM scens).
+# e.g. `submit X`. Identity is from SO_PEERCRED, never an argument.
+exec /usr/bin/python3 /runtime_pi/pi_gateway_client.py submit "$@"

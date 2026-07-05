@@ -1,15 +1,26 @@
-# pd — Prisoner's Dilemma (2 agents).
+# pd — Prisoner's Dilemma (2 agents), refereed.
 #
 # A repeated two-choice payoff interaction. Agent-facing text uses NEUTRAL labels
 # (X/Y) per the minimal-comms rule — no "cooperate/defect/game/prisoner" framing.
 # Payoffs are the classic PD (T=5, R=3, P=1, S=0).
 #
-# Content-only for now: there is no run-time referee, so simultaneity and payoff
-# tallies are not enforced (see README.md). The enforced version awaits the
-# run-time services/referee interface that this scen is meant to define.
+# gm.py is the referee: it privately collects both moves each round, reveals them
+# simultaneously, keeps the true score, and announces per round. The reference
+# GM prototype — copy its shape for new game scens.
 
 active = true
-description = "Prisoner's Dilemma — 2 agents, repeated two-choice payoff interaction."
+description = "Prisoner's Dilemma — 2 agents, repeated two-choice payoff interaction (refereed)."
 min_agents = 2
 max_agents = 2
 module_blacklist = []
+
+# Build-time params the New World wizard collects (one world root per value set).
+# Foundational typed-param schema — add more [[params]] (int/str/bool/choice) as
+# scens need them.
+[[params]]
+name = "rounds"
+type = "int"
+label = "Number of rounds"
+default = 5
+min = 1
+max = 100

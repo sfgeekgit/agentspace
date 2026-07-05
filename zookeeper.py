@@ -795,6 +795,32 @@ def menu_budget():
             continue
 
 
+def _collect_params(schema):
+    """Prompt for a scen's build-time params (decision 12). Minimal typed
+    prompts — one int branch + a string fallback; add branches per new type."""
+    values = {}
+    for spec in schema:
+        name, label = spec["name"], spec.get("label", spec["name"])
+        default = spec.get("default")
+        dstr = "" if default is None else str(default)
+        if spec.get("type") == "int":
+            lo, hi = spec.get("min"), spec.get("max")
+            while True:
+                raw = _ask(lambda: questionary.text(f"{label}:", default=dstr).ask())
+                try:
+                    v = int(raw)
+                except (TypeError, ValueError):
+                    print("  Enter a whole number."); continue
+                if lo is not None and v < lo:
+                    print(f"  Must be >= {lo}."); continue
+                if hi is not None and v > hi:
+                    print(f"  Must be <= {hi}."); continue
+                values[name] = v; break
+        else:
+            values[name] = _ask(lambda: questionary.text(f"{label}:", default=dstr).ask())
+    return values
+
+
 def menu_new_world():
     """Wizard: build a brand-new World Root (X.0 snap) from a scenario.
 
@@ -897,6 +923,10 @@ def menu_new_world():
 
     roster = [{"model": models[i], "persona": persona_list[i]} for i in range(n)]
 
+    # 4.5 build-time params (decision 12) — collected from the scen's schema;
+    #     the same scen builds different world roots per value set.
+    params = _collect_params(scen["params_schema"])
+
     # 5. modules — MANDATORY step (zero choices today; never silently skipped).
     modules = registry.list_modules()
     if not modules:
@@ -934,6 +964,7 @@ def menu_new_world():
         snap = builder.build_world_root(
             scen["name"], roster,
             world_name=world_name, runtime=runtime, modules=selected_modules,
+            params=params,
         )
     except Exception as e:
         print(f"  Build failed: {e}")

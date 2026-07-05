@@ -603,10 +603,17 @@ def cmd_fork(
         rt.wait_for_gateway(host, new_env_name)
 
         if kick:
-            kick_text = rt.read_kick_message(host, new_env_name)
-            console.print(f"[dim]kicking agents with message {kick_text!r} …[/dim]")
-            for agent_id in agents:
-                rt.kick_agent(host, new_env_name, agent_id, kick_text)
+            # "Run the world": a GM world starts its game master (the sole
+            # driver — it wakes its own agents); a plain world wakes agents
+            # directly. Mirrors env.cmd_kick.
+            if rt.world_has_gm(host, new_env_name):
+                console.print("[dim]starting game master (GM world) …[/dim]")
+                rt.start_gm(host, new_env_name)
+            else:
+                kick_text = rt.read_kick_message(host, new_env_name)
+                console.print(f"[dim]kicking agents with message {kick_text!r} …[/dim]")
+                for agent_id in agents:
+                    rt.kick_agent(host, new_env_name, agent_id, kick_text)
 
         container_id = docker_host.stdout(
             host, "inspect", "--format", "{{.Id}}", new_env_name

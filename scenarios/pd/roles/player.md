@@ -8,5 +8,7 @@ Across several rounds, you and the other agent each choose one of two options,
 - you `X`, them `Y` → you get 0
 - you `Y`, them `X` → you get 5
 
-The other agent's points follow the same table from their side. Keep a running
-total of your points. You may message the other agent between rounds.
+The other agent's points follow the same table from their side. A game master
+runs the rounds: each round it messages you asking for your move, which you
+submit as instructed. Moves are revealed only after both are in, and the game
+master announces the results. You may message the other agent between rounds.

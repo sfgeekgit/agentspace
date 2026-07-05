@@ -253,8 +253,10 @@ def cmd_stop(name: str):
     env = _require_env(name)
     host = env["host"] or "localhost"
 
+    rt = _rt(env)
+    rt.stop_gm(host, name)  # stop-all stops the GM too (decision 13; no-op if none)
     console.print(f"[dim]stopping gateway …[/dim]")
-    _rt(env).stop_gateway(host, name)
+    rt.stop_gateway(host, name)
 
     console.print(f"[dim]docker stop {name} …[/dim]")
     docker_host.run(host, "stop", name)
@@ -282,6 +284,21 @@ def cmd_kick(name: str, message: str | None = None):
         rt.start_gateway(host, name)
         rt.wait_for_gateway(host, name)
 
+    # "Run the world": in a GM world, that means start (or resume) the GM — it is
+    # the sole driver and wakes its own agents, so we do NOT also blast per-agent
+    # wakes (that would race the GM's setup). Non-GM worlds wake agents directly.
+    # (Per-agent debug pokes still go through env chat / the gateway wake op.)
+    if rt.world_has_gm(host, name):
+        if rt.gm_running(host, name):
+            console.print(f"[green]✓[/green] env {name}: GM already running.")
+        else:
+            console.print("[dim]starting game master …[/dim]")
+            rt.start_gm(host, name)
+            console.print(f"[green]✓[/green] env {name} is active — GM driving the world.")
+        audit.log("env.kick", name, args={"gm": True})
+        db.set_env_status(name, "active")
+        return
+
     text = message or rt.read_kick_message(host, name)
     what = f"message {text!r}" if text else "a bare wake (no message)"
     console.print(f"[dim]waking {len(agents)} agent(s) with {what} …[/dim]")
@@ -302,8 +319,10 @@ def cmd_sleep(name: str):
         raise click.ClickException(
             f"env {name!r} is not running (nothing to sleep). Use 'env start' first."
         )
+    rt = _rt(env)
+    rt.stop_gm(host, name)  # sleep-all sleeps the GM too (decision 13; no-op if none)
     console.print(f"[dim]stopping gateway (container stays up) …[/dim]")
-    _rt(env).stop_gateway(host, name)
+    rt.stop_gateway(host, name)
     db.set_env_status(name, "dormant")
     audit.log("env.sleep", name)
     console.print(

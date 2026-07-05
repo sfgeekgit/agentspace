@@ -36,10 +36,13 @@ DEFAULT_KICK = ""
 
 # Source of the runtime files baked into every world image.
 RUNTIME_SRC = Path(__file__).resolve().parents[2] / "runtime_pi"
-RUNTIME_FILES = ("pi_gateway.py", "pi_gateway_client.py", "agentd.py")
+# gmd.py is the GM launcher/adapter; gmlib.py (the runtime-neutral GM library)
+# is copied from agentspace/ so the in-container scen `import gmlib` resolves.
+RUNTIME_FILES = ("pi_gateway.py", "pi_gateway_client.py", "agentd.py", "gmd.py")
+GMLIB_SRC = Path(__file__).resolve().parents[1] / "gmlib.py"  # agentspace/gmlib.py
 # Agent-facing CLI shims (real files, single source of truth — the toy-world
 # setup script copies the same ones); land in /usr/local/bin, mode 0755.
-SHIMS = ("gateway", "check_budget")
+SHIMS = ("gateway", "check_budget", "submit")
 
 # ---- model choice (PI uses raw OpenRouter ids — DOTS, no "openrouter/" prefix) ----
 
@@ -81,10 +84,12 @@ def list_all_models() -> list[str]:
 
 # ---- world-root bake (called by builder inside the temp build container) ----
 
-def bake(host, container, *, agents, seeds, world_md, kick_text):
+def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, params=None):
     """Assemble the PI world inside the build container.
 
     agents: [{"id", "model"}, ...];  seeds: {agent_id: {filename: text}}.
+    gm_py: the scen's gm.py source (str) if it ships a game master, else None.
+    params: validated build-time params, baked into world.json for the GM.
     Stages /runtime_pi + /world + per-agent homes locally, one `docker cp`,
     then a single in-container script for users/ownership (the parts that
     must run as root against the container's /etc/passwd).
@@ -96,6 +101,7 @@ def bake(host, container, *, agents, seeds, world_md, kick_text):
         rt.mkdir()
         for f in RUNTIME_FILES:
             shutil.copyfile(RUNTIME_SRC / f, rt / f)
+        shutil.copyfile(GMLIB_SRC, rt / "gmlib.py")  # scen `import gmlib` resolves here
 
         world = stage / "world"
         world.mkdir()
@@ -107,8 +113,12 @@ def bake(host, container, *, agents, seeds, world_md, kick_text):
             "require_scratchpad": True,
             "messaging_norms": True,
             "max_tokens": 16384,  # per-turn output ceiling — roomy safety rail, not a leash
+            "has_gm": bool(gm_py),          # drives the GM preamble + run-the-world verb
+            "params": params or {},         # build-time values gmd/gm.py read
         }, indent=2) + "\n")
         (world / "kick.txt").write_text(kick_text or "")
+        if gm_py:
+            (world / "gm.py").write_text(gm_py)
 
         # CLI shims → staged /usr/local/bin (real files, not escaped strings).
         bindir = stage / "usr" / "local" / "bin"
@@ -136,7 +146,7 @@ def bake(host, container, *, agents, seeds, world_md, kick_text):
     ids = " ".join(a["id"] for a in agents)
     script = (
         'set -e; '
-        'chmod 0755 /usr/local/bin/gateway /usr/local/bin/check_budget; '
+        'chmod 0755 /usr/local/bin/gateway /usr/local/bin/check_budget /usr/local/bin/submit; '
         f'for A in {ids}; do '
         '  useradd --no-user-group -M -d "/agents/$A" "u_$A"; '
         '  chmod 0700 "/agents/$A/on_wake"; '
@@ -144,6 +154,13 @@ def bake(host, container, *, agents, seeds, world_md, kick_text):
         '  chmod 0700 "/agents/$A"; '
         'done'
     )
+    if gm_py:
+        # Dedicated non-root GM user; /gm (0700) is its private, snapshot-durable
+        # state home (agents cannot read it). The gateway recognizes uid → `gm`.
+        script += (
+            '; useradd --no-user-group -M -d /gm gm; '
+            'mkdir -p /gm; chown gm /gm; chmod 0700 /gm'
+        )
     docker_host.run(host, "exec", container, "sh", "-c", script)
 
 
@@ -217,6 +234,41 @@ def agent_state(host, container) -> str:
     )
     toks = out.split()
     return "active" if ("GW" in toks and "KICKED" in toks) else "dormant"
+
+
+# ---- GM lifecycle (step 4) ----
+#
+# The GM is a persistent, disk-resumable driver, NOT an agent (plan decision
+# 13). The runtime owns its start/stop, tied to the world's active/dormant
+# state; the GM itself never touches wake mechanics. Only worlds whose scen
+# ships a gm.py have one.
+
+GM_USER = "gm"
+
+
+def world_has_gm(host, container) -> bool:
+    return docker_host.run(host, "exec", container, "test", "-f", "/world/gm.py",
+                           check=False).returncode == 0
+
+
+def gm_running(host, container) -> bool:
+    return docker_host.run(host, "exec", container, "pgrep", "-f", "gmd.py",
+                           check=False).returncode == 0
+
+
+def start_gm(host, container):
+    """Start (or RESUME) the GM as the dedicated gm user. gmd re-reads on-disk
+    state, so the same call resumes a forked/restarted mid-game world (decisions
+    13–14). Caller checks gm_running() first; needs the gateway already up."""
+    docker_host.run(
+        host, "exec", "-d", "-u", GM_USER,
+        "-e", "HOME=/gm", "-e", f"GATEWAY_SOCKET={SOCKET_PATH}",
+        container, "sh", "-c", "exec python3 /runtime_pi/gmd.py >> /gm/gmd.out 2>&1")
+
+
+def stop_gm(host, container):
+    docker_host.run(host, "exec", container, "sh", "-c",
+                    "pkill -f gmd.py || true", check=False)
 
 
 # ---- kick / wake / operator messaging ----

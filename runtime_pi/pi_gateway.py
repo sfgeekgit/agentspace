@@ -71,6 +71,12 @@ AUDIT = os.path.join(STATE_DIR, "audit.jsonl")
 PUBLIC = os.path.join(STATE_DIR, "public.jsonl")
 POLICY = os.path.join(STATE_DIR, "policy.json")
 BUDGET = os.path.join(STATE_DIR, "budget.jsonl")
+# GM state (step 4). All under STATE_DIR (0700 root) — unreadable by agents AND
+# by the gm user: agents submit, the GM collects via gm_collect, and the two
+# never share a directory. On disk (not memory) so a snapshot/restore mid-game
+# is invisible: a forked snap resumes with pending submissions + removals intact.
+SUBMIT_DIR = os.path.join(STATE_DIR, "submissions")  # <agent>.json, one latest each
+REMOVED = os.path.join(STATE_DIR, "removed.json")     # eliminated/shift-ended agents
 
 DEFAULT_POLICY = {
     "max_msg_bytes": 16384,
@@ -89,14 +95,21 @@ FAILCLOSED_POLICY = {
     "deny": [],
 }
 
-# Identity strings reserved for the gateway/operator; a Linux user u_<name> whose
-# name collides with one of these is refused rather than allowed to impersonate.
-RESERVED_IDS = {"operator"}
+# Identity strings reserved for the gateway/operator/GM; a Linux user u_<name>
+# whose name collides with one of these is refused rather than allowed to
+# impersonate. "world" is the from-label of GM announcements (no such user).
+RESERVED_IDS = {"operator", "gm", "world"}
 
-# A connected peer: its agent id (or "operator"), whether it holds operator
-# privilege, and its uid. Privilege rides on is_operator (derived from uid==0),
-# NEVER on the identity string — so an agent named "operator" cannot escalate.
-Principal = namedtuple("Principal", "identity is_operator uid")
+# A connected peer: its identity ("operator"/"gm"/agent id), its privilege
+# (operator = uid 0; gm = the dedicated `gm` user), and its uid. Privilege
+# rides on is_operator/is_gm derived from the uid ALONE, NEVER on the identity
+# string — so an agent cannot escalate by name. GM ops accept gm OR operator
+# (root is already omnipotent); see gm_privileged().
+Principal = namedtuple("Principal", "identity is_operator is_gm uid")
+
+
+def gm_privileged(pr):
+    return pr.is_gm or pr.is_operator
 
 _audit_lock = threading.Lock()
 _public_lock = threading.Lock()
@@ -235,22 +248,51 @@ def agent_ids():
 
 def peer_identity(conn):
     """Derive the caller's Principal from SO_PEERCRED. Operator privilege comes
-    from uid==0 alone; agent identity comes from the u_<id> username. A uid that
-    is neither, or whose id lands in RESERVED_IDS, is rejected (identity=None)."""
+    from uid==0 alone; the GM is the dedicated `gm` user; agent identity comes
+    from the u_<id> username. A uid that is none of these, or whose id lands in
+    RESERVED_IDS, is rejected (identity=None)."""
     creds = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
     pid, uid, gid = struct.unpack("3i", creds)
     if uid == 0:
-        return Principal("operator", True, uid)
+        return Principal("operator", True, False, uid)
     try:
         name = pwd.getpwuid(uid).pw_name
     except KeyError:
-        return Principal(None, False, uid)
+        return Principal(None, False, False, uid)
+    if name == "gm":
+        return Principal("gm", False, True, uid)
     if name.startswith(USER_PREFIX):
         aid = name[len(USER_PREFIX):]
         if aid in RESERVED_IDS:
-            return Principal(None, False, uid)
-        return Principal(aid, False, uid)
-    return Principal(None, False, uid)
+            return Principal(None, False, False, uid)
+        return Principal(aid, False, False, uid)
+    return Principal(None, False, False, uid)
+
+
+_removed_lock = threading.Lock()
+
+
+def load_removed():
+    with _removed_lock:
+        try:
+            with open(REMOVED) as f:
+                return set(json.load(f))
+        except (OSError, json.JSONDecodeError):
+            return set()
+
+
+def add_removed(agent):
+    with _removed_lock:
+        try:
+            with open(REMOVED) as f:
+                cur = set(json.load(f))
+        except (OSError, json.JSONDecodeError):
+            cur = set()
+        cur.add(agent)
+        tmp = f"{REMOVED}.tmp.{os.getpid()}"
+        with open(tmp, "w") as f:
+            json.dump(sorted(cur), f)
+        os.replace(tmp, REMOVED)
 
 
 class WakeManager:
@@ -258,12 +300,21 @@ class WakeManager:
 
     Causes arriving while a wake runs are queued and coalesced into one
     follow-up wake after the current one exits.
+
+    Completion tracking (step 4): every spawn records its start/end monotonic
+    time under `cond`. gm_wake needs to block until the turn that drained ITS
+    payload has finished — see wake_sync: deliver the payload, then wait for a
+    spawn that STARTED after the delivery to end. Because the whole inbox is
+    drained each wake, any spawn started after delivery processed the payload.
     """
 
     def __init__(self):
         self.mu = threading.Lock()
-        self.pending = {}   # agent -> [cause, ...]
+        self.cond = threading.Condition(self.mu)
+        self.pending = {}       # agent -> [cause, ...]
         self.running = set()
+        self.spawn_start = {}   # agent -> monotonic of the current/last spawn start
+        self.spawn_end = {}     # agent -> monotonic of the last spawn end
 
     def wake(self, agent, cause):
         with self.mu:
@@ -272,6 +323,23 @@ class WakeManager:
                 return
             self.running.add(agent)
         threading.Thread(target=self._runner, args=(agent,), daemon=True).start()
+
+    def wake_sync(self, agent, cause, timeout):
+        """Enqueue a wake and BLOCK until a spawn that began after this call
+        has ended (i.e. the agent's turn finished). Returns True on completion,
+        False on timeout. The caller must have delivered any payload first."""
+        t0 = time.monotonic()
+        self.wake(agent, cause)
+        deadline = t0 + timeout
+        with self.cond:
+            while True:
+                if self.spawn_start.get(agent, 0) > t0 and \
+                        self.spawn_end.get(agent, 0) >= self.spawn_start[agent]:
+                    return True
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self.cond.wait(timeout=remaining)
 
     def _runner(self, agent):
         while True:
@@ -283,6 +351,9 @@ class WakeManager:
             self._spawn(agent, causes)
 
     def _spawn(self, agent, causes):
+        if agent in load_removed():
+            audit("wake_skipped_removed", agent=agent, causes=causes)
+            return
         try:
             pw = pwd.getpwnam(USER_PREFIX + agent)
         except KeyError:
@@ -291,6 +362,9 @@ class WakeManager:
         home = pw.pw_dir
         prog = os.path.join(home, "on_wake")
         audit("wake", agent=agent, causes=causes)
+        with self.cond:
+            self.spawn_start[agent] = time.monotonic()
+            self.cond.notify_all()
         t0 = time.monotonic()
         env = {
             "HOME": home,
@@ -317,6 +391,12 @@ class WakeManager:
                   stderr=r.stderr[-500:] if r.stderr else "")
         except Exception as e:
             audit("wake_error", agent=agent, error=str(e)[:500])
+        finally:
+            # Record end + wake gm_wake waiters whether the turn succeeded,
+            # timed out, or crashed — a blocked GM must never hang on a dead turn.
+            with self.cond:
+                self.spawn_end[agent] = time.monotonic()
+                self.cond.notify_all()
 
 
 WAKES = WakeManager()
@@ -391,6 +471,9 @@ def op_send(pr, req):
               bytes=nbytes, cap=policy["max_msg_bytes"])
         return {"ok": False, "error": "message exceeds size cap"}
     if not pr.is_operator:
+        if sender in load_removed():
+            audit("send_denied", frm=sender, to=to, reason="removed")
+            return {"ok": False, "error": "removed agents cannot send"}
         if not pair_allowed(policy, sender, to):
             audit("send_denied", frm=sender, to=to, reason="policy")
             return {"ok": False, "error": "policy: not allowed to message this agent"}
@@ -411,6 +494,13 @@ def op_send(pr, req):
     return {"ok": True, "seq": seq}
 
 
+def _append_public(entry):
+    """Append one entry to the public board (both post_public and gm_announce)."""
+    with _public_lock:
+        with open(PUBLIC, "a") as f:
+            f.write(json.dumps(entry, sort_keys=True) + "\n")
+
+
 def op_post_public(pr, req):
     sender = pr.identity
     text = req.get("text")
@@ -426,10 +516,7 @@ def op_post_public(pr, req):
               cap=policy["rate_limit_per_min"])
         return {"ok": False, "error": "rate cap exceeded"}
     seq = next_seq()
-    entry = {"seq": seq, "ts": now_iso(), "from": sender, "text": text}
-    with _public_lock:
-        with open(PUBLIC, "a") as f:
-            f.write(json.dumps(entry, sort_keys=True) + "\n")
+    _append_public({"seq": seq, "ts": now_iso(), "from": sender, "text": text})
     audit("post_public", frm=sender, seq=seq)
     # Posting wakes NOBODY — pull-only surface by design.
     return {"ok": True, "seq": seq}
@@ -539,9 +626,175 @@ def op_log_usage(pr, req):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# GM API (step 4) — a scen's deterministic control code (gm.py, run as the
+# dedicated `gm` user) drives the world through these. Agents interact with the
+# GM ONLY by `submit` (structured action in) and by receiving gm_wake payloads;
+# they never read GM state. All ops are gm_privileged (gm OR operator). gmlib
+# (agentspace/gmlib.py) is the runtime-neutral client; the raw protocol is here.
+# ---------------------------------------------------------------------------
+
+def _submission_path(agent):
+    return os.path.join(SUBMIT_DIR, f"{agent}.json")
+
+
+def _write_submission(agent, action):
+    os.makedirs(SUBMIT_DIR, mode=0o700, exist_ok=True)
+    path = _submission_path(agent)
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w") as f:
+        json.dump({"agent": agent, "ts": now_iso(), "action": action}, f)
+    os.replace(tmp, path)  # latest submission wins
+
+
+def _pop_submission(agent):
+    """Read + remove the agent's pending submission; return the action string
+    or None. Consumed so the next round starts clean."""
+    path = _submission_path(agent)
+    try:
+        with open(path) as f:
+            action = json.load(f).get("action")
+        os.remove(path)
+        return action
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def op_submit(pr, req):
+    """Agent-facing: hand the GM a machine-readable action for the current
+    round (the `submit` shim). Kept as the latest-wins file; gm_collect pops it.
+    Only real agents submit — the GM/operator have no move."""
+    if pr.identity is None or pr.is_operator or pr.is_gm:
+        return {"ok": False, "error": "submit is for agents"}
+    action = req.get("action")
+    if not isinstance(action, str) or len(action.encode()) > 4096:
+        return {"ok": False, "error": "submit needs a short string 'action'"}
+    if not _rate_ok(f"submit:{pr.identity}", load_policy()["rate_limit_per_min"]):
+        audit("submit_denied", frm=pr.identity, reason="rate_cap")
+        return {"ok": False, "error": "rate cap exceeded"}
+    _write_submission(pr.identity, action)
+    audit("submit", frm=pr.identity, bytes=len(action.encode()))
+    return {"ok": True}
+
+
+def op_gm_collect(pr, req):
+    if not gm_privileged(pr):
+        return {"ok": False, "error": "gm_collect is GM-only"}
+    agent = req.get("agent")
+    if not isinstance(agent, str):
+        return {"ok": False, "error": "gm_collect needs string 'agent'"}
+    sub = _pop_submission(agent)
+    audit("gm_collect", agent=agent, got=sub is not None)
+    return {"ok": True, "submission": sub}  # raw action string or None; gmlib applies schema
+
+
+def op_gm_wake(pr, req):
+    """Wake one agent with a payload and BLOCK until its turn finishes (see
+    WakeManager.wake_sync). The payload lands in the inbox as a message from
+    'gm', drained by the turn like any mail. gmlib fans these out concurrently
+    for a whole round, so the GM itself is never serialized on one agent."""
+    if not gm_privileged(pr):
+        return {"ok": False, "error": "gm_wake is GM-only"}
+    to, payload = req.get("to"), req.get("payload", "")
+    if not isinstance(to, str) or not isinstance(payload, str):
+        return {"ok": False, "error": "gm_wake needs string 'to' and 'payload'"}
+    if to in load_removed():
+        return {"ok": False, "error": f"agent removed: {to}"}
+    try:
+        pw = pwd.getpwnam(USER_PREFIX + to)
+    except KeyError:
+        return {"ok": False, "error": f"no such agent: {to}"}
+    seq = next_seq()
+    if payload:
+        _deliver(pw, seq, {"seq": seq, "ts": now_iso(), "from": "gm",
+                           "to": to, "text": payload})
+    audit("gm_wake", to=to, seq=seq, payload_bytes=len(payload.encode()))
+    done = WAKES.wake_sync(to, {"type": "gm", "seq": seq}, timeout=WAKE_TIMEOUT_S + 30)
+    return {"ok": True, "completed": done, "seq": seq}
+
+
+def op_gm_announce(pr, req):
+    """Public-board append as 'world' — the GM's voice to everyone. Wakes nobody
+    (pull-only, same as post_public)."""
+    if not gm_privileged(pr):
+        return {"ok": False, "error": "gm_announce is GM-only"}
+    text = req.get("text")
+    if not isinstance(text, str):
+        return {"ok": False, "error": "gm_announce needs string 'text'"}
+    seq = next_seq()
+    _append_public({"seq": seq, "ts": now_iso(), "from": "world", "text": text})
+    audit("gm_announce", seq=seq)
+    return {"ok": True, "seq": seq}
+
+
+def op_gm_policy(pr, req):
+    """Set LIVE phase policy (allow/deny pairs, caps) — day=public-only,
+    night=mafia-channel, etc. Takes effect on the next request, no restart."""
+    if not gm_privileged(pr):
+        return {"ok": False, "error": "gm_policy is GM-only"}
+    pol = req.get("policy")
+    if not isinstance(pol, dict):
+        return {"ok": False, "error": "gm_policy needs dict 'policy'"}
+    merged = dict(DEFAULT_POLICY)
+    merged.update(pol)
+    for key in ("allow", "deny"):
+        v = merged.get(key)
+        if key == "allow" and v is None:
+            continue
+        if not isinstance(v, list) or not all(
+                isinstance(p, (list, tuple)) and len(p) == 2 for p in v):
+            return {"ok": False, "error": f"policy '{key}' must be a list of [from, to] pairs"}
+    write_policy(merged)
+    audit("gm_policy", allow=merged.get("allow"), deny=merged.get("deny"))
+    return {"ok": True}
+
+
+def op_gm_remove(pr, req):
+    """Eliminate an agent: no more wakes (WakeManager skips it) and no send
+    rights (op_send denies it). Persisted, so a restart keeps it out."""
+    if not gm_privileged(pr):
+        return {"ok": False, "error": "gm_remove is GM-only"}
+    agent = req.get("agent")
+    if not isinstance(agent, str):
+        return {"ok": False, "error": "gm_remove needs string 'agent'"}
+    add_removed(agent)
+    audit("gm_remove", agent=agent)
+    return {"ok": True}
+
+
+def op_gm_roll_session(pr, req):
+    """Controlled compaction at a phase boundary: archive the agent's session +
+    frozen sysprompt so its NEXT wake starts a fresh transcript with re-rendered
+    files. Same effect as the operator's env roll-sessions, GM-triggered."""
+    if not gm_privileged(pr):
+        return {"ok": False, "error": "gm_roll_session is GM-only"}
+    agent = req.get("agent")
+    if not isinstance(agent, str):
+        return {"ok": False, "error": "gm_roll_session needs string 'agent'"}
+    try:
+        sess = os.path.join(pwd.getpwnam(USER_PREFIX + agent).pw_dir, "sessions")
+    except KeyError:
+        return {"ok": False, "error": f"no such agent: {agent}"}
+    if os.path.isdir(sess):
+        arch = os.path.join(sess, "archive")
+        os.makedirs(arch, exist_ok=True)
+        for n in os.listdir(sess):
+            if n.endswith(".jsonl"):
+                os.replace(os.path.join(sess, n), os.path.join(arch, n))
+        sysp = os.path.join(sess, ".sysprompt")
+        if os.path.exists(sysp):
+            os.remove(sysp)
+        subprocess.run(["chown", "-R", USER_PREFIX + agent, sess], check=False)
+    audit("gm_roll_session", agent=agent)
+    return {"ok": True}
+
+
 OPS = {"send": op_send, "post_public": op_post_public,
        "read_public": op_read_public, "wake": op_wake,
-       "log_usage": op_log_usage, "who": op_who}
+       "log_usage": op_log_usage, "who": op_who,
+       "submit": op_submit, "gm_wake": op_gm_wake, "gm_collect": op_gm_collect,
+       "gm_announce": op_gm_announce, "gm_policy": op_gm_policy,
+       "gm_remove": op_gm_remove, "gm_roll_session": op_gm_roll_session}
 
 
 def handle(conn):
@@ -589,6 +842,7 @@ def main():
     global _seq
     os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
     os.chmod(STATE_DIR, 0o700)
+    os.makedirs(SUBMIT_DIR, mode=0o700, exist_ok=True)  # GM submission spool
     if not os.path.exists(POLICY):
         write_policy(DEFAULT_POLICY)
     os.makedirs(os.path.dirname(SOCKET_PATH), mode=0o755, exist_ok=True)

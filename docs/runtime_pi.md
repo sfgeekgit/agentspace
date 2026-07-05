@@ -271,6 +271,53 @@ Waking on restart is a **separate, explicit opt-in**, not a gateway behavior:
 So both behaviors are supported and the choice lives with the operator: restart
 quietly (default), or restart and then wake some/all agents.
 
+## 4b. The game master (GM) — step 4
+
+A scen MAY ship a `gm.py`: deterministic control code that drives the world
+(games, shift logic, corpus coordinators — "GM" ≠ "game"). Most scens have
+none. The GM is a **persistent, disk-resumable driver, not an agent** (plan
+decision 13): the runtime — never GM code — owns its process lifecycle.
+
+- **Identity.** The GM runs as a dedicated non-root `gm` user; `/gm` (0700) is
+  its private, snapshot-durable state home, unreadable by agents. The gateway
+  derives the `gm` principal from SO_PEERCRED (uid → name `gm`), same as it does
+  operator (uid 0) and agents (`u_<id>`). `gm`/`world` are reserved ids.
+- **Lifecycle = the world's active/dormant state.** `env kick` on a GM world
+  starts (or RESUMES) the GM instead of blasting agent wakes — it is the SOLE
+  driver and wakes its own agents, so there is no operator-vs-GM startup race.
+  `env sleep`/`env stop` stop the GM too. Start-without-kick does not start it.
+- **Agents interact with the GM only two ways:** they receive `gm_wake`
+  payloads (delivered as messages from `gm`), and they `submit "<action>"` a
+  structured action (the `submit` shim). They never read GM state; `gm_collect`
+  is how the GM reads a submission. The agent-facing GM physics paragraph is
+  injected into the sandwich only when world.json `has_gm` is set.
+
+Gateway GM API (all gm-or-operator gated; see `pi_gateway.py`):
+
+- `gm_wake(to, payload)` — deliver payload, BLOCK until that turn's process
+  exits (completion = process exit). Only the one call blocks.
+- `submit(action)` (agent-facing) / `gm_collect(agent)` — the structured-action
+  channel; the submission is a latest-wins file the collect pops.
+- `gm_announce(text)` — public-board append as `world` (wakes nobody).
+- `gm_policy(policy)` — set LIVE phase allowlists/caps (day/night etc.).
+- `gm_remove(agent)` — eliminate: no wakes, no send rights (persisted).
+- `gm_roll_session(agent)` — controlled compaction at a phase boundary.
+
+**`gmlib` (`agentspace/gmlib.py`, baked into the image) is the runtime-NEUTRAL
+library scens import** (`import gmlib`). It gives gm.py `api.agents()`,
+`api.wake()`, `api.wake_all()`, `api.round(agents, payload, valid, default)`
+(concurrent fan-out + collect — the staple), `api.collect()`, `api.announce()`,
+`api.policy()`, `api.remove()`, `api.roll_session()`, and `api.load_state()/
+save_state()`. All transport is behind an adapter (`runtime_pi/gmd.py` is the PI
+launcher + adapter — the only PI-specific GM code); an OC adapter could slot in
+without touching gmlib or any scen (decision 10).
+
+**Persist-to-disk discipline (decision 14).** A snapshot captures only the
+filesystem, so the GM MUST keep game state on disk and save after every step;
+`run(api, params)` is re-entered on any restart and resumes from state. This is
+scen-author discipline, enforced only by example — see `scenarios/pd/gm.py`,
+the reference prototype.
+
 ## 5. Observability
 
 Everything under `/data/gateway` (mode 0700 — unreachable by agents):
@@ -278,11 +325,14 @@ Everything under `/data/gateway` (mode 0700 — unreachable by agents):
 - `audit.jsonl` — every send (incl. `send_denied` with reason and
   `send_failed`), every public post/read, every wake with its causes (incl.
   operator `wake_requested` / `wake_denied`), every wake_end with rc/duration,
-  and `gateway_start` (with the recovered seq). Every agent activation in the
-  world has a logged cause here.
-- `public.jsonl` — the public chat, append-only.
-- `policy.json` — current live policy.
+  `gateway_start` (with the recovered seq), and every GM action (`gm_wake`,
+  `submit`, `gm_collect`, `gm_announce`, `gm_policy`, `gm_remove`,
+  `gm_roll_session`). Every agent activation in the world has a logged cause.
+- `public.jsonl` — the public chat, append-only (GM announcements are `world`).
+- `policy.json` — current live policy (GM phase switches rewrite it).
 - `budget.jsonl` — per-turn model usage/cost per agent (via `log_usage`).
+- `submissions/<agent>.json` — pending GM submissions (popped by `gm_collect`);
+  `removed.json` — eliminated agents. Both durable so a mid-game snap resumes.
 
 Plus per-agent inbox spools (delivered message files) in each home. All under
 paths captured by `docker commit` → snaps stay complete observability bundles.
@@ -293,12 +343,16 @@ PI worlds are built and driven through the normal zookeeper flow: New World →
 runtime "PI" → scen/roster → fork → wake. Runtime dispatch rides the snap's
 `runtime` OCI label (`agentspace/runtimes/pi.py`). PI-specific env commands:
 
-    zookeeper env kick <env> [--message ...]   # bare wake, or operator PM
+    zookeeper env kick <env> [--message ...]   # run the world: GM start/resume,
+                                               #   else bare wake / operator PM
     zookeeper env chat <env> <agent>           # REPL: PM in, transcript reply out
     zookeeper env post <env> "<text>"          # operator post to the public board
     zookeeper env roll-sessions <env> [--agent a] # archive transcripts + sysprompt
 
-`env kill` removes ONE container — no sandbox siblings exist to clean.
+`env kick` is the one "run the world" verb: on a GM world it starts (or resumes)
+the game master; on a plain world it wakes the agents. `env sleep`/`env stop`
+stop the GM alongside the gateway. `env kill` removes ONE container — no sandbox
+siblings exist to clean.
 world.json `max_tokens` (§4a) caps per-turn output; the builder writes a
 per-agent `models` map so mixed-model rosters work per agent.
 
@@ -347,7 +401,20 @@ transparency), the **reserved-name collision** (`u_operator` refused),
 This is the successor of the OC-era 8-item sandbox checklist
 (`learnings_2026-06-12.md`), automated.
 
+A third gate covers the **GM machinery** (step 4) end-to-end, zero tokens —
+real gateway + `gmd` + PD `gm.py` + dummy agents:
+
+    bash /opt/agentspace-ctl/runtime_pi/gm_gate/run_gm_gate.sh
+
+It proves blocking `gm_wake`, `submit`→`gm_collect`, truthful scoring, world
+announcements, GM-state isolation + role-gating, `gm_remove`, and resume from
+on-disk state. Run it after any GM/gateway/gmlib change.
+
 ## 8. Not built yet (do not assume)
 
-- GM API + `gmlib` (step 4), game scens (steps 5–6), GM-triggered session
-  rollover (operator `env roll-sessions` EXISTS; the gmlib call is step 4).
+- Game scens beyond PD (steps 5–6: noisy-PD, public goods, Mafia).
+- An OC adapter for gmlib (the interface is neutral, but only the PI adapter
+  exists — GM worlds are PI-only for now).
+- Concurrent per-agent sessions / automatic size-threshold rollover (operator
+  `env roll-sessions` and the GM's `gm_roll_session` are the only rollover
+  triggers; both are world-event-driven, never wall-clock).

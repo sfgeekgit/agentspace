@@ -71,6 +71,20 @@ module_blacklist = []    # module names this scen cannot run with
 That's the whole required contract. New manifest fields can be added later
 without breaking existing scens.
 
+**Build-time params** (optional): declare `[[params]]` tables; the New-World
+wizard collects a value for each and the SAME scen builds a different world root
+per value set. Values reach a GM via `params`.
+
+```toml
+[[params]]
+name = "rounds"
+type = "int"          # int (min/max checked) or str; add types as needed
+label = "Number of rounds"
+default = 5
+min = 1
+max = 100
+```
+
 ### Optional files
 
 | File / dir | Purpose |
@@ -78,6 +92,7 @@ without breaking existing scens.
 | `world.md` | Shared world text, baked to `/data/world.md`. Keep it minimal. |
 | `roles/<role>.md` | One briefing per role; baked into that agent's `ROLE.md`. Self-describing; say what the agent *can* do. |
 | `logic.py` | Optional Python hooks (below). |
+| `gm.py` | Optional game master — deterministic control code (PI runtime; below). |
 | `kick.txt` | Overrides the generic default kick (`"Read the .md files in your workspace."`). Rarely needed. |
 | `data/` | Any corpus, baked into the snap at `/data/corpus` (gigabytes OK — it travels with the image). |
 
@@ -105,6 +120,45 @@ never to OCI labels or any shared file.
 See `scenarios/roles_demo/` for a minimal working example (one coordinator, the
 rest members).
 
+### Game master (`gm.py`, PI runtime)
+
+A scen that needs to *drive* the world — run rounds, collect structured moves,
+enforce phases, score — ships a `gm.py`. It is deterministic control code, run
+as a dedicated `gm` user, that orchestrates through the runtime-neutral **gmlib**
+API. Agents never see it except as messages/announcements; they hand it choices
+with the `submit` shim. (Full runtime detail: `docs/runtime_pi.md` §4b.)
+
+```python
+import gmlib   # baked into the image; resolves in-container
+
+def run(api, params):                      # THE entry point
+    rounds = int(params.get("rounds", 5))
+    players = sorted(api.agents())          # variable-count aware
+    state = api.load_state(default={"round": 0, "scores": {p: 0 for p in players}})
+    while state["round"] < rounds:
+        # wake players in parallel, collect each structured submission:
+        moves = api.round(players, "Round … submit X or Y", valid={"X", "Y"}, default="Y")
+        ...                                 # score with your own game logic
+        state["round"] += 1
+        api.save_state(state)               # ← SAVE AFTER EVERY STEP (see below)
+        api.announce("round results …")     # public board, as `world`
+```
+
+`api` (gmlib) gives you: `agents()`, `wake(agent, payload)` (blocks until that
+turn ends), `wake_all()`, `round(agents, payload, valid, default)` (the staple —
+concurrent wake + collect), `collect(agent, valid, default)`, `announce(text)`,
+`policy(allow=, deny=, **caps)` (live phase allowlists), `remove(agent)`,
+`roll_session(agent)`, and `load_state()/save_state()`.
+
+**The one rule: persist all game state to disk and save after every step.** A
+snapshot captures only the filesystem, so `run` is re-entered on any restart and
+MUST resume from `load_state()` — that is what lets a mid-game snap be forked and
+resumed. Make rounds tolerant of replay (a crash between wake and save re-wakes
+that round). `scenarios/pd/gm.py` is the reference prototype — copy its shape.
+
+Lifecycle is automatic: `env kick` starts (or resumes) the GM; `env sleep`/`stop`
+stop it. The GM is the sole waker in its world — you don't kick agents yourself.
+
 ---
 
 ## Modules
@@ -124,7 +178,7 @@ python3 zookeeper.py        # then choose "New world"
 ```
 
 The wizard: pick runtime (PI or openclaw) → scen → agent count (within min/max) →
-per-agent model + persona → modules → world name → build. It produces a **local
+per-agent model + persona → any `[[params]]` → modules → world name → build. It produces a **local
 World Root (`X.0`) snap**; push it with the snap tooling when ready. You can also
 call `agentspace.builder.build_world_root(...)` directly.
 

@@ -194,11 +194,14 @@ def _peers_md(self_id: str, all_ids: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def bake(host, container, *, agents, seeds, world_md, kick_text):
+def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, params=None):
     """Assemble the OC world inside the build container: render openclaw.json,
     stage /data (config, world.md, kick, per-agent seed workspaces incl. the
     OC-specific PEERS.md), one `docker cp`. (Moved from builder._stage_world —
-    the staging LAYOUT is runtime knowledge.)"""
+    the staging LAYOUT is runtime knowledge.)
+
+    gm_py/params are accepted for a uniform builder call but ignored: the GM is
+    a PI-runtime feature (no OC adapter exists yet)."""
     config_text = render_config([{"id": a["id"], "model": a["model"]} for a in agents])
     ids = [a["id"] for a in agents]
     stage = Path(tempfile.mkdtemp(prefix="oc-bake-"))
@@ -419,6 +422,16 @@ def stop_gateway(host: str, container: str):
         "openclaw gateway stop 2>/dev/null; pkill -x openclaw || true",
         check=False,
     )
+
+
+# GM lifecycle: OC has no GM adapter, so these are the uniform-interface no-ops
+# that let env/snap treat every runtime alike (no per-call getattr probing).
+def world_has_gm(host, container) -> bool:
+    return False
+
+
+def stop_gm(host, container):
+    pass
 
 
 GATEWAY_READY_MARKER = "[gateway] ready"

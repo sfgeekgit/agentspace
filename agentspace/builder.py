@@ -99,6 +99,8 @@ def build_world_root(
     scen = registry.load_scen(scen_name)          # raises if missing/invalid
     rt = runtimes.get(runtime)                     # raises if unknown runtime
     logic = registry.load_scen_logic(scen)         # None if no logic.py
+    # Coerce/validate build-time params + fill defaults before anyone reads them.
+    params = registry.validate_params(scen["params_schema"], params)
 
     n = len(roster)
     if n < scen["min_agents"] or n > scen["max_agents"]:
@@ -181,6 +183,8 @@ def build_world_root(
             seeds=seeds,
             world_md=world_md,
             kick_text=kick_text if kick_text.endswith("\n") else kick_text + "\n",
+            gm_py=(scen["dir"] / "gm.py").read_text(encoding="utf-8") if scen["has_gm"] else None,
+            params=params,
         )
         # Corpus copied straight from the scen dir into the container (NOT
         # staged) — it may be gigabytes; staging would copy it a second time.
