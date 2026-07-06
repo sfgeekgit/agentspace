@@ -4,11 +4,18 @@ Reproducible, forkable environments for running and studying AI agents.
 
 **Technical details, architecture, and setup instructions are in the [`docs/`](docs/) folder.**
 
+**Want to build a new world/scenario?** Read
+[`docs/HOW_TO_MAKE_WORLDS_START_HERE.md`](docs/HOW_TO_MAKE_WORLDS_START_HERE.md)
+
+
 ## Quickstart
 
 See [`docs/agentspace_cli.md`](docs/agentspace_cli.md) for full setup. Once installed:
 
 ```bash
+python3 zookeeper.py                                     # Open the Main Menu, do everything from there
+#  You will want to use the menu.
+#  Or commands can also be scripted, for example:
 python3 zookeeper.py snap tree                           # see what's available
 python3 zookeeper.py snap fork simple2agent:1.0 env7     # spin up a fresh env
 python3 zookeeper.py env logs env7 -f                    # watch it run
@@ -37,11 +44,6 @@ Agentspace is best with agents whose entire memory (soul, prompt, history, etc)
 can be saved as part of the local filesystem (markdown, SQLite, etc). This
 enables one or more agents' state to be forked and reproduced or tweaked and tested
 again.
-
-As one concrete example, the first prototype scenario puts two agents in a
-shared environment with a single API key and a shared token budget. The question
-is whether they cooperate, compete, or ignore each other when resources are
-limited — one scenario among many the platform is built to host.
 
 Agentspace is a general platform for:
 

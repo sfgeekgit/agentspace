@@ -28,7 +28,7 @@ python3 zookeeper.py        # → "New world"
 The wizard picks a runtime (PI or openclaw), a scen, the agent count, a per-agent model
 + persona, modules (none yet), and a world name, then builds a local World Root.
 This is distinct from **Fork** (snap → env) and **Take** (env → snap). Scens and
-personas are authored as files in the repo — see `authoring_scenarios.md`. The
+personas are authored as files in the repo — see `HOW_TO_MAKE_WORLDS_START_HERE.md`. The
 underlying call is `agentspace.builder.build_world_root(...)`.
 
 

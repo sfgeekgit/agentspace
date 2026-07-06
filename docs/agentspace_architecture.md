@@ -86,7 +86,7 @@ anything not written to a file should be assumed forgettable.
   secrets.env.example             ← template showing required keys, no values
 ```
 
-See `authoring_scenarios.md` for how to write a scen, persona, or module. (The
+See `HOW_TO_MAKE_WORLDS_START_HERE.md` for how to write a scen, persona, or module. (The
 legacy per-scenario `Dockerfile` + `openclaw.json` form still exists for
 simple2agent; new scens use the manifest form above and the builder below.)
 
@@ -185,7 +185,7 @@ assembles the image (`docker run` base → `docker cp` staged tree → `docker c
 with OCI labels). Scen-specific behavior (role assignment, validation) is
 delegated to the scen's optional `logic.py`. Non-secret provenance goes to OCI
 labels; the full build record incl. any secret role assignment goes to
-`audit.log` only. See `authoring_scenarios.md`.
+`audit.log` only. See `HOW_TO_MAKE_WORLDS_START_HERE.md`.
 
 ### Legacy (Dockerfile) path
 

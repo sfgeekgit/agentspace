@@ -2,7 +2,8 @@
 
 Single source of truth for the PI runtime, agentspace's second runtime
 (alongside OpenClaw — see `runtime_openclaw.md`). Runtime OCI label: `pi`.
-Menu name: "PI".
+Menu name: "PI". (Authoring a scen? You want
+`HOW_TO_MAKE_WORLDS_START_HERE.md` — this doc is engine internals.)
 
 **STATUS (2026-07-05): fully operable from zookeeper, GM built and proven.**
 The gateway + isolation skeleton passes its gate (41/41), the Pi integration
