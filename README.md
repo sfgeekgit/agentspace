@@ -7,7 +7,7 @@ Reproducible, forkable environments for running and studying AI agents.
 **Want to build a new world/scenario?** Read
 [`docs/HOW_TO_MAKE_WORLDS_START_HERE.md`](docs/HOW_TO_MAKE_WORLDS_START_HERE.md)
 
-See a **[`https://sfgeekgit.github.io/agentspace_web_demo/`](demo)**  of what it can do
+See a **[`demo`](https://sfgeekgit.github.io/agentspace_web_demo/)**  of what it can do.
 
 ## Quickstart
 
