@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step-4 GM gate (run as root inside the gate container after setup_gm.sh).
+"""GM-machinery gate (run as root inside the gate container after setup_gm.sh).
 
 Drives the REAL stack — pi_gateway + gmd + PD gm.py + dummy agents — with zero
 tokens, and asserts the whole GM contract: blocking gm_wake, submit→gm_collect,

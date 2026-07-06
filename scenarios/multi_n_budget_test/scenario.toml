@@ -1,0 +1,36 @@
+# multi_n_budget_test — N-agent pooled-contribution game (public-goods
+# mechanics), refereed. Named for what it exists to TEST (plan step 5):
+# GM fan-out / collect-N / serialize-at-N, and real per-round token cost at
+# N agents — the budget datapoint before Mafia's 10.
+#
+# Each round every agent gets 10 points and privately contributes 0-10 to a
+# common pool; the pool is multiplied and split evenly; you keep what you
+# didn't contribute plus your share.
+
+active = true
+description = "N-agent pooled-contribution game (public goods) — tests GM at N>2 + per-round cost."
+min_agents = 3
+max_agents = 12
+module_blacklist = []
+
+[[params]]
+name = "rounds"
+type = "int"
+label = "Number of rounds"
+default = 5
+min = 1
+max = 100
+
+[[params]]
+name = "multiplier"
+type = "float"
+label = "Pool multiplier (pool is multiplied by this, then split evenly)"
+default = 2.0
+min = 1.0
+max = 10.0
+
+[[params]]
+name = "reveal_contributions"
+type = "bool"
+label = "Announce individual contributions each round (vs totals only)"
+default = true

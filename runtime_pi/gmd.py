@@ -77,6 +77,9 @@ class PiAdapter:
     def roll_session(self, agent):
         return self._req({"op": "gm_roll_session", "agent": agent})
 
+    def activity(self, since):
+        return self._req({"op": "gm_activity", "since": since})
+
 
 def load_scen_gm():
     spec = importlib.util.spec_from_file_location("scen_gm", WORLD_DIR / "gm.py")

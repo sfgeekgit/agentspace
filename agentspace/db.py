@@ -130,6 +130,14 @@ def upsert_snap(snap: dict[str, Any]):
     conn.commit()
 
 
+def delete_snap(snap_id: str):
+    """Remove a snap row from the local index (ghcr is untouched). Used by
+    throwaway test builds (build gate); not surfaced in the menu."""
+    conn = get_conn()
+    conn.execute("DELETE FROM snaps WHERE snap_id = ?", (snap_id,))
+    conn.commit()
+
+
 def get_snap_by_id(snap_id: str) -> dict[str, Any] | None:
     row = get_conn().execute(
         "SELECT * FROM snaps WHERE snap_id = ?", (snap_id,)

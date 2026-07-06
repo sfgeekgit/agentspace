@@ -1,5 +1,5 @@
 #!/bin/bash
-# Step-1 container setup: create agent users + 0700 homes, install dummy
+# Checklist container setup: create agent users + 0700 homes, install dummy
 # agents, start the gateway. Run as root inside the env container with the
 # repo's runtime_pi/ dir mounted at /runtime_pi.
 set -euo pipefail

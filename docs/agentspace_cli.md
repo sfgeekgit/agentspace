@@ -40,7 +40,7 @@ underlying call is `agentspace.builder.build_world_root(...)`.
 - Python 3.10+ with `click` and `rich` installed
 - The base runtime image: `docker build -t agentspace:base /opt/agentspace-ctl`
 - For PI-runtime worlds, the PI base image (agentspace:base + node + Pi,
-  EXACT-pinned): `docker build -t pi-world:step2 /opt/agentspace-ctl/runtime_pi/toyworld`
+  EXACT-pinned): `docker build -t pi-world:base /opt/agentspace-ctl/runtime_pi/toyworld`
 - For sandboxed scenarios (`fs_isolation: "sandbox"`), one-time host setup:
   - `sudo install -d -o $USER -g $USER /var/agentspace-envs` — per-env agent
     workspace trees live here (the CLI itself never needs root: contents written
@@ -85,7 +85,7 @@ snap fork <ref> <new_env_name> [options]   # create a new env from a snap
   --host <ip>                  (default localhost)
   --kick / --no-kick           (default: on for world snaps, off otherwise)
 snap pull <ghcr_tag>                       # import a snap created elsewhere
-snap push <ref>                            # push local notes/metadata to ghcr.io
+snap push <ref>                            # push notes/metadata; also the image itself if ghcr lacks it (fresh world root)
 snap rebuild-index [--repo <repo>]         # rebuild SQLite from ghcr.io labels
 ```
 

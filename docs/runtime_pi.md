@@ -4,14 +4,16 @@ Single source of truth for the PI runtime, agentspace's second runtime
 (alongside OpenClaw — see `runtime_openclaw.md`). Runtime OCI label: `pi`.
 Menu name: "PI".
 
-**STATUS (2026-07-04): fully operable from zookeeper — no GM yet.** The
-gateway + isolation skeleton passes its gate (41/41), the Pi integration
+**STATUS (2026-07-05): fully operable from zookeeper, GM built and proven.**
+The gateway + isolation skeleton passes its gate (41/41), the Pi integration
 (agentd + toy world) passes its gate, and zookeeper wiring is DONE: "PI" is a
 runtime choice in New World, `runtimes/pi.py` implements the standard runtime
 surface, and PI envs fork/wake/chat/roll/snapshot from the normal CLI/menu.
-The GM interface (step 4) is designed but NOT built. Build plan and gate
-history: `/home/cc/2026-07-03_plan_pi_runtime.md` (steps 0–3 done, 4–6
-pending);
+The GM interface (step 4, §4b) is built, gated, and proven with a real-token
+refereed PD run; the step-5 scen portfolio (`noisy_pd`,
+`multi_n_budget_test`) and step-6 Mafia (hidden roles, day/night physics,
+both enforcement modes) are built and gated. Build plan and gate history:
+`/home/cc/2026-07-03_plan_pi_runtime.md`;
 design sources `/home/cc/PLAN_C_no_openclaw.md`,
 `/home/cc/2026-07-02_thoughts_on_agent_driving_for_games.md`.
 
@@ -300,8 +302,12 @@ Gateway GM API (all gm-or-operator gated; see `pi_gateway.py`):
   channel; the submission is a latest-wins file the collect pops.
 - `gm_announce(text)` — public-board append as `world` (wakes nobody).
 - `gm_policy(policy)` — set LIVE phase allowlists/caps (day/night etc.).
+  Public posting is the pair `[sender, "public"]`, so a phase can close the
+  board (night). Default `allow: null` keeps everything open.
 - `gm_remove(agent)` — eliminate: no wakes, no send rights (persisted).
 - `gm_roll_session(agent)` — controlled compaction at a phase boundary.
+- `gm_activity(since)` — send/post METADATA (frm/to/seq/ts, never content)
+  since a seq: soft-enforcement worlds referee norms from this (step 6).
 
 **`gmlib` (`agentspace/gmlib.py`, baked into the image) is the runtime-NEUTRAL
 library scens import** (`import gmlib`). It gives gm.py `api.agents()`,
@@ -316,7 +322,10 @@ without touching gmlib or any scen (decision 10).
 filesystem, so the GM MUST keep game state on disk and save after every step;
 `run(api, params)` is re-entered on any restart and resumes from state. This is
 scen-author discipline, enforced only by example — see `scenarios/pd/gm.py`,
-the reference prototype.
+the reference prototype. Step-5 worked examples: `scenarios/noisy_pd`
+(pd copied per decision 8 + a real-noise twist; the copy-a-scen workflow) and
+`scenarios/multi_n_budget_test` (the GM at N>2: `api.round` fan-out/collect-N,
+float/bool params, per-round cost measurement).
 
 ## 5. Observability
 
@@ -372,47 +381,51 @@ Rules:
   rebuild base images. OpenRouter model ids use DOTS
   (`anthropic/claude-haiku-4.5`), not dashes.
 
-## 7. The isolation checklist (regression gate)
+## 7. Gates (the test suite)
 
-    bash /opt/agentspace-ctl/runtime_pi/checklist/run_checklist.sh
+All gates are zero-token, standalone scripts (nothing in the working code
+depends on them); each drives the REAL stack in a throwaway container and
+exits nonzero on any failure. Convention, not CI: **run the gate(s) covering
+what you touched.**
 
-Throwaway container (`openclaw-sandbox:bookworm-slim`, local, `--network
-none`), ~30s, zero tokens, exits nonzero on any failure. Run it after ANY
-gateway change. It proves, with real `su` credentials: PM round-trip +
-auto-wake + no ack ping-pong; public chat wakes nobody; 0700 homes hold;
-gateway state unreachable; sender spoofing impossible; live policy / rate cap /
-size cap enforced + audited; wakes serialized under burst; the operator `wake`
-primitive wakes without a message and is refused to agents; and the inbox
-**symlink attack is refused** (no chown/write escape). The harness is
-mutation-tested: weakening a home to 755 turns the run red.
+**Engine gates** — granular, one per machinery area:
 
-A companion script `checklist/verify_fixes.py` covers behaviors the
-single-gateway gate can't reach — **gateway restart** (seq recovery / snapshot
-transparency), the **reserved-name collision** (`u_operator` refused),
-**fail-closed policy** on a cold gateway with a corrupt file, and the
-**public rate cap**. Run it the same way:
+| Gate | Run | Covers | Run after touching |
+|---|---|---|---|
+| Checklist | `runtime_pi/checklist/run_checklist.sh` | isolation + gateway basics (41 checks) | gateway, agentd, isolation |
+| GM machinery | `runtime_pi/gm_gate/run_gm_gate.sh` | GM API: blocking wake, submit→collect, resume, remove (PD fixture) | gateway GM ops, gmlib, gmd |
+| Policy | `runtime_pi/gm_gate/run_policy_gate.sh` | live phase physics: board open/close via `[sender,"public"]`, PM allowlists, `gm_activity`, fan-out at N=5, secrets isolation | policy code, gm_activity, gmlib |
+| Build | `runtime_pi/gm_gate/run_build_gate.sh` | builder hidden-info hooks via a real throwaway build: `fill_briefing` instantiation, `/gm/secrets.json` baking + ownership (host-side, ~30s) | builder, logic hooks, pi bake |
 
-    docker run --rm --network none --user 0:0 \
-      -v /opt/agentspace-ctl/runtime_pi:/runtime_pi:ro \
-      openclaw-sandbox:bookworm-slim bash -c \
-      'bash /runtime_pi/checklist/setup_env.sh >/dev/null 2>&1; \
-       python3 /runtime_pi/checklist/verify_fixes.py'
+`runtime_pi/run_engine_gates.sh` runs all four (a few minutes) — for
+gateway/gmlib/builder-wide changes; otherwise run just the relevant row.
 
-This is the successor of the OC-era 8-item sandbox checklist
-(`learnings_2026-06-12.md`), automated.
+Checklist details: real `su` credentials prove PM round-trip + auto-wake + no
+ack ping-pong; public chat wakes nobody; 0700 homes hold; gateway state
+unreachable; sender spoofing impossible; live policy / rate cap / size cap
+enforced + audited; wakes serialized under burst; operator `wake` refused to
+agents; inbox **symlink attack refused**. Mutation-tested: weakening a home to
+755 turns the run red. A companion `checklist/verify_fixes.py` covers gateway
+restart (seq recovery), reserved-name collision, fail-closed policy, and the
+public rate cap (run it the same containerized way; see the script header).
+It is the successor of the OC-era 8-item sandbox checklist, automated.
 
-A third gate covers the **GM machinery** (step 4) end-to-end, zero tokens —
-real gateway + `gmd` + PD `gm.py` + dummy agents:
-
-    bash /opt/agentspace-ctl/runtime_pi/gm_gate/run_gm_gate.sh
-
-It proves blocking `gm_wake`, `submit`→`gm_collect`, truthful scoring, world
-announcements, GM-state isolation + role-gating, `gm_remove`, and resume from
-on-disk state. Run it after any GM/gateway/gmlib change.
+**Scen gates** — a scen MAY ship its own `gate/run.sh` for its game logic;
+most don't need one (scen gm.py is write-once and proven by a real run).
+`scenarios/mafia/gate/` is the worked example: the same fully scripted
+6-agent game under BOTH enforcement modes (vote elimination + role reveal,
+doctor save vs kill, detective result delivery, and the split — a mafia
+night post DENIED by hard physics vs POSTED-then-refereed under soft).
+noisy_pd and multi_n_budget_test deliberately have none — either way is fine.
+Scen gates build on the shared harness: `gm_gate/setup_world.sh` (assembles
+any scripted world from a gm.py + a moves dir) + `gm_gate/
+dummy_scripted_agent.sh` (plays one `post`/`send`/`submit` moves-line per
+wake).
 
 ## 8. Not built yet (do not assume)
 
-- Game scens beyond PD (steps 5–6: noisy-PD, public goods, Mafia).
+- An LLM narrator layered on the GM (the design doc's "later"); timed
+  simultaneous discussion windows (the fork-and-compare experiment).
 - An OC adapter for gmlib (the interface is neutral, but only the PI adapter
   exists — GM worlds are PI-only for now).
 - Concurrent per-agent sessions / automatic size-threshold rollover (operator

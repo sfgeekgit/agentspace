@@ -510,6 +510,11 @@ def op_post_public(pr, req):
     if len(text.encode()) > policy["max_msg_bytes"]:
         audit("post_denied", frm=sender, reason="size_cap")
         return {"ok": False, "error": "message exceeds size cap"}
+    # Posting is a policy pair (sender, "public") — lets the GM close the public
+    # board per phase (night). Default allow=None keeps it open for all.
+    if not pr.is_operator and not pr.is_gm and not pair_allowed(policy, sender, "public"):
+        audit("post_denied", frm=sender, reason="policy")
+        return {"ok": False, "error": "public posting not allowed by policy"}
     if not pr.is_operator and not _rate_ok(sender, policy["rate_limit_per_min"]):
         # Same hard anti-flood backstop as send — the public surface is not exempt.
         audit("post_denied", frm=sender, reason="rate_cap",
@@ -789,12 +794,41 @@ def op_gm_roll_session(pr, req):
     return {"ok": True}
 
 
+def op_gm_activity(pr, req):
+    """Message-traffic METADATA (send/post_public/denials: who, to, seq, ts —
+    never content) since a seq. Lets a soft-enforcement GM referee norm
+    violations from the audit trail (plan step 6) without reading content."""
+    if not gm_privileged(pr):
+        return {"ok": False, "error": "gm_activity is GM-only"}
+    since = req.get("since", 0)
+    if not isinstance(since, int):
+        return {"ok": False, "error": "gm_activity needs int 'since'"}
+    out = []
+    try:
+        with open(AUDIT) as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                # send/post_public carry a seq; denials don't (nothing happened)
+                if e.get("event") in ("send", "post_public") and e.get("seq", 0) > since:
+                    out.append({k: e.get(k) for k in ("event", "frm", "to", "seq", "ts")
+                                if e.get(k) is not None})
+    except FileNotFoundError:
+        pass
+    with _seq_lock:
+        max_seq = _seq
+    return {"ok": True, "events": out, "max_seq": max_seq}
+
+
 OPS = {"send": op_send, "post_public": op_post_public,
        "read_public": op_read_public, "wake": op_wake,
        "log_usage": op_log_usage, "who": op_who,
        "submit": op_submit, "gm_wake": op_gm_wake, "gm_collect": op_gm_collect,
        "gm_announce": op_gm_announce, "gm_policy": op_gm_policy,
-       "gm_remove": op_gm_remove, "gm_roll_session": op_gm_roll_session}
+       "gm_remove": op_gm_remove, "gm_roll_session": op_gm_roll_session,
+       "gm_activity": op_gm_activity}
 
 
 def handle(conn):

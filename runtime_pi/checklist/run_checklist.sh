@@ -1,5 +1,5 @@
 #!/bin/bash
-# Step-1 gate runner (host side). Zero tokens, zero network.
+# Isolation-checklist gate runner (host side). Zero tokens, zero network.
 # Spins up a throwaway container from the small local bookworm-slim image,
 # builds the skeleton env (users/homes/gateway/dummy agents), runs the
 # functional + isolation checklist, exits nonzero on any failure.

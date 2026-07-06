@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ad-hoc verification for step-1 fixes the standard gate doesn't exercise
+"""Ad-hoc verification for isolation-checklist fixes the standard gate doesn't exercise
 (gateway restart, reserved-name collision, fail-closed policy, public rate cap).
 Runs as root in the same container image after setup_env.sh. Zero tokens."""
 import json

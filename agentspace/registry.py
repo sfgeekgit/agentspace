@@ -235,27 +235,36 @@ def load_scen_logic(scen: dict[str, Any]) -> ModuleType | None:
 def validate_params(schema: list[dict[str, Any]], values: dict[str, Any] | None) -> dict[str, Any]:
     """Coerce + validate build-time params against a scen's params_schema,
     filling defaults for anything absent. Returns a clean dict; raises
-    ValueError on a bad value. Foundation (decision 12): handles type 'int' and
-    falls back to string — add types here as scens need them."""
+    ValueError on a bad value. Handles types 'int', 'float', 'bool'; falls back
+    to string — add types here as scens need them."""
     out: dict[str, Any] = {}
     values = values or {}
     for spec in schema:
-        name = spec["name"]
+        name, typ = spec["name"], spec.get("type")
         if values.get(name) is None:
             out[name] = spec.get("default")
             continue
         raw = values[name]
-        if spec.get("type") == "int":
+        if typ in ("int", "float"):
             try:
-                v = int(raw)
+                v = int(raw) if typ == "int" else float(raw)
             except (TypeError, ValueError):
-                raise RegistryError(f"param {name!r} must be an integer")
+                raise RegistryError(f"param {name!r} must be a number ({typ})")
             lo, hi = spec.get("min"), spec.get("max")
             if lo is not None and v < lo:
                 raise RegistryError(f"param {name!r} must be >= {lo}")
             if hi is not None and v > hi:
                 raise RegistryError(f"param {name!r} must be <= {hi}")
             out[name] = v
+        elif typ == "bool":
+            if isinstance(raw, bool):
+                out[name] = raw
+            elif str(raw).strip().lower() in ("true", "yes", "y", "1"):
+                out[name] = True
+            elif str(raw).strip().lower() in ("false", "no", "n", "0"):
+                out[name] = False
+            else:
+                raise RegistryError(f"param {name!r} must be true/false")
         else:
             out[name] = str(raw)
     return out

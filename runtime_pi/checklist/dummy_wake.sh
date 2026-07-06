@@ -1,5 +1,5 @@
 #!/bin/bash
-# Step-1 dummy agent (zero tokens). Installed as /agents/<id>/on_wake and
+# Checklist dummy agent (zero tokens). Installed as /agents/<id>/on_wake and
 # spawned BY THE GATEWAY as this agent's own linux user.
 #
 # Behavior: log every inbox message; reply exactly once to messages whose

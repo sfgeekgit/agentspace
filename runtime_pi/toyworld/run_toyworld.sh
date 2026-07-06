@@ -2,14 +2,14 @@
 # Step-2 gate runner: 3-agent toy world with real Pi brains (COSTS TOKENS,
 # ~$0.02-0.05 on haiku). Usage:
 #   bash run_toyworld.sh /path/to/openrouter_key
-# Builds pi-world:step2 if missing, runs the world to quiescence, verifies the
+# Builds pi-world:base if missing, runs the world to quiescence, verifies the
 # gate, then proves snapshot completeness via docker commit. Leaves the
 # container running for inspection; remove with: docker rm -f pi-toyworld
 set -euo pipefail
 
 KEY="${1:?usage: run_toyworld.sh /path/to/openrouter_key}"
 RT=/opt/agentspace-ctl/runtime_pi
-IMG=pi-world:step2
+IMG=pi-world:base
 NAME=pi-toyworld
 
 docker image inspect "$IMG" >/dev/null 2>&1 || docker build -t "$IMG" "$RT/toyworld"

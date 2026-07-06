@@ -1,5 +1,5 @@
 #!/bin/bash
-# Step-4 GM gate runner (host side). Zero tokens, zero network. Throwaway
+# GM-machinery gate runner (host side). Zero tokens, zero network. Throwaway
 # container from the small local image; repo mounted ro. ~seconds.
 set -euo pipefail
 IMG="${1:-openclaw-sandbox:bookworm-slim}"

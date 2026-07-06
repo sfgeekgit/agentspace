@@ -1,0 +1,28 @@
+# noisy_pd — Prisoner's Dilemma with real transmission noise (2 agents), refereed.
+#
+# Copy of `pd` (decision 8: scen variants copy code, don't abstract) plus one
+# twist: each submitted move is flipped with probability noise_p, and the
+# flipped move is what gets SCORED (real noise, not just perceived). The GM log
+# records intended vs played. Exists to prove the copy-a-scen workflow.
+
+active = true
+description = "Noisy PD — like pd, but each move is flipped with probability noise_p (scored as flipped)."
+min_agents = 2
+max_agents = 2
+module_blacklist = []
+
+[[params]]
+name = "rounds"
+type = "int"
+label = "Number of rounds"
+default = 5
+min = 1
+max = 100
+
+[[params]]
+name = "noise_p"
+type = "float"
+label = "Noise probability (chance a move is flipped)"
+default = 0.2
+min = 0.0
+max = 1.0

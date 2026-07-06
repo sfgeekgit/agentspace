@@ -1,0 +1,40 @@
+# mafia — the social-deduction acceptance test (plan step 6).
+#
+# Hidden roles (mafia / detective / doctor / villagers), day discussion +
+# vote, night actions, all run by a deterministic GM. Role briefings are
+# INSTANTIATED at build (mafia learn their partners); the answer key is baked
+# to /gm/secrets.json (agents can't read it) and the build audit record.
+#
+# Decision 12 in anger: `hard_enforcement` picks the world's physics at build.
+# hard = live gm_policy allowlists (night: mafia-only PMs, no public posts).
+# soft = same rules as NORMS in the briefings only; the GM referees violations
+#        from message metadata (gm_activity) and announces them.
+# One scen, two kinds of world root; playtesting both IS the experiment.
+
+active = true
+description = "Mafia — hidden roles, day votes, night kills; deterministic GM referee. 6-12 agents."
+min_agents = 6
+max_agents = 12
+module_blacklist = []
+
+[[params]]
+name = "discussion_passes"
+type = "int"
+label = "Discussion passes per day (each pass wakes every living agent once)"
+default = 2
+min = 1
+max = 5
+
+[[params]]
+name = "max_days"
+type = "int"
+label = "Safety cap: end the game as a draw after this many days"
+default = 15
+min = 1
+max = 100
+
+[[params]]
+name = "hard_enforcement"
+type = "bool"
+label = "Hard enforcement (live message physics; off = norms + GM refereeing)"
+default = true

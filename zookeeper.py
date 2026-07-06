@@ -797,25 +797,27 @@ def menu_budget():
 
 def _collect_params(schema):
     """Prompt for a scen's build-time params (decision 12). Minimal typed
-    prompts — one int branch + a string fallback; add branches per new type."""
+    prompts — int/float/bool branches + a string fallback; add per new type."""
     values = {}
     for spec in schema:
-        name, label = spec["name"], spec.get("label", spec["name"])
+        name, label, typ = spec["name"], spec.get("label", spec["name"]), spec.get("type")
         default = spec.get("default")
         dstr = "" if default is None else str(default)
-        if spec.get("type") == "int":
+        if typ in ("int", "float"):
             lo, hi = spec.get("min"), spec.get("max")
             while True:
                 raw = _ask(lambda: questionary.text(f"{label}:", default=dstr).ask())
                 try:
-                    v = int(raw)
+                    v = int(raw) if typ == "int" else float(raw)
                 except (TypeError, ValueError):
-                    print("  Enter a whole number."); continue
+                    print("  Enter a whole number." if typ == "int" else "  Enter a number."); continue
                 if lo is not None and v < lo:
                     print(f"  Must be >= {lo}."); continue
                 if hi is not None and v > hi:
                     print(f"  Must be <= {hi}."); continue
                 values[name] = v; break
+        elif typ == "bool":
+            values[name] = _ask(lambda: questionary.confirm(f"{label}?", default=bool(default)).ask())
         else:
             values[name] = _ask(lambda: questionary.text(f"{label}:", default=dstr).ask())
     return values

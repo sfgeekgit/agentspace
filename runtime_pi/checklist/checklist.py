@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Step-1 gate: functional shakeout + isolation checklist (no LLM, no tokens).
+"""Isolation checklist gate: functional shakeout + isolation checklist (no LLM, no tokens).
 
-Runs as root inside the step-1 container AFTER setup_env.sh. Agent-identity
+Runs as root inside the gate container AFTER setup_env.sh. Agent-identity
 actions are performed via `su` so they carry real kernel credentials — the
 same way a compromised/curious agent would act.
 
@@ -234,7 +234,7 @@ def main():
         for name, _, detail in failed:
             print(f"  - {name}: {detail[:300]}")
         sys.exit(1)
-    print("STEP 1 GATE: ALL GREEN")
+    print("CHECKLIST GATE: ALL GREEN")
 
 
 if __name__ == "__main__":

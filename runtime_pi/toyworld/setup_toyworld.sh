@@ -1,5 +1,5 @@
 #!/bin/bash
-# Toy-world env setup — runs as root INSIDE the pi-world:step2 container.
+# Toy-world env setup — runs as root INSIDE the pi-world:base container.
 # Expects /runtime_pi mounted (ro) and the OpenRouter key at /run/key_src (ro).
 # Creates 3 agents with seeded homes, installs the CLI shims, starts the
 # gateway. (Step 3's builder.py will do this properly at image build time.)

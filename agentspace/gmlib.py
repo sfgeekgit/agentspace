@@ -123,6 +123,13 @@ class GM:
         re-rendered files — controlled compaction at a phase boundary."""
         self._a.roll_session(agent)
 
+    def activity(self, since=0):
+        """Message-traffic metadata (send/post_public: frm/to/seq/ts, never
+        content) since a seq — soft-enforcement refereeing. Returns
+        (events, max_seq); pass max_seq back as the next `since`."""
+        r = self._a.activity(since)
+        return r.get("events", []), r.get("max_seq", since)
+
 
 def run(adapter, scen_run, params, state_path):
     """Entry the runtime launcher calls: wire the adapter + state into a GM and

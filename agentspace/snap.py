@@ -373,9 +373,20 @@ def cmd_push(ref: str):
     ghcr_tag = snap["ghcr_tag"]
 
     if not snap.get("notes_dirty"):
-        console.print(
-            f"[dim]{snap['scenario']}:{snap['version']} has no local changes; nothing to push.[/dim]"
-        )
+        # Metadata is clean, but the image itself may only exist locally
+        # (build_world_root does not push). Push it if ghcr doesn't have it.
+        on_ghcr = docker_host.run(
+            host, "manifest", "inspect", ghcr_tag, check=False
+        ).returncode == 0
+        if on_ghcr:
+            console.print(
+                f"[dim]{snap['scenario']}:{snap['version']} has no local changes; nothing to push.[/dim]"
+            )
+            return
+        console.print(f"[dim]image not on ghcr.io yet; pushing …[/dim]")
+        docker_host.run(host, "push", ghcr_tag)
+        audit.log("snap.push", f"{snap['scenario']}:{snap['version']}")
+        console.print(f"[green]✓[/green] {snap['scenario']}:{snap['version']} pushed to ghcr.io.")
         return
 
     # Pull to ensure local image exists, then re-commit a placeholder container with new labels.

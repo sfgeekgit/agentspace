@@ -22,7 +22,7 @@ from .. import docker_host
 NAME = "pi"
 MENU_NAME = "PI"
 
-BASE_IMAGE = "pi-world:step2"          # agentspace:base + node + Pi (EXACT pin)
+BASE_IMAGE = "pi-world:base"          # agentspace:base + node + Pi (EXACT pin; formerly pi-world:step2)
 GATEWAY_LOG_PATH = "/var/log/gateway.log"
 SOCKET_PATH = "/run/gateway/gateway.sock"
 KICK_FILE_PATH = "/world/kick.txt"
@@ -84,12 +84,15 @@ def list_all_models() -> list[str]:
 
 # ---- world-root bake (called by builder inside the temp build container) ----
 
-def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, params=None):
+def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, params=None,
+         gm_secrets=None):
     """Assemble the PI world inside the build container.
 
     agents: [{"id", "model"}, ...];  seeds: {agent_id: {filename: text}}.
     gm_py: the scen's gm.py source (str) if it ships a game master, else None.
     params: validated build-time params, baked into world.json for the GM.
+    gm_secrets: optional dict from logic.gm_secrets (e.g. the role answer key)
+    baked to /gm/secrets.json — gm-owned, unreadable by agents.
     Stages /runtime_pi + /world + per-agent homes locally, one `docker cp`,
     then a single in-container script for users/ownership (the parts that
     must run as root against the container's /etc/passwd).
@@ -119,6 +122,10 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, par
         (world / "kick.txt").write_text(kick_text or "")
         if gm_py:
             (world / "gm.py").write_text(gm_py)
+        if gm_secrets is not None:
+            gm_home = stage / "gm"
+            gm_home.mkdir()
+            (gm_home / "secrets.json").write_text(json.dumps(gm_secrets, indent=2) + "\n")
 
         # CLI shims → staged /usr/local/bin (real files, not escaped strings).
         bindir = stage / "usr" / "local" / "bin"
@@ -159,7 +166,7 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, par
         # state home (agents cannot read it). The gateway recognizes uid → `gm`.
         script += (
             '; useradd --no-user-group -M -d /gm gm; '
-            'mkdir -p /gm; chown gm /gm; chmod 0700 /gm'
+            'mkdir -p /gm; chown -R gm /gm; chmod 0700 /gm'  # -R: covers baked secrets.json
         )
     docker_host.run(host, "exec", container, "sh", "-c", script)
 

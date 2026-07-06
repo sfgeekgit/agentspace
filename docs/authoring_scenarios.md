@@ -78,7 +78,7 @@ per value set. Values reach a GM via `params`.
 ```toml
 [[params]]
 name = "rounds"
-type = "int"          # int (min/max checked) or str; add types as needed
+type = "int"          # int | float (min/max checked) | bool | str; add types as needed
 label = "Number of rounds"
 default = 5
 min = 1
@@ -98,7 +98,7 @@ max = 100
 
 ### `logic.py` hooks
 
-Both functions are optional. A scen with neither gets N generic agents (no roles).
+All hooks are optional. A scen with none gets N generic agents (no roles).
 
 ```python
 def validate(n, params):
@@ -111,14 +111,26 @@ def assign_roles(n, params, rng):
     build seed, so assignment is reproducible and recorded in audit.log.
     Each role name must have a matching roles/<role>.md briefing."""
     ...
+
+def fill_briefing(briefing, agent_id, ids_roles, params, rng):
+    """Hidden-information games: instantiate a role briefing per agent —
+    e.g. mafia templates get their partners' ids substituted in. `ids_roles`
+    is {agent_id: role} for the whole world. Return the final text."""
+    ...
+
+def gm_secrets(ids_roles, params, rng):
+    """Return a JSON-able dict the GM needs at run time (e.g. the role answer
+    key). Baked to /gm/secrets.json — gm-owned, unreadable by agents."""
+    ...
 ```
 
 Roles can be **secret from the agents** — each agent only ever sees its own
-`ROLE.md`. The full assignment ("answer key") is written to **audit.log only**,
-never to OCI labels or any shared file.
+`ROLE.md`. The full assignment ("answer key") is written to **audit.log only**
+(plus `/gm/secrets.json` if the scen uses `gm_secrets`), never to OCI labels
+or any shared file.
 
 See `scenarios/roles_demo/` for a minimal working example (one coordinator, the
-rest members).
+rest members) and `scenarios/mafia/` for the full hidden-information surface.
 
 ### Game master (`gm.py`, PI runtime)
 
@@ -147,14 +159,19 @@ def run(api, params):                      # THE entry point
 `api` (gmlib) gives you: `agents()`, `wake(agent, payload)` (blocks until that
 turn ends), `wake_all()`, `round(agents, payload, valid, default)` (the staple —
 concurrent wake + collect), `collect(agent, valid, default)`, `announce(text)`,
-`policy(allow=, deny=, **caps)` (live phase allowlists), `remove(agent)`,
-`roll_session(agent)`, and `load_state()/save_state()`.
+`policy(allow=, deny=, **caps)` (live phase allowlists; the pair
+`[sender, "public"]` gates public posting), `remove(agent)`,
+`roll_session(agent)`, `activity(since)` (message METADATA for soft-mode
+norm refereeing — never content), and `load_state()/save_state()`.
 
 **The one rule: persist all game state to disk and save after every step.** A
 snapshot captures only the filesystem, so `run` is re-entered on any restart and
 MUST resume from `load_state()` — that is what lets a mid-game snap be forked and
 resumed. Make rounds tolerant of replay (a crash between wake and save re-wakes
 that round). `scenarios/pd/gm.py` is the reference prototype — copy its shape.
+Worked variants: `scenarios/noisy_pd` (pd copied + a real-noise twist with a
+persisted RNG seed so replayed rounds flip identically) and
+`scenarios/multi_n_budget_test` (N>2 fan-out, float/bool params, float scores).
 
 Lifecycle is automatic: `env kick` starts (or resumes) the GM; `env sleep`/`stop`
 stop it. The GM is the sole waker in its world — you don't kick agents yourself.

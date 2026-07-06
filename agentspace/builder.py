@@ -119,6 +119,13 @@ def build_world_root(
     # ---- roster -> concrete agents (id + model + persona + role) ----
     ids = generate_agent_ids(n, rng)
     roles = _assign_roles(logic, n, params, rng)
+    # Optional scen hooks for hidden-information games (Mafia): briefings may
+    # be templates instantiated per agent (partners' names filled in), and the
+    # GM may need the role answer key at run time (baked to /gm/secrets.json,
+    # unreadable by agents — same trust boundary as GM state).
+    ids_roles = dict(zip(ids, roles))
+    gm_secrets = (logic.gm_secrets(ids_roles, params, rng)
+                  if logic is not None and hasattr(logic, "gm_secrets") else None)
     agents: list[dict[str, Any]] = []
     for agent_id, slot, role in zip(ids, roster, roles):
         persona = registry.load_persona(slot["persona"])   # raises if missing
@@ -130,6 +137,8 @@ def build_world_root(
                     f"scen {scen_name!r}: role {role!r} has no roles/{role}.md briefing"
                 )
             briefing = bf.read_text(encoding="utf-8")
+            if logic is not None and hasattr(logic, "fill_briefing"):
+                briefing = logic.fill_briefing(briefing, agent_id, ids_roles, params, rng)
         agents.append(
             {
                 "id": agent_id,
@@ -185,6 +194,7 @@ def build_world_root(
             kick_text=kick_text if kick_text.endswith("\n") else kick_text + "\n",
             gm_py=(scen["dir"] / "gm.py").read_text(encoding="utf-8") if scen["has_gm"] else None,
             params=params,
+            gm_secrets=gm_secrets,
         )
         # Corpus copied straight from the scen dir into the container (NOT
         # staged) — it may be gigabytes; staging would copy it a second time.
