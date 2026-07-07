@@ -243,6 +243,30 @@ agent wakes; the GM is the sole waker. `env stop`/`sleep` stop it. A fork of
 a mid-game snapshot resumes exactly where the state file says — that is why
 the persistence discipline exists, and it is what enables "what if" forks.
 
+## Declaring watchable logs (`[[watch]]`)
+
+`env watch <env>` gives the operator a live log TUI with built-in views
+(spectator feed, public board, GM announcements, per-agent thoughts/says/
+messages/scratchpad). A scen may add its OWN views — declaratively, in
+`scenario.toml`:
+
+```toml
+[[watch]]
+name = "game log (GM, spoilers)"   # sidebar label
+file = "/gm/game_log.jsonl"        # file pattern in the container (glob ok)
+format = "jsonl"                   # "jsonl" or "text" (text = plain tail)
+fields = { ts = "ts", who = "who", text = "text" }   # jsonl key mapping
+# optional: filter = { field = "kind", equals = "day_end" }
+```
+
+The RULE: declarative only — a watch entry names a file and how to read it;
+scen code NEVER runs on the operator's host. If you want a readable view,
+write a readable file. Your GM already persists state every step; appending
+one human-readable line per game beat to a jsonl is the same discipline —
+see `glog()` in `scenarios/mafia/gm.py` (it records the hidden beats: night
+targets, saves, investigations, role reveals — GM-home files are
+agent-unreachable, so spoilers are safe there).
+
 ## Worked examples (in the repo, simplest first)
 
 - `scenarios/simple2agent` — no roles, no GM: just world text.
@@ -254,7 +278,8 @@ the persistence discipline exists, and it is what enables "what if" forks.
 - `scenarios/multi_n_budget_test` — the GM at N>2; float/bool params.
 - `scenarios/mafia` — the full surface: hidden templated roles,
   `gm_secrets`, day/night state machine, live phase policy vs norms
-  refereeing, elimination, private info delivery, safety cap, a scen gate.
+  refereeing, elimination, private info delivery, safety cap, a scen gate,
+  and a `[[watch]]` spoiler game log (`glog()`).
 
 ## Building and running a world
 
@@ -270,7 +295,8 @@ a local **world root** (`<name>:1.0`, never run directly). Then:
 ```
 python3 zookeeper.py snap push <name>:1.0        # push image to ghcr.io
 python3 zookeeper.py snap fork <name>:1.0 myrun  # fork → live env (auto-kicks)
-python3 zookeeper.py env logs myrun --all -f     # watch (gateway audit + agent sessions)
+python3 zookeeper.py env watch myrun             # live log TUI (feed, board, agents…)
+python3 zookeeper.py env logs myrun --all -f     # raw tails (gateway audit + sessions)
 docker exec myrun sh -c 'cat /data/gateway/public.jsonl'   # the public board
 docker exec myrun cat /gm/state.json             # the GM's true state
 python3 zookeeper.py budget show myrun           # spend

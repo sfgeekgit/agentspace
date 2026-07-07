@@ -5,16 +5,18 @@ Single source of truth for the PI runtime, agentspace's second runtime
 Menu name: "PI". (Authoring a scen? You want
 `HOW_TO_MAKE_WORLDS_START_HERE.md` — this doc is engine internals.)
 
-**STATUS (2026-07-05): fully operable from zookeeper, GM built and proven.**
-The gateway + isolation skeleton passes its gate (41/41), the Pi integration
+**STATUS (2026-07-06): fully operable from zookeeper, GM built and proven.**
+The gateway + isolation skeleton passes its gate (44/44), the Pi integration
 (agentd + toy world) passes its gate, and zookeeper wiring is DONE: "PI" is a
 runtime choice in New World, `runtimes/pi.py` implements the standard runtime
-surface, and PI envs fork/wake/chat/roll/snapshot from the normal CLI/menu.
-The GM interface (step 4, §4b) is built, gated, and proven with a real-token
-refereed PD run; the step-5 scen portfolio (`noisy_pd`,
+surface, and PI envs fork/wake/chat/watch/roll/snapshot from the normal
+CLI/menu. The GM interface (step 4, §4b) is built, gated, and proven with a
+real-token refereed PD run; the step-5 scen portfolio (`noisy_pd`,
 `multi_n_budget_test`) and step-6 Mafia (hidden roles, day/night physics,
-both enforcement modes) are built and gated. Build plan and gate history:
-`/home/cc/2026-07-03_plan_pi_runtime.md`;
+both enforcement modes) are built and gated. Live log watching (`env watch`
+TUI, §5b) landed 2026-07-06. Build plan and gate history:
+`/home/cc/old_notes_archive/2026-07-03_plan_pi_runtime.md`, watcher plan
+`/home/cc/2026-07-06_plan_log_watcher.md`;
 design sources `/home/cc/PLAN_C_no_openclaw.md`,
 `/home/cc/2026-07-02_thoughts_on_agent_driving_for_games.md`.
 
@@ -338,6 +340,11 @@ Everything under `/data/gateway` (mode 0700 — unreachable by agents):
   `gateway_start` (with the recovered seq), and every GM action (`gm_wake`,
   `submit`, `gm_collect`, `gm_announce`, `gm_policy`, `gm_remove`,
   `gm_roll_session`). Every agent activation in the world has a logged cause.
+  `send`/`post_public`/`submit`/`gm_announce`/`gm_wake` also carry their
+  CONTENT (`text`/`action`/`payload`, capped at 2000 chars) so a whole game
+  is reconstructable from this one file — it feeds the `env watch` spectator
+  feed (§5b). Content stays operator-only: the file is agent-unreachable and
+  `gm_activity` projects a fixed metadata field list.
 - `public.jsonl` — the public chat, append-only (GM announcements are `world`).
 - `policy.json` — current live policy (GM phase switches rewrite it).
 - `budget.jsonl` — per-turn model usage/cost per agent (via `log_usage`).
@@ -357,6 +364,7 @@ runtime "PI" → scen/roster → fork → wake. Runtime dispatch rides the snap'
                                                #   else bare wake / operator PM
     zookeeper env chat <env> <agent>           # REPL: PM in, transcript reply out
     zookeeper env post <env> "<text>"          # operator post to the public board
+    zookeeper env watch <env> [--plain VIEW]   # live log TUI (§5b)
     zookeeper env roll-sessions <env> [--agent a] # archive transcripts + sysprompt
 
 `env kick` is the one "run the world" verb: on a GM world it starts (or resumes)
@@ -365,6 +373,34 @@ stop the GM alongside the gateway. `env kill` removes ONE container — no sandb
 siblings exist to clean.
 world.json `max_tokens` (§4a) caps per-turn output; the builder writes a
 per-agent `models` map so mixed-model rosters work per agent.
+
+## 5b. Watching a world — `env watch`
+
+`zookeeper env watch <env>` opens a Textual TUI (also from the menu: "Watch
+logs"): a sidebar of views, a live tail pane. Arrows+enter switch views, `p`
+pauses auto-scroll, `q` returns to the shell/menu. Built-in views:
+
+- `feed` — the spectator feed: the audit stream rendered with its content
+  fields (§5) — announcements, posts, PM bodies, submits, wakes, denials.
+  PRIVATE content included by design (operator's log). Worlds built before
+  the content fields fall back to metadata one-liners.
+- `board` / `announcements` — the public chat; `announcements` filters to
+  the GM's `world` posts (a GM game's public day-by-day summary).
+- `budget` — one line per turn (cost, tokens, duration).
+- `raw` — audit as compact JSON.
+- `<agent>` / `<agent>:thoughts` / `:says` / `:messages` / `:scratchpad` —
+  the Pi session transcript parsed to the english bits (thinking dim, text
+  normal, tool calls one-liners), or just one facet.
+
+Scens may DECLARE extra views (`[[watch]]` in scenario.toml — see
+`HOW_TO_MAKE_WORLDS_START_HERE.md`); mafia ships "game log (GM, spoilers)".
+
+Implementation (`agentspace/logwatch.py` + `watch_tui.py`): one tiny streamer
+loop runs in-container via docker exec and re-globs the view's file patterns
+each cycle — late-appearing session files and rollovers are picked up by
+construction. `env watch --plain <view> [--no-follow]` streams one rendered
+view to stdout for piping/grep. `env logs` remains the raw-tail surface
+(its `--all -f` uses the same streamer, lines prefixed `path<TAB>`).
 
 ## 6. Pi version pinning
 
@@ -393,7 +429,7 @@ what you touched.**
 
 | Gate | Run | Covers | Run after touching |
 |---|---|---|---|
-| Checklist | `runtime_pi/checklist/run_checklist.sh` | isolation + gateway basics (41 checks) | gateway, agentd, isolation |
+| Checklist | `runtime_pi/checklist/run_checklist.sh` | isolation + gateway basics incl. audit content fields (44 checks) | gateway, agentd, isolation |
 | GM machinery | `runtime_pi/gm_gate/run_gm_gate.sh` | GM API: blocking wake, submit→collect, resume, remove (PD fixture) | gateway GM ops, gmlib, gmd |
 | Policy | `runtime_pi/gm_gate/run_policy_gate.sh` | live phase physics: board open/close via `[sender,"public"]`, PM allowlists, `gm_activity`, fan-out at N=5, secrets isolation | policy code, gm_activity, gmlib |
 | Build | `runtime_pi/gm_gate/run_build_gate.sh` | builder hidden-info hooks via a real throwaway build: `fill_briefing` instantiation, `/gm/secrets.json` baking + ownership (host-side, ~30s) | builder, logic hooks, pi bake |

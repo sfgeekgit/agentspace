@@ -195,6 +195,7 @@ def build_world_root(
             gm_py=(scen["dir"] / "gm.py").read_text(encoding="utf-8") if scen["has_gm"] else None,
             params=params,
             gm_secrets=gm_secrets,
+            watch=scen["watch"],
         )
         # Corpus copied straight from the scen dir into the container (NOT
         # staged) — it may be gigabytes; staging would copy it a second time.

@@ -16,7 +16,19 @@ replays that stage (agents re-woken) — harmless by design.
 """
 import json
 import random
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def glog(text):
+    """One beat to the operator's spoiler log — the scenario.toml [[watch]]
+    view ("game log"). Append-only history incl. hidden info (night targets,
+    saves, investigations) where state.json holds only current state; gm-owned,
+    agents never see it. A crash-replayed stage may repeat a line — harmless,
+    same discipline as state saves."""
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with (Path.home() / "game_log.jsonl").open("a") as f:
+        f.write(json.dumps({"ts": ts, "text": text}) + "\n")
 
 
 def run(api, params):
@@ -55,6 +67,8 @@ def run(api, params):
         state["alive"].remove(agent)
         state["log"].append({"day": state["day"], "event": cause,
                              "agent": agent, "role": roles[agent]})
+        glog(f"Day {state['day']}: {agent} eliminated ({cause}) — "
+             f"role was {roles[agent]}.")
 
     def referee():
         """Soft mode: announce overnight norm violations (metadata only)."""
@@ -71,6 +85,10 @@ def run(api, params):
                          + "; ".join(sorted(bad)) + ".")
 
     max_days = int(params.get("max_days", 15))
+
+    if state["day"] == 1 and state["stage"] == "morning":   # fresh game
+        glog("Roles: " + ", ".join(f"{a}: {roles[a]}" for a in sorted(roles))
+             + f". Params: passes={passes}, hard={hard}, max_days={max_days}.")
 
     while state["winner"] is None:
         d = state["day"]
@@ -124,6 +142,8 @@ def run(api, params):
                     tally[v] = tally.get(v, 0) + 1
             top = sorted(tally.items(), key=lambda kv: -kv[1])
             state["log"].append({"day": d, "event": "vote", "votes": votes})
+            glog(f"Day {d} votes: " + ", ".join(
+                f"{a}→{votes[a]}" for a in sorted(votes)) + ".")
             if top and (len(top) == 1 or top[0][1] > top[1][1]):
                 out = top[0][0]
                 eliminate(out, "voted_out")
@@ -148,6 +168,8 @@ def run(api, params):
                 valid=set(town()) | {"abstain"}, default="abstain")
             # First non-abstain in sorted order decides (simple, deterministic).
             kill = next((kills[a] for a in sorted(kills) if kills[a] != "abstain"), None)
+            glog(f"Night {d}: mafia votes " + ", ".join(
+                f"{a}→{kills[a]}" for a in sorted(kills)) + f"; target: {kill or 'none'}.")
 
             det = special("detective")
             if det:
@@ -159,6 +181,7 @@ def run(api, params):
                     state["pending"][det[0]] = (
                         f"[Private] Your night-{d} investigation: {t} is "
                         f"{'MAFIA' if roles[t] == 'mafia' else 'NOT mafia'}. ")
+                glog(f"Night {d}: detective {det[0]} investigated {t}.")
             doc = special("doctor")
             save = None
             if doc:
@@ -167,11 +190,15 @@ def run(api, params):
                                  f"`submit abstain`.",
                                  valid=set(state["alive"]) | {"abstain"},
                                  default="abstain")[doc[0]]
+            if doc:
+                glog(f"Night {d}: doctor {doc[0]} protected {save}.")
             state["log"].append({"day": d, "event": "night", "kills": kills,
                                  "save": save})
             if kill and kill != save:
                 eliminate(kill, "killed")
                 state["deaths"] = [kill]
+            elif kill:
+                glog(f"Night {d}: {kill} was attacked but saved by the doctor.")
             state["day"] = d + 1
             state["stage"] = "morning"
             api.save_state(state)
@@ -179,6 +206,8 @@ def run(api, params):
 
     if hard:
         api.policy(allow=None)   # game over: reopen the board
-    api.announce(f"GAME OVER — {state['winner'].upper()} wins. The roles were: "
-                 + ", ".join(f"{a}: {roles[a]}" for a in sorted(roles)) + ".")
+    over = (f"GAME OVER — {state['winner'].upper()} wins. The roles were: "
+            + ", ".join(f"{a}: {roles[a]}" for a in sorted(roles)) + ".")
+    api.announce(over)
+    glog(over)
     api.save_state(state)

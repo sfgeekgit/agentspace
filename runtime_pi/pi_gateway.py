@@ -173,6 +173,17 @@ def recover_seq():
     return m
 
 
+# Audit records carry capped CONTENT (message/post/submit/payload text) so an
+# operator can reconstruct a whole game from this one file (`env watch` feed).
+# The file is gateway-private (agents can't read it) and gm_activity projects
+# a fixed metadata field list, so content stays operator-only.
+AUDIT_CONTENT_CAP = 2000
+
+
+def _cap(text):
+    return text if len(text) <= AUDIT_CONTENT_CAP else text[:AUDIT_CONTENT_CAP - 1] + "…"
+
+
 def audit(event, **fields):
     rec = {"ts": now_iso(), "event": event, **fields}
     line = json.dumps(rec, sort_keys=True)
@@ -489,7 +500,7 @@ def op_send(pr, req):
     except Exception as e:
         audit("send_failed", frm=sender, to=to, seq=seq, error=str(e)[:200])
         return {"ok": False, "error": "delivery failed"}
-    audit("send", frm=sender, to=to, seq=seq, bytes=nbytes)
+    audit("send", frm=sender, to=to, seq=seq, bytes=nbytes, text=_cap(text))
     WAKES.wake(to, {"type": "pm", "from": sender, "seq": seq})
     return {"ok": True, "seq": seq}
 
@@ -522,7 +533,7 @@ def op_post_public(pr, req):
         return {"ok": False, "error": "rate cap exceeded"}
     seq = next_seq()
     _append_public({"seq": seq, "ts": now_iso(), "from": sender, "text": text})
-    audit("post_public", frm=sender, seq=seq)
+    audit("post_public", frm=sender, seq=seq, text=_cap(text))
     # Posting wakes NOBODY — pull-only surface by design.
     return {"ok": True, "seq": seq}
 
@@ -678,7 +689,7 @@ def op_submit(pr, req):
         audit("submit_denied", frm=pr.identity, reason="rate_cap")
         return {"ok": False, "error": "rate cap exceeded"}
     _write_submission(pr.identity, action)
-    audit("submit", frm=pr.identity, bytes=len(action.encode()))
+    audit("submit", frm=pr.identity, bytes=len(action.encode()), action=_cap(action))
     return {"ok": True}
 
 
@@ -713,7 +724,8 @@ def op_gm_wake(pr, req):
     if payload:
         _deliver(pw, seq, {"seq": seq, "ts": now_iso(), "from": "gm",
                            "to": to, "text": payload})
-    audit("gm_wake", to=to, seq=seq, payload_bytes=len(payload.encode()))
+    audit("gm_wake", to=to, seq=seq, payload_bytes=len(payload.encode()),
+          payload=_cap(payload))
     done = WAKES.wake_sync(to, {"type": "gm", "seq": seq}, timeout=WAKE_TIMEOUT_S + 30)
     return {"ok": True, "completed": done, "seq": seq}
 
@@ -728,7 +740,7 @@ def op_gm_announce(pr, req):
         return {"ok": False, "error": "gm_announce needs string 'text'"}
     seq = next_seq()
     _append_public({"seq": seq, "ts": now_iso(), "from": "world", "text": text})
-    audit("gm_announce", seq=seq)
+    audit("gm_announce", seq=seq, text=_cap(text))
     return {"ok": True, "seq": seq}
 
 

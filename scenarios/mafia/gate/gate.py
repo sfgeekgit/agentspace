@@ -84,6 +84,17 @@ else:
           any("norm violations" in t and "a1 posted publicly at night" in t
               for t in world), str([t for t in world if "norm" in t]))
 
+gtexts = [json.loads(l)["text"] for l in open("/gm/game_log.jsonl")]
+check("game log: roles + params recorded at start",
+      gtexts and gtexts[0].startswith("Roles:"), str(gtexts[:1]))
+check("game log: hidden night beats (votes / investigation / protection)",
+      any("mafia votes" in t for t in gtexts)
+      and any("investigated" in t for t in gtexts)
+      and any("protected" in t for t in gtexts), str(gtexts))
+check("game log: eliminations with roles + game over",
+      any("eliminated (voted_out)" in t and "role was" in t for t in gtexts)
+      and any(t.startswith("GAME OVER") for t in gtexts), str(gtexts[-3:]))
+
 print()
 if FAIL:
     print(f"MAFIA GATE ({MODE}): {len(FAIL)} FAILURE(S): {FAIL}")

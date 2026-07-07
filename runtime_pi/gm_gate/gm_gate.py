@@ -71,6 +71,11 @@ worldposts = [e for e in pub if e["from"] == "world"]
 check("4 world announcements (3 rounds + game over)", len(worldposts) == 4, str(len(worldposts)))
 check("submissions consumed by collect", os.listdir("/data/gateway/submissions") == [],
       str(os.listdir("/data/gateway/submissions")))
+adt = [json.loads(l) for l in open("/data/gateway/audit.jsonl")]
+check("audit gm_announce entries carry text (content enrichment)",
+      all(e.get("text") for e in adt if e["event"] == "gm_announce"))
+check("audit submit entries carry the action",
+      all(e.get("action") for e in adt if e["event"] == "submit"))
 
 # ── Isolation: agents can't read GM state or call GM ops ─────────────────────
 check("agent cannot read /gm state", su("u_a1", "cat /gm/state.json").returncode != 0)

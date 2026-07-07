@@ -98,6 +98,10 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
         # SAME scen builds different world roots per value set. Typed + defaulted;
         # see validate_params. A scen with no [[params]] gets an empty schema.
         "params_schema": list(data.get("params", [])),
+        # Extra `env watch` views the scen declares ([[watch]]: name, file,
+        # format, fields, filter). Declarative ONLY — no scen code runs
+        # host-side; baked into world.json, interpreted by logwatch.py.
+        "watch": list(data.get("watch", [])),
         **_optional_parts(scen_dir),
     }
 

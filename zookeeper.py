@@ -266,6 +266,18 @@ def env_logs(name, agent, all_agents, everything, follow):
                      all_agents=all_agents, everything=everything)
 
 
+@env.command("watch")
+@click.argument("name")
+@click.option("--plain", "plain_view", default=None, metavar="VIEW",
+              help="Stream one view to stdout instead of the TUI: feed, board, "
+                   "announcements, budget, raw, <agent>[:thoughts|:says|:messages|:scratchpad].")
+@click.option("--no-follow", is_flag=True, help="With --plain: dump what exists and exit.")
+def env_watch(name, plain_view, no_follow):
+    """Live log watcher for a PI env — TUI with a sidebar of views (q to quit)."""
+    from agentspace import env as env_mod
+    env_mod.cmd_watch(name, plain_view=plain_view, follow=not no_follow)
+
+
 @env.command("chat")
 @click.argument("name")
 @click.argument("agent")
@@ -590,7 +602,7 @@ def menu_env():
                     "Roll sessions  (PI runtime: fresh transcripts)",
                     "Sleep env  (pause agents, keep container)",
                     "Kill env  (removes container)",
-                    "Watch logs  (gateway / agents / everything)",
+                    "Watch logs",
                     "Exec command in env",
                     "Enter env (bash)  (prints the copy-paste command)",
                     questionary.Separator(),
@@ -687,6 +699,13 @@ def menu_env():
                 ).ask())
                 if ename == "← Back":
                     continue
+                from agentspace import runtimes
+                if runtimes.for_snap(db.get_snap_by_id(db.get_env(ename)["snap_id"])).NAME == "pi":
+                    print(f"  Command:  python3 zookeeper.py env watch {ename}")
+                    print("  (TUI — q returns to this menu)\n")
+                    env_mod.cmd_watch(ename)
+                    continue
+                # OC envs keep the raw-tail chooser below.
                 ids = env_mod.env_agent_ids(ename)
                 src = _ask(lambda: questionary.select(
                     f"Watch what in '{ename}'?",

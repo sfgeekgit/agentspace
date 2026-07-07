@@ -37,7 +37,8 @@ underlying call is `agentspace.builder.build_world_root(...)`.
 ### Prerequisites
 
 - Docker (see `droplet-setup.md`)
-- Python 3.10+ with `click` and `rich` installed
+- Python 3.10+ with `click`, `rich`, `questionary` (menu) and `textual`
+  (`env watch` TUI) installed
 - The base runtime image: `docker build -t agentspace:base /opt/agentspace-ctl`
 - For PI-runtime worlds, the PI base image (agentspace:base + node + Pi,
   EXACT-pinned): `docker build -t pi-world:base /opt/agentspace-ctl/runtime_pi/toyworld`
@@ -104,7 +105,11 @@ env start <name>                           # restart; re-applies flags from snap
 env stop <name>                            # docker stop; container filesystem preserved
 env kick <name> [--message "<text>"]       # wake agents (creates initial sessions if missing)
 env kill <name> [--force]                  # docker stop + rm; disables OpenRouter key
-env logs <name> [--agent <id>] [-f]        # gateway log; or one agent's session JSONL
+env watch <name> [--plain VIEW]            # PI: live log TUI — sidebar of views (spectator
+                                           # feed, board, announcements, budget, per-agent
+                                           # thoughts/says/messages/scratchpad, scen-declared
+                                           # views); --plain streams one view for piping
+env logs <name> [--agent <id>] [-f]        # raw tails: gateway log; or one agent's session JSONL
 env exec <name> <cmd...>                   # docker exec passthrough
 ```
 

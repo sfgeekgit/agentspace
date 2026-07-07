@@ -215,6 +215,19 @@ def main():
           r.returncode == 0 and who.get("agents") == ["a1", "a2", "a3"],
           r.stdout + r.stderr)
 
+    print("T14: audit content enrichment (the `env watch` spectator feed)")
+    first_send = audit_events("send")[0]
+    check("t14 send audit carries the message text",
+          first_send.get("text") == "hello please-reply", json.dumps(first_send))
+    check("t14 post audit carries the post text",
+          any(e.get("text") == "public hello from a1"
+              for e in audit_events("post_public")))
+    as_agent("a1", f'{CLIENT} send a3 "{"x" * 3000}"')
+    e = audit_events("send")[-1]
+    check("t14 audit content capped at 2000 with ellipsis",
+          e["bytes"] == 3000 and len(e["text"]) == 2000 and e["text"].endswith("…"),
+          f"bytes={e.get('bytes')} len={len(e.get('text', ''))}")
+
     print("T11: inbox symlink attack is refused (gateway never follows it)")
     # a2 redirects its own inbox at a victim dir; the gateway must refuse rather
     # than chown/write through the symlink. (Runs last: it breaks a2's inbox.)

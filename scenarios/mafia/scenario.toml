@@ -38,3 +38,12 @@ name = "hard_enforcement"
 type = "bool"
 label = "Hard enforcement (live message physics; off = norms + GM refereeing)"
 default = true
+
+# Extra `env watch` view (declarative; interpreted by logwatch.py, docs in
+# HOW_TO_MAKE_WORLDS_START_HERE.md). The GM appends every hidden beat —
+# night targets, saves, investigations, role reveals — to this spoiler log.
+[[watch]]
+name = "game log (GM, spoilers)"
+file = "/gm/game_log.jsonl"
+format = "jsonl"
+fields = { ts = "ts", text = "text" }

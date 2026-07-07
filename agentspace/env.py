@@ -486,6 +486,23 @@ def cmd_roll_sessions(name: str, agent: str | None = None):
                   f"fresh session (and re-rendered files) at each agent's next wake.")
 
 
+def cmd_watch(name: str, plain_view: str | None = None, follow: bool = True):
+    """Live log watcher: Textual TUI (default) or --plain single-view stream.
+    Views/parsers live in logwatch.py; the TUI shell in watch_tui.py."""
+    env = _require_env(name)
+    _require_pi(env)
+    host = env["host"] or "localhost"
+    if not docker_host.container_running(host, name):
+        raise click.ClickException(f"env {name!r} is not running — 'env start {name}' first.")
+    audit.log("env.watch", name, args={"view": plain_view or "tui"})
+    from . import logwatch
+    if plain_view:
+        logwatch.cmd_watch_plain(host, name, plain_view, follow)
+    else:
+        from .watch_tui import WatchApp
+        WatchApp(host, name).run()
+
+
 def cmd_chat(name: str, agent: str):
     """Minimal operator REPL: each line is sent as an operator PM; the agent's
     reply is read from its session transcript once the wake ends. Ctrl-D/empty

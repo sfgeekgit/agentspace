@@ -85,7 +85,7 @@ def list_all_models() -> list[str]:
 # ---- world-root bake (called by builder inside the temp build container) ----
 
 def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, params=None,
-         gm_secrets=None):
+         gm_secrets=None, watch=None):
     """Assemble the PI world inside the build container.
 
     agents: [{"id", "model"}, ...];  seeds: {agent_id: {filename: text}}.
@@ -118,6 +118,7 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, par
             "max_tokens": 16384,  # per-turn output ceiling — roomy safety rail, not a leash
             "has_gm": bool(gm_py),          # drives the GM preamble + run-the-world verb
             "params": params or {},         # build-time values gmd/gm.py read
+            "watch": watch or [],           # scen-declared `env watch` views (logwatch.py)
         }, indent=2) + "\n")
         (world / "kick.txt").write_text(kick_text or "")
         if gm_py:
@@ -430,7 +431,16 @@ def tail_agent_log(host, container, agent_id, follow: bool = False):
 
 def tail_combined(host, container, agent_ids, include_gateway, follow=False):
     """Several logs at once; for PI the world-level log that matters is the
-    gateway AUDIT (every send/wake/denial), not its stdout."""
+    gateway AUDIT (every send/wake/denial), not its stdout. Follow mode runs
+    the logwatch streamer (re-globs each cycle), so session files that appear
+    AFTER the tail starts — fresh fork, rollover — are still picked up; its
+    lines come prefixed "<path><TAB>". One-shot keeps plain bounded tail."""
+    if follow:
+        from .. import logwatch
+        pats = (["/data/gateway/audit.jsonl"] if include_gateway else []) + \
+               [f"/agents/{aid}/sessions/*.jsonl" for aid in agent_ids]
+        return docker_host.stream(host, "exec", "-i", container, "python3",
+                                  "-u", "-c", logwatch.STREAMER, "--follow", *pats)
     parts = []
     if include_gateway:
         parts.append('files="$files /data/gateway/audit.jsonl"')
@@ -444,9 +454,6 @@ def tail_combined(host, container, agent_ids, include_gateway, follow=False):
     cmd = (
         f'{build}; '
         f'if [ -z "$files" ]; then echo "no logs yet"; else '
-        f'tail {"-f " if follow else ""}-n 200 $files; fi'
+        f'tail -n 200 $files; fi'
     )
-    args = ["exec", container, "sh", "-c", cmd]
-    if follow:
-        return docker_host.stream(host, *args)
-    return docker_host.stdout(host, *args, check=False)
+    return docker_host.stdout(host, "exec", container, "sh", "-c", cmd, check=False)
