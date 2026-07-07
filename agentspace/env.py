@@ -426,6 +426,8 @@ def cmd_logs(
         proc = _source(True)
         try:
             for line in proc.stdout:
+                if line.startswith("\x00"):   # logwatch streamer keepalives
+                    continue
                 click.echo(line, nl=False)
         except KeyboardInterrupt:
             pass

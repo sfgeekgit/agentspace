@@ -439,7 +439,7 @@ def tail_combined(host, container, agent_ids, include_gateway, follow=False):
         from .. import logwatch
         pats = (["/data/gateway/audit.jsonl"] if include_gateway else []) + \
                [f"/agents/{aid}/sessions/*.jsonl" for aid in agent_ids]
-        return docker_host.stream(host, "exec", "-i", container, "python3",
+        return docker_host.stream(host, "exec", container, "python3",
                                   "-u", "-c", logwatch.STREAMER, "--follow", *pats)
     parts = []
     if include_gateway:

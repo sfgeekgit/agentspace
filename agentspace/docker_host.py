@@ -56,10 +56,13 @@ def stdout(host: str, *args: str, **kwargs) -> str:
 
 
 def stream(host: str, *args: str) -> subprocess.Popen:
-    """For follow-style commands (`logs -f`, `events`). Caller is responsible for terminating."""
+    """For follow-style commands (`logs -f`, `events`). Caller is responsible
+    for terminating. stdin is /dev/null: an inherited terminal stdin lets the
+    docker client compete with the caller's UI for keystrokes."""
     cmd = _base_cmd(host) + list(args)
     return subprocess.Popen(
         cmd,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

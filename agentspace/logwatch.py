@@ -11,6 +11,7 @@ Docs: docs/runtime_pi.md ("watching a world").
 """
 
 import json
+import uuid
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
@@ -26,7 +27,9 @@ STREAMER = r"""
 import glob, sys, time
 once = sys.argv[1].startswith("--once")
 sync = sys.argv[1].endswith("-sync")
-pats, pos, first = sys.argv[2:], {}, True
+# a bare lwtag… argv is an inert marker so the host can pkill THIS streamer
+pats = [a for a in sys.argv[2:] if not a.startswith("lwtag")]
+pos, first = {}, True
 while True:
     for p in sorted(set(f for pat in pats for f in glob.glob(pat))):
         try:
@@ -41,10 +44,18 @@ while True:
         pos[p] = pos.get(p, 0) + nl + 1
         for line in data[:nl].split(b"\n"):
             sys.stdout.buffer.write(p.encode() + b"\t" + line + b"\n")
-    if first and sync:
-        sys.stdout.buffer.write(b"\x00SYNC\t\n")
+    try:
+        if first and sync:
+            sys.stdout.buffer.write(b"\x00SYNC\t\n")
+        if not once:
+            # keepalive: killing the docker-exec client closes our stdout, and
+            # this write then EPIPEs — the ONLY way we learn the watcher is
+            # gone (a silent view never writes). Without it we'd run forever.
+            sys.stdout.buffer.write(b"\x00PING\t\n")
+        sys.stdout.flush()
+    except OSError:
+        break
     first = False
-    sys.stdout.flush()
     if once:
         break
     time.sleep(0.5)
@@ -265,9 +276,15 @@ class Watcher:
 
     def __init__(self, host, container, view: View, follow: bool = True):
         self.view = view
+        self.host, self.container = host, container
+        self.tag = f"lwtag{uuid.uuid4().hex[:10]}"  # dash-free: pkill -f safe
         mode = "--follow-sync" if follow else "--once"
-        self.proc = docker_host.stream(host, "exec", "-i", container,
-                                       "python3", "-u", "-c", STREAMER, mode, *view.patterns)
+        # NO `docker exec -i`: -i makes the docker client READ the terminal's
+        # stdin and forward it — it eats the TUI's keystrokes (script goes via
+        # -c argv, nothing needs stdin).
+        self.proc = docker_host.stream(host, "exec", container, "python3",
+                                       "-u", "-c", STREAMER, mode, self.tag,
+                                       *view.patterns)
 
     def events(self, backfill: int | None = None) -> Iterator[list[Event]]:
         """Yield CHUNKS of Events: the pre-existing backlog (everything before
@@ -279,6 +296,8 @@ class Watcher:
         try:
             for raw in self.proc.stdout:
                 path, _, line = raw.rstrip("\n").partition("\t")
+                if path == "\x00PING":
+                    continue
                 if path == "\x00SYNC":
                     synced = True
                     yield buf[-backfill:] if backfill else buf
@@ -298,6 +317,11 @@ class Watcher:
 
     def stop(self):
         self.proc.kill()
+        # Killing the docker-exec CLIENT does not kill the in-container
+        # process (the daemon just buffers its output). Reap it by tag,
+        # fire-and-forget; the streamer's keepalive-EPIPE exit is the fallback.
+        docker_host.stream(self.host, "exec", self.container,
+                           "pkill", "-f", self.tag)
 
 
 def stream_view(host, container, view: View, follow: bool) -> Iterator[Event]:

@@ -377,8 +377,9 @@ per-agent `models` map so mixed-model rosters work per agent.
 ## 5b. Watching a world — `env watch`
 
 `zookeeper env watch <env>` opens a Textual TUI (also from the menu: "Watch
-logs"): a sidebar of views, a live tail pane. Arrows+enter switch views, `p`
-pauses auto-scroll, `q` returns to the shell/menu. Built-in views:
+logs"): a sidebar of views, a live tail pane. Arrows switch views (highlight
+IS selection, debounced so you can scan), PageUp/PageDown scroll the pane,
+`p` pauses auto-scroll, `q` returns to the shell/menu. Built-in views:
 
 - `feed` — the spectator feed: the audit stream rendered with its content
   fields (§5) — announcements, posts, PM bodies, submits, wakes, denials.
@@ -401,6 +402,13 @@ each cycle — late-appearing session files and rollovers are picked up by
 construction. `env watch --plain <view> [--no-follow]` streams one rendered
 view to stdout for piping/grep. `env logs` remains the raw-tail surface
 (its `--all -f` uses the same streamer, lines prefixed `path<TAB>`).
+Hard-won invariants (each was a live bug): streamers run WITHOUT
+`docker exec -i` and with stdin=/dev/null — an attached docker client reads
+the terminal's stdin and steals the TUI's keystrokes; stopping a watcher
+pkills its tagged in-container process — killing the docker client alone
+orphans it (keepalive-EPIPE is the fallback); the UI thread never runs
+subprocesses or per-line paints — the backlog renders in staleness-checked
+batches.
 
 ## 6. Pi version pinning
 
