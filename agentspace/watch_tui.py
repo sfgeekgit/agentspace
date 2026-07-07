@@ -51,7 +51,16 @@ class WatchApp(App):
         yield Footer()
 
     def on_mount(self):
-        self.views = {v.name: v for v in logwatch.views_for(self.host, self.container)}
+        # views_for runs docker execs — worker, per the threading rule; the
+        # sidebar fills in (and the first view starts) when it returns.
+        self.run_worker(self._load_views, thread=True)
+
+    def _load_views(self):
+        views = {v.name: v for v in logwatch.views_for(self.host, self.container)}
+        self.call_from_thread(self._show_views, views)
+
+    def _show_views(self, views):
+        self.views = views
         lv = self.query_one(ListView)
         for name in self.views:
             lv.append(ListItem(Label(name), name=name))
@@ -98,7 +107,8 @@ class WatchApp(App):
         claim self.watcher (the loser would leak a live stream)."""
         if old:
             old.stop()
-        watcher = logwatch.Watcher(self.host, self.container, self.views[name])
+        watcher = logwatch.Watcher(self.host, self.container, self.views[name],
+                                   backfill=200)
         with self._lock:
             if self._current != name:
                 stale = True
@@ -108,7 +118,7 @@ class WatchApp(App):
             watcher.stop()
             return
         pane = self.query_one(RichLog)
-        for chunk in watcher.events(backfill=200):
+        for chunk in watcher.events():
             for i in range(0, len(chunk), 50):
                 if self._current != name:
                     return

@@ -185,6 +185,9 @@ def _cap(text):
 
 
 def audit(event, **fields):
+    for k in ("text", "action", "payload"):   # capped HERE, structurally —
+        if k in fields:                       # no call site can forget
+            fields[k] = _cap(fields[k])
     rec = {"ts": now_iso(), "event": event, **fields}
     line = json.dumps(rec, sort_keys=True)
     with _audit_lock:
@@ -500,7 +503,7 @@ def op_send(pr, req):
     except Exception as e:
         audit("send_failed", frm=sender, to=to, seq=seq, error=str(e)[:200])
         return {"ok": False, "error": "delivery failed"}
-    audit("send", frm=sender, to=to, seq=seq, bytes=nbytes, text=_cap(text))
+    audit("send", frm=sender, to=to, seq=seq, bytes=nbytes, text=text)
     WAKES.wake(to, {"type": "pm", "from": sender, "seq": seq})
     return {"ok": True, "seq": seq}
 
@@ -533,7 +536,7 @@ def op_post_public(pr, req):
         return {"ok": False, "error": "rate cap exceeded"}
     seq = next_seq()
     _append_public({"seq": seq, "ts": now_iso(), "from": sender, "text": text})
-    audit("post_public", frm=sender, seq=seq, text=_cap(text))
+    audit("post_public", frm=sender, seq=seq, text=text)
     # Posting wakes NOBODY — pull-only surface by design.
     return {"ok": True, "seq": seq}
 
@@ -689,7 +692,7 @@ def op_submit(pr, req):
         audit("submit_denied", frm=pr.identity, reason="rate_cap")
         return {"ok": False, "error": "rate cap exceeded"}
     _write_submission(pr.identity, action)
-    audit("submit", frm=pr.identity, bytes=len(action.encode()), action=_cap(action))
+    audit("submit", frm=pr.identity, bytes=len(action.encode()), action=action)
     return {"ok": True}
 
 
@@ -725,7 +728,7 @@ def op_gm_wake(pr, req):
         _deliver(pw, seq, {"seq": seq, "ts": now_iso(), "from": "gm",
                            "to": to, "text": payload})
     audit("gm_wake", to=to, seq=seq, payload_bytes=len(payload.encode()),
-          payload=_cap(payload))
+          payload=payload)
     done = WAKES.wake_sync(to, {"type": "gm", "seq": seq}, timeout=WAKE_TIMEOUT_S + 30)
     return {"ok": True, "completed": done, "seq": seq}
 
@@ -740,7 +743,7 @@ def op_gm_announce(pr, req):
         return {"ok": False, "error": "gm_announce needs string 'text'"}
     seq = next_seq()
     _append_public({"seq": seq, "ts": now_iso(), "from": "world", "text": text})
-    audit("gm_announce", seq=seq, text=_cap(text))
+    audit("gm_announce", seq=seq, text=text)
     return {"ok": True, "seq": seq}
 
 

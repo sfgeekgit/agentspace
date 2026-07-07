@@ -20,6 +20,11 @@ def _rt(env: dict):
     return runtimes.for_snap(db.get_snap_by_id(env["snap_id"]))
 
 
+def runtime_name(name: str) -> str:
+    """An env's runtime name ('pi', 'openclaw'), for menu-level dispatch."""
+    return _rt(_require_env(name)).NAME
+
+
 def _require_env(name: str) -> dict:
     env = db.get_env(name)
     if env is None:
@@ -426,13 +431,11 @@ def cmd_logs(
         proc = _source(True)
         try:
             for line in proc.stdout:
-                if line.startswith("\x00"):   # logwatch streamer keepalives
-                    continue
                 click.echo(line, nl=False)
         except KeyboardInterrupt:
             pass
         finally:
-            proc.terminate()
+            proc.terminate()   # logwatch.RawTail reaps its streamer here
             # docker exec doesn't propagate the kill to the in-container `tail`;
             # reap it so idle followers don't pile up (tail is only ours here).
             docker_host.run(host, "exec", name, "pkill", "-x", "tail", check=False)

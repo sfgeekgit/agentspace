@@ -269,8 +269,8 @@ def env_logs(name, agent, all_agents, everything, follow):
 @env.command("watch")
 @click.argument("name")
 @click.option("--plain", "plain_view", default=None, metavar="VIEW",
-              help="Stream one view to stdout instead of the TUI: feed, board, "
-                   "announcements, budget, raw, <agent>[:thoughts|:says|:messages|:scratchpad].")
+              help="Stream one view to stdout instead of the TUI "
+                   "(a bad VIEW name lists what's available).")
 @click.option("--no-follow", is_flag=True, help="With --plain: dump what exists and exit.")
 def env_watch(name, plain_view, no_follow):
     """Live log watcher for a PI env — TUI with a sidebar of views (q to quit)."""
@@ -699,8 +699,7 @@ def menu_env():
                 ).ask())
                 if ename == "← Back":
                     continue
-                from agentspace import runtimes
-                if runtimes.for_snap(db.get_snap_by_id(db.get_env(ename)["snap_id"])).NAME == "pi":
+                if env_mod.runtime_name(ename) == "pi":
                     print(f"  Command:  python3 zookeeper.py env watch {ename}")
                     print("  (TUI — q returns to this menu)\n")
                     env_mod.cmd_watch(ename)

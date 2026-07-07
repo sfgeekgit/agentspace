@@ -12,6 +12,7 @@ Docs: docs/runtime_pi.md ("watching a world").
 
 import json
 import uuid
+from collections import deque
 from dataclasses import dataclass
 from typing import Callable, Iterator
 
@@ -24,16 +25,33 @@ from . import docker_host
 # "-sync" marks the end of the first pass (the existing backlog) with a
 # sentinel line so the host can render the backlog as ONE batch.
 STREAMER = r"""
-import glob, sys, time
+import glob, os, sys, time
 once = sys.argv[1].startswith("--once")
 sync = sys.argv[1].endswith("-sync")
-# a bare lwtag… argv is an inert marker so the host can pkill THIS streamer
-pats = [a for a in sys.argv[2:] if not a.startswith("lwtag")]
-pos, first = {}, True
+# a bare lwtag… argv is an inert marker so the host can pkill THIS streamer;
+# --cap=N bounds each file's first read to its last N bytes (backlog cap)
+cap, pats = 0, []
+for a in sys.argv[2:]:
+    if a.startswith("--cap="):
+        cap = int(a[6:])
+    elif not a.startswith("lwtag"):
+        pats.append(a)
+pos, seen, first = {}, {}, True
 while True:
     for p in sorted(set(f for pat in pats for f in glob.glob(pat))):
         try:
+            size = os.stat(p).st_size
+        except OSError:
+            continue
+        if size <= seen.get(p, 0):   # nothing new — skip the open+read
+            continue
+        seen[p] = size
+        try:
             with open(p, "rb") as fh:
+                if p not in pos and cap and size > cap:
+                    fh.seek(size - cap)
+                    fh.readline()    # drop the partial line at the cut
+                    pos[p] = fh.tell()
                 fh.seek(pos.get(p, 0))
                 data = fh.read()
         except OSError:
@@ -80,7 +98,7 @@ class View:
 def _j(line: str) -> dict | None:
     try:
         return json.loads(line)
-    except (json.JSONDecodeError, ValueError):
+    except ValueError:
         return None
 
 
@@ -125,11 +143,9 @@ def parse_audit_feed(path, line):
     if ev == "wake":
         causes = ",".join(c.get("type", "?") for c in e.get("causes", []))
         return Event(ts, e.get("agent", "?"), "wake", f"woke ({causes})")
-    if ev.endswith("_denied") or ev.endswith("_error") or ev == "send_failed":
-        rest = {k: v for k, v in e.items() if k not in ("event", "ts")}
-        return Event(ts, "", "deny", f"{ev} {_trim(json.dumps(rest), 200)}")
+    kind = "deny" if ev.endswith(("_denied", "_error")) or ev == "send_failed" else "info"
     rest = {k: v for k, v in e.items() if k not in ("event", "ts")}
-    return Event(ts, "", "info", f"{ev} {_trim(json.dumps(rest), 200)}")
+    return Event(ts, "", kind, f"{ev} {_trim(json.dumps(rest), 200)}")
 
 
 def parse_audit_raw(path, line):
@@ -224,7 +240,7 @@ def scen_views(host, container) -> list[View]:
     out = docker_host.exec_(host, container, "cat", "/world/world.json", check=False)
     try:
         entries = json.loads(out).get("watch", [])
-    except (json.JSONDecodeError, ValueError):
+    except ValueError:
         return []
     return [View(str(w["name"]), [str(w["file"])], parse_declared(w))
             for w in entries
@@ -270,29 +286,55 @@ def resolve_view(host, container, name: str) -> View:
 
 # ---- streaming ----
 
-class Watcher:
+class _Streamer:
+    """One spawned in-container streamer + its cleanup — the ONE place the
+    streamer is exec'd. NO `docker exec -i`: -i makes the docker client READ
+    the terminal's stdin and forward it — it eats the TUI's keystrokes (script
+    goes via -c argv, nothing needs stdin)."""
+
+    def __init__(self, host, container, mode: str, patterns: list[str],
+                 cap_bytes: int | None = None):
+        self.host, self.container = host, container
+        self.tag = f"lwtag{uuid.uuid4().hex[:10]}"  # dash-free: pkill -f safe
+        self._stopped = False
+        cap = [f"--cap={cap_bytes}"] if cap_bytes else []
+        self.proc = docker_host.stream(host, "exec", container, "python3",
+                                       "-u", "-c", STREAMER, mode, self.tag,
+                                       *cap, *patterns)
+
+    def stop(self):
+        if self._stopped:   # e.g. events()' finally after an external stop
+            return
+        self._stopped = True
+        self.proc.kill()
+        # Killing the docker-exec CLIENT does not kill the in-container
+        # process (the daemon just buffers its output). Reap it by tag,
+        # fire-and-forget; the streamer's keepalive-EPIPE exit is the fallback.
+        docker_host.stream(self.host, "exec", self.container,
+                           "pkill", "-f", self.tag)
+
+
+class Watcher(_Streamer):
     """One running stream of a view. stop() kills the docker exec, which
     unblocks any thread iterating events() — how the TUI switches views."""
 
-    def __init__(self, host, container, view: View, follow: bool = True):
+    def __init__(self, host, container, view: View, follow: bool = True,
+                 backfill: int | None = None):
         self.view = view
-        self.host, self.container = host, container
-        self.tag = f"lwtag{uuid.uuid4().hex[:10]}"  # dash-free: pkill -f safe
-        mode = "--follow-sync" if follow else "--once"
-        # NO `docker exec -i`: -i makes the docker client READ the terminal's
-        # stdin and forward it — it eats the TUI's keystrokes (script goes via
-        # -c argv, nothing needs stdin).
-        self.proc = docker_host.stream(host, "exec", container, "python3",
-                                       "-u", "-c", STREAMER, mode, self.tag,
-                                       *view.patterns)
+        self.backfill = backfill
+        # cap the first pass to ≈4KB/event: the backlog is trimmed to the last
+        # `backfill` events host-side anyway — don't ship whole grown files
+        super().__init__(host, container,
+                         "--follow-sync" if follow else "--once", view.patterns,
+                         cap_bytes=backfill * 4096 if backfill else None)
 
-    def events(self, backfill: int | None = None) -> Iterator[list[Event]]:
+    def events(self) -> Iterator[list[Event]]:
         """Yield CHUNKS of Events: the pre-existing backlog (everything before
         the streamer's first-pass sync marker, or before EOF in --once mode)
         arrives as ONE chunk — trimmed to the last `backfill` if given — then
         live lines follow one per chunk. Chunking is what lets the TUI paint
         the backlog in a single callback instead of thousands."""
-        buf, synced = [], False
+        buf, synced = deque(maxlen=self.backfill), False
         try:
             for raw in self.proc.stdout:
                 path, _, line = raw.rstrip("\n").partition("\t")
@@ -300,8 +342,8 @@ class Watcher:
                     continue
                 if path == "\x00SYNC":
                     synced = True
-                    yield buf[-backfill:] if backfill else buf
-                    buf = []
+                    yield list(buf)
+                    buf.clear()
                     continue
                 ev = self.view.parse(path, line)
                 if not ev:
@@ -311,17 +353,24 @@ class Watcher:
                 else:
                     buf.append(ev)
             if not synced and buf:   # --once mode / stream died pre-sync
-                yield buf[-backfill:] if backfill else buf
+                yield list(buf)
         finally:
             self.stop()
 
-    def stop(self):
-        self.proc.kill()
-        # Killing the docker-exec CLIENT does not kill the in-container
-        # process (the daemon just buffers its output). Reap it by tag,
-        # fire-and-forget; the streamer's keepalive-EPIPE exit is the fallback.
-        docker_host.stream(self.host, "exec", self.container,
-                           "pkill", "-f", self.tag)
+
+class RawTail(_Streamer):
+    """`env logs --all -f` source (pi.tail_combined): Popen-shaped (.stdout
+    lines, .terminate()) so runtime-agnostic cmd_logs consumes it like any
+    `tail -f`, but the wire protocol stays HERE — sentinels are filtered, and
+    terminate() reaps the in-container loop by tag (killing the docker client
+    alone orphans it, and cmd_logs' `pkill -x tail` never matched this
+    python3 loop)."""
+
+    def __init__(self, host, container, patterns: list[str]):
+        super().__init__(host, container, "--follow", patterns)
+        self.stdout = (l for l in self.proc.stdout if not l.startswith("\x00"))
+
+    terminate = _Streamer.stop
 
 
 def stream_view(host, container, view: View, follow: bool) -> Iterator[Event]:

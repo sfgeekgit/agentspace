@@ -190,7 +190,6 @@ def run(api, params):
                                  f"`submit abstain`.",
                                  valid=set(state["alive"]) | {"abstain"},
                                  default="abstain")[doc[0]]
-            if doc:
                 glog(f"Night {d}: doctor {doc[0]} protected {save}.")
             state["log"].append({"day": d, "event": "night", "kills": kills,
                                  "save": save})
