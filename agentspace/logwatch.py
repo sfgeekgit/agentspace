@@ -254,27 +254,35 @@ def agent_ids(host, container) -> list[str]:
     return sorted(a for a in out.split() if a not in ("lost+found",))
 
 
-def views_for(host, container) -> list[View]:
-    """All watchable views for an env, world-level first, then per-agent facets."""
+def view_tree(host, container) -> list[tuple[View, list[View]]]:
+    """Views arranged for the TUI sidebar tree: an ordered list of
+    (node, children). World and scenario views are leaves (no children); each
+    agent is one node whose view is its combined session ('everything') and
+    whose children are its per-facet views. views_for() is this flattened."""
     audit, board = "/data/gateway/audit.jsonl", "/data/gateway/public.jsonl"
-    views = [
-        View("feed", [audit], parse_audit_feed),
-        View("board", [board], parse_board),
-        View("announcements", [board], lambda p, l: parse_board(p, l, world_only=True)),
-        View("budget", ["/data/gateway/budget.jsonl"], parse_budget),
-        View("raw", [audit], parse_audit_raw),
+    nodes: list[tuple[View, list[View]]] = [
+        (View("feed", [audit], parse_audit_feed), []),
+        (View("board", [board], parse_board), []),
+        (View("announcements", [board], lambda p, l: parse_board(p, l, world_only=True)), []),
+        (View("budget", ["/data/gateway/budget.jsonl"], parse_budget), []),
+        (View("raw", [audit], parse_audit_raw), []),
     ]
-    views += scen_views(host, container)
+    nodes += [(v, []) for v in scen_views(host, container)]
     for aid in agent_ids(host, container):
         sess = [f"/agents/{aid}/sessions/*.jsonl"]
-        views += [
-            View(f"{aid}", sess, parse_session("everything")),
+        nodes.append((View(aid, sess, parse_session("everything")), [
             View(f"{aid}:thoughts", sess, parse_session("thoughts")),
             View(f"{aid}:says", sess, parse_session("says")),
             View(f"{aid}:messages", [audit], parse_agent_messages(aid)),
             View(f"{aid}:scratchpad", [f"/agents/{aid}/scratch/*.md"], parse_text),
-        ]
-    return views
+        ]))
+    return nodes
+
+
+def views_for(host, container) -> list[View]:
+    """Flat list of every view (world/scenario, then per-agent facets). The
+    names are the stable keys resolve_view and `env watch --plain` use."""
+    return [v for node, kids in view_tree(host, container) for v in (node, *kids)]
 
 
 def resolve_view(host, container, name: str) -> View:

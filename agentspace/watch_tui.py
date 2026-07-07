@@ -1,8 +1,12 @@
-"""Textual TUI for watching a PI env's logs live: sidebar of views, tail pane.
+"""Textual TUI for watching a PI env's logs live: a sidebar tree of views, tail pane.
 
 Launched from zookeeper (`env watch <env>` / menu "Watch logs"). Runs on the
 terminal's alternate screen; on quit the caller's prompt/menu resumes intact.
 All parsing/rendering lives in logwatch.py — this file is only the shell.
+
+The sidebar is a tree: world/scenario views are top-level leaves; each agent is
+a collapsible node whose own row streams its combined session and whose children
+are the per-facet views (thoughts/says/messages/scratchpad). Enter expands.
 
 Threading rule: the UI thread never runs subprocesses or bulk paints. Stream
 stop/spawn (docker execs, 50-300ms each) and rendering live in a worker; the
@@ -15,7 +19,7 @@ from functools import partial
 from rich.text import Text
 from textual.app import App
 from textual.containers import Horizontal
-from textual.widgets import Footer, Header, Label, ListItem, ListView, RichLog
+from textual.widgets import Footer, Header, RichLog, Tree
 
 from . import logwatch
 
@@ -39,43 +43,55 @@ class WatchApp(App):
         self.watcher = None
         self._current = None
         self._debounce = None
+        self._empty_shown = False
         self._lock = threading.Lock()  # guards watcher ownership vs pump races
 
     def compose(self):
         yield Header()
         with Horizontal():
-            yield ListView(id="views")
+            tree = Tree("views", id="views")
+            tree.show_root = False       # top-level views sit flush left
+            tree.guide_depth = 2         # tight indent so labels fit width 24
+            yield tree
             pane = RichLog(id="pane", wrap=True, max_lines=5000)
-            pane.can_focus = False  # sidebar is the only focusable → owns arrows
+            pane.can_focus = False  # tree is the only focusable → owns arrows
             yield pane
         yield Footer()
 
     def on_mount(self):
-        # views_for runs docker execs — worker, per the threading rule; the
+        # view_tree runs docker execs — worker, per the threading rule; the
         # sidebar fills in (and the first view starts) when it returns.
         self.run_worker(self._load_views, thread=True)
 
     def _load_views(self):
-        views = {v.name: v for v in logwatch.views_for(self.host, self.container)}
-        self.call_from_thread(self._show_views, views)
+        tree = logwatch.view_tree(self.host, self.container)
+        self.call_from_thread(self._show_views, tree)
 
-    def _show_views(self, views):
-        self.views = views
-        lv = self.query_one(ListView)
-        for name in self.views:
-            lv.append(ListItem(Label(name), name=name))
-        lv.index = 0
-        lv.focus()
+    def _show_views(self, tree):
+        self.views = {}
+        widget = self.query_one(Tree)
+        for view, kids in tree:
+            self.views[view.name] = view
+            if kids:                                     # agent: collapsible node
+                node = widget.root.add(view.name, data=view.name)
+                for kid in kids:
+                    self.views[kid.name] = kid
+                    # child label is just the facet (strip the "aid:" prefix)
+                    node.add_leaf(kid.name.split(":", 1)[-1], data=kid.name)
+            else:                                        # world/scenario: leaf
+                widget.root.add_leaf(view.name, data=view.name)
+        widget.focus()
         self._switch(next(iter(self.views)))
 
-    # Highlight IS selection. Debounced so holding an arrow scans the sidebar
-    # freely and only the view you rest on starts a stream.
-    def on_list_view_highlighted(self, event: ListView.Highlighted):
-        if event.item is None:
+    # Highlight IS selection. Debounced so holding an arrow scans the tree
+    # freely and only the node you rest on starts a stream. An agent's own row
+    # streams its combined session; Enter expands it to the facet children.
+    def on_tree_node_highlighted(self, event: Tree.NodeHighlighted):
+        name = event.node.data
+        if not name:
             return
         if self._debounce:
             self._debounce.stop()
-        name = event.item.name
         self._debounce = self.set_timer(0.25, lambda: self._switch(name))
 
     def action_page(self, direction: int):
@@ -96,6 +112,7 @@ class WatchApp(App):
         pane = self.query_one(RichLog)
         pane.clear()
         pane.auto_scroll = True
+        self._empty_shown = False
         with self._lock:
             old, self.watcher = self.watcher, None
         self.run_worker(partial(self._pump, name, old), thread=True)
@@ -118,7 +135,11 @@ class WatchApp(App):
             watcher.stop()
             return
         pane = self.query_one(RichLog)
+        first = True
         for chunk in watcher.events():
+            if first and not chunk:  # empty backlog → placeholder until live lines
+                self.call_from_thread(self._show_empty, name, pane)
+            first = False
             for i in range(0, len(chunk), 50):
                 if self._current != name:
                     return
@@ -127,9 +148,18 @@ class WatchApp(App):
                 # call_from_thread waits for the paint — natural throttling
                 self.call_from_thread(self._write_lines, name, pane, lines)
 
+    def _show_empty(self, name, pane):
+        if self._current != name:
+            return
+        self._empty_shown = True
+        pane.write(Text("nothing to see here yet", style="dim italic"))
+
     def _write_lines(self, name, pane, lines):
         if self._current != name:  # paint dispatched just before a switch
             return
+        if self._empty_shown:       # real content arrived — drop the placeholder
+            pane.clear()
+            self._empty_shown = False
         for t in lines:
             pane.write(t)
 
