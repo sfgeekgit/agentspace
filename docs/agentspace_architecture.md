@@ -44,7 +44,7 @@ anything not written to a file should be assumed forgettable.
 
 - **Envs = Docker containers**. The container's internal filesystem IS the env — corpus, OpenClaw config, all agent state. No Docker volumes for env data; everything is inside the container layer.
 - **Snapshots = `docker commit` + `docker push` to ghcr.io**. A snapshot is a complete frozen image of the container at a point in time. This is the primary research primitive (see Snapshot / Fork Semantics).
-- **API keys are injected at runtime** (`docker run -e OPENROUTER_API_KEY=...`), never baked into the image. `docker commit` does not capture runtime env vars, so keys are never in snapshots.
+- **API keys are injected at runtime, never in snapshots.** The key would leak through TWO channels if handled naively: the container filesystem (any file the key is written to survives `docker commit`) and the image config (`docker run -e` values persist in `.Config.Env` across commit — both channels leaked real keys once). Mechanism: the control plane starts every env container with `--tmpfs /run/svc` (memory — structurally invisible to commit) and pipes the key over **stdin** into `/run/svc/openrouter_key` (never argv, never container env). tmpfs empties on container stop, so every start path (`snap fork`, `env start`) re-injects from the control-plane DB. As a tripwire, `snap take`/`snap push` scan the image (filesystem AND `.Config`) for `sk-or-` and refuse to push on a hit; the key gate in the engine-gate suite locks the invariant in.
 - **Hosting = DO droplets**. One control droplet + one or more host droplets. No DO Block Storage Volumes, no S3, no other paid services.
 - **Budget layer = OpenRouter**. One API key per env with a credit limit. All agents in the env share that key. Agents query remaining budget via `GET /api/v1/key`.
 - **Orchestration = Python CLI on the control droplet**, calling Docker (over SSH to host droplets), `doctl`, and the OpenRouter REST API. SQLite for local state.
@@ -137,7 +137,7 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
   ```
   `tui` auto-selects the agent when launched from its workspace dir. `openclaw.json` must include `gateway.mode: "local"` or the gateway refuses to start.
 - **Agent → agent messaging**: `sessions_send` (native OpenClaw tool). An agent calls `sessions_list` to find the target's session key, then `sessions_send` to deliver a message. Requires `tools.agentToAgent.enabled: true` and `tools.agentToAgent.allow: [<agent_ids>]` in `openclaw.json`. Visibility caveat: with `"self"` agents couldn't message each other at all, so we currently ship `tools.sessions.visibility: "all"`. Under `"all"` the session-read tools are closed per-agent via `tools.deny` of `sessions_history`/`sessions_list`/`session_status`, and the filesystem layer is closed by per-agent sandbox containers (see Isolation Model above). Implemented as of scenario 4.0.
-- **Budget access from agents**: helper module exposing `check_budget()`, added as an OpenClaw skill. Reads `OPENROUTER_API_KEY` from the env's runtime environment and queries `GET /api/v1/key`.
+- **Budget access from agents**: helper module exposing `check_budget()`, added as an OpenClaw skill. Reads `OPENROUTER_API_KEY` from the gateway's process environment (set by `start_gateway` from the tmpfs key file) and queries `GET /api/v1/key`.
 
 ## Components
 
@@ -156,7 +156,7 @@ Running env containers are managed by Docker (`docker ps`). Their internal files
 
 ### 3. Env Containers
 - One container per env. Always started from a snapshot image — either a world snap (first run) or an experiment snap (fork).
-- Started with `OPENROUTER_API_KEY` injected at runtime (not in the image).
+- Started with the env's OpenRouter key injected onto a tmpfs at `/run/svc/openrouter_key` (never in the image; see the key-delivery bullet under Stack).
 - The container's internal filesystem accumulates all state as the env runs.
 - Multiple envs run side by side on one host droplet, isolated by Docker.
 
@@ -218,7 +218,7 @@ The corpus (which may be gigabytes) travels with the snap on ghcr.io. It never n
 
 **Snapshots are the primary research primitive**, not just a backup mechanism. The core experimental workflow is: run → snapshot → edit → fork → compare.
 
-A snapshot is a complete `docker commit` of a running (or stopped) container, pushed to ghcr.io. It captures the entire container filesystem — corpus, agent memories, session logs, inter-agent messages, scenario state, everything — at that moment in time. Because API keys are injected at runtime and not baked in, they are not present in snapshots.
+A snapshot is a complete `docker commit` of a running (or stopped) container, pushed to ghcr.io. It captures the entire container filesystem — corpus, agent memories, session logs, inter-agent messages, scenario state, everything — at that moment in time. API keys live only on a tmpfs and never in container config, so they are not present in snapshots (see the key-delivery bullet under Stack); `snap take`/`snap push` scan and refuse to push an image that carries one anyway.
 
 ### Taking a snapshot
 ```bash
@@ -230,7 +230,8 @@ Snapshots should be taken at clean pause points — between agent turns, not mid
 ### Forking from a snapshot
 ```bash
 docker pull ghcr.io/sfgeekgit/agentspace:snap-<id>
-docker run -d -e OPENROUTER_API_KEY=sk-or-... --name <new-env-name> ghcr.io/sfgeekgit/agentspace:snap-<id>
+docker run -d --tmpfs /run/svc:mode=755 --name <new-env-name> ghcr.io/sfgeekgit/agentspace:snap-<id>
+printf %s "sk-or-..." | docker exec -i -u 0 <new-env-name> sh -c 'cat > /run/svc/openrouter_key && chmod 444 /run/svc/openrouter_key'
 ```
 The forked env starts with identical state. Agents have full memory of everything up to the snapshot. They don't know they're a fork. They restart from idle — the gateway initializes from stored state and waits for the first trigger.
 

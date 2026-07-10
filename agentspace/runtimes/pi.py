@@ -172,18 +172,6 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, par
     docker_host.run(host, "exec", container, "sh", "-c", script)
 
 
-# ---- fork-time hook ----
-
-def post_fork(host, container, env_name):
-    """The env's minted OpenRouter key arrives as a container env var; agentd
-    reads it from /world/openrouter_key (world-readable, agents run non-root)."""
-    docker_host.run(
-        host, "exec", container, "sh", "-c",
-        'printf %s "$OPENROUTER_API_KEY" > /world/openrouter_key '
-        '&& chmod 444 /world/openrouter_key',
-    )
-
-
 def inject_soul(host, container, agent_id, soul_path_in_container):
     """docker cp wrote the file root-owned into the agent's 0700 home; hand it
     to the agent (scaffold never overwrites it — the whole point of --soul)."""

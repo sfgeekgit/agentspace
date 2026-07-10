@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Agent-facing: print this world's OpenRouter spend + limit."""
 import json, urllib.request
-key = open("/world/openrouter_key").read().strip()
+try:
+    key = open("/run/svc/openrouter_key").read().strip()
+except FileNotFoundError:
+    raise SystemExit("key not injected — control plane must re-inject on container start")
 req = urllib.request.Request("https://openrouter.ai/api/v1/auth/key",
                              headers={"Authorization": "Bearer " + key})
 d = json.load(urllib.request.urlopen(req, timeout=15))["data"]

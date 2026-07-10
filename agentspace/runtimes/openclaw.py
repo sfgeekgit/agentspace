@@ -225,10 +225,6 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, par
         shutil.rmtree(stage, ignore_errors=True)
 
 
-def post_fork(host, container, env_name):
-    """No OC-specific fork step (key arrives via container env; OC reads it)."""
-
-
 def soul_dest(agent_id: str) -> str:
     """--soul destination for NON-sandboxed envs (sandboxed dest is the host
     workspace tree; snap.cmd_fork handles that branch)."""
@@ -401,8 +397,11 @@ def inject_soul(host: str, container: str, agent_id: str, soul_path_in_container
 def start_gateway(host: str, container: str):
     """Start the gateway detached. Logs go to /tmp/gateway.log inside the container.
     The `>` TRUNCATES the log each start, so wait_for_gateway never matches a stale
-    ready marker from a previous run."""
-    cmd = f"openclaw gateway run > {GATEWAY_LOG_PATH} 2>&1"
+    ready marker from a previous run. The key comes from the control-plane-
+    injected tmpfs file into the gateway's PROCESS env (agents and the budget
+    skill inherit it) — never into container config that `docker commit` keeps."""
+    cmd = (f'OPENROUTER_API_KEY="$(cat {docker_host.KEY_PATH})" '
+           f"openclaw gateway run > {GATEWAY_LOG_PATH} 2>&1")
     docker_host.run(host, "exec", "-d", container, "sh", "-c", cmd)
 
 

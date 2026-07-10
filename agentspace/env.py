@@ -239,6 +239,11 @@ def cmd_start(name: str):
     console.print(f"[dim]docker start {name} …[/dim]")
     docker_host.run(host, "start", name)
 
+    # The key lives on a tmpfs that emptied when the container stopped;
+    # every start must re-inject it (docs/agentspace_architecture.md).
+    if key := env.get("openrouter_key"):
+        docker_host.inject_key(host, name, key)
+
     flags = snap.get("feature_flags") or {}
     agents = snap.get("agents") or []
     if flags:

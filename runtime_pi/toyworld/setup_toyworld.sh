@@ -8,11 +8,13 @@ set -euo pipefail
 AGENTS="a48291 a73056 a19467"
 TW=/runtime_pi/toyworld
 
-# --- /world: config + seeds + key (key world-readable like OC's env key) ---
+# --- /world: config + seeds ---
 mkdir -p /world
 cp "$TW/world.json" /world/
 cp -r "$TW/persona_default" /world/
-install -m 0444 /run/key_src /world/openrouter_key
+# Key on the tmpfs (mounted by run_toyworld.sh), same path the control plane
+# injects to — world-readable by design, never on the committed filesystem.
+install -m 0444 /run/key_src /run/svc/openrouter_key
 
 # --- CLI shims on PATH (same source files the builder bakes) ---
 install -m 0755 /runtime_pi/shims/gateway /runtime_pi/shims/check_budget /usr/local/bin/

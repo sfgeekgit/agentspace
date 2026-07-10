@@ -16,10 +16,12 @@ docker image inspect "$IMG" >/dev/null 2>&1 || docker build -t "$IMG" "$RT/toywo
 
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 # Network ON: agents call OpenRouter. Runtime mounted ro; key mounted ro and
-# copied world-readable by setup (agents run as non-root users).
+# copied by setup onto the tmpfs (same path/mount as real envs — invisible to
+# docker commit; agents run as non-root users).
 docker run -d --name "$NAME" \
     -v "$RT":/runtime_pi:ro \
     -v "$KEY":/run/key_src:ro \
+    --tmpfs /run/svc:mode=755 \
     "$IMG" sleep infinity >/dev/null
 
 docker exec "$NAME" bash /runtime_pi/toyworld/setup_toyworld.sh

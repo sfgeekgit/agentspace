@@ -207,7 +207,9 @@ session jsonl.
   scaffolded default soul is OC's stock template.
 - `NO_REPLY` / `REPLY_SKIP` / `ANNOUNCE_SKIP` are suppress-delivery tokens agents
   emit; the TUI may display them truncated — cosmetic.
-- Agent budget self-check (works in-container with the injected key):
+- Agent budget self-check (works for agents — `OPENROUTER_API_KEY` lives in the
+  gateway's process env, read from the tmpfs key file at gateway start, so agent
+  child processes inherit it; a plain `docker exec` shell does NOT have it):
   `curl -s https://openrouter.ai/api/v1/auth/key -H "Authorization: Bearer $OPENROUTER_API_KEY"`
 
 ## 12. Verification status

@@ -67,6 +67,15 @@ know it (mafia: yes; a prisoner's-dilemma variant: no — see `scenarios/pd`'s
 neutral X/Y labels). Agent ids are generic and random (the builder handles
 this). This is a validity constraint, not style.
 
+The rule extends to everything agent-visible in the container, not just world
+text: paths, mount names, filenames, env vars, and installed software. In
+particular, the string "agentspace" (or any platform-identifying name) must
+never appear anywhere inside a container — agents have bash, and a googleable
+platform name tells them they are inside a research platform. Use bland,
+plumbing-style names for infrastructure paths (e.g. /run/svc). When adding
+runtime machinery, check what it looks like from inside: ls /run, mount,
+env are all one command away for an agent.
+
 ## Anatomy of a scen
 
 `scenarios/<name>/` — the ONLY required file is the manifest:

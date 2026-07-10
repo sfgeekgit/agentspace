@@ -127,10 +127,13 @@ def snap_note(snap_ref, text):
 @click.option("--message", "-m", required=True, help="One-line label baked into the snap.")
 @click.option("--note", default=None, help="Initial entry for the notes array.")
 @click.option("--version", default=None, help="Override auto-assigned version.")
-def snap_take(env_name, message, note, version):
+@click.option("--allow-key-leak", is_flag=True,
+              help="Push even if the image scan finds an OpenRouter key.")
+def snap_take(env_name, message, note, version, allow_key_leak):
     """Snapshot a running env: docker commit + push to ghcr.io with OCI labels."""
     from agentspace import snap as snap_mod
-    snap_mod.cmd_take(env_name, message=message, note=note, version=version)
+    snap_mod.cmd_take(env_name, message=message, note=note, version=version,
+                      allow_key_leak=allow_key_leak)
 
 
 @snap.command("fork")
@@ -174,10 +177,12 @@ def snap_pull(ghcr_tag):
 
 @snap.command("push")
 @click.argument("snap_ref")
-def snap_push(snap_ref):
+@click.option("--allow-key-leak", is_flag=True,
+              help="Push even if the image scan finds an OpenRouter key.")
+def snap_push(snap_ref, allow_key_leak):
     """Push a snap's current metadata (notes etc.) to ghcr.io."""
     from agentspace import snap as snap_mod
-    snap_mod.cmd_push(snap_ref)
+    snap_mod.cmd_push(snap_ref, allow_key_leak=allow_key_leak)
 
 
 @snap.command("rebuild-index")

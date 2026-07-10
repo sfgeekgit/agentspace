@@ -239,10 +239,28 @@ world's cap — don't leave agents clipped. GOTCHA (verified on 0.80.3):
 
 Config from `/world/world.json` (`model`, per-agent `models` map, `pi_bin`,
 `thinking`, `require_scratchpad`, `messaging_norms`, `max_tokens`);
-OpenRouter key at `/world/openrouter_key`
-(world-readable in-container, like OC's env key). agentd env knobs use the
+OpenRouter key at `/run/svc/openrouter_key`
+(world-readable in-container by design — shared budget, `check_budget`;
+see "Key delivery" below). agentd env knobs use the
 `AGENTD_*` prefix — never `PI_*` (that namespace belongs to the Pi tool).
 Local trace in `$HOME/agentd.log`.
+
+### Key delivery
+
+The env's OpenRouter key lives ONLY at `/run/svc/openrouter_key` — a
+**tmpfs** the control plane mounts on every env container, so the key is
+structurally invisible to `docker commit` (the invariant, both leak channels,
+and the tripwire scan are in `agentspace_architecture.md`). The control plane
+pipes the key in over stdin (`docker exec -i`); it is never in argv, never in
+container env, never on the committed filesystem. The tmpfs empties when the
+container stops, so **every container start re-injects** (`snap fork`,
+`env start` — from the control-plane DB). If the file is missing, agentd and
+`check_budget` fail with an explicit "key not injected — control plane must
+re-inject on container start" error rather than a confusing downstream auth
+failure. `key_gate.py` in the engine-gate suite locks all of this in with a
+fake key. The mount is named `/run/svc` — bland, ordinary Linux plumbing —
+because agents have bash and can `ls /run`, and a platform-identifying name
+would violate the HARD rule (`HOW_TO_MAKE_WORLDS_START_HERE.md`).
 
 ### Conventions
 
@@ -441,8 +459,9 @@ what you touched.**
 | GM machinery | `runtime_pi/gm_gate/run_gm_gate.sh` | GM API: blocking wake, submit→collect, resume, remove (PD fixture) | gateway GM ops, gmlib, gmd |
 | Policy | `runtime_pi/gm_gate/run_policy_gate.sh` | live phase physics: board open/close via `[sender,"public"]`, PM allowlists, `gm_activity`, fan-out at N=5, secrets isolation | policy code, gm_activity, gmlib |
 | Build | `runtime_pi/gm_gate/run_build_gate.sh` | builder hidden-info hooks via a real throwaway build: `fill_briefing` instantiation, `/gm/secrets.json` baking + ownership (host-side, ~30s) | builder, logic hooks, pi bake |
+| Key | `python3 runtime_pi/key_gate.py` | keys-never-in-snaps invariant with a FAKE key: tmpfs delivery, committed image clean in fs + `.Config`, scanner positive control (host-side, ~15s) | key delivery/injection, container start paths, take/push scanner |
 
-`runtime_pi/run_engine_gates.sh` runs all four (a few minutes) — for
+`runtime_pi/run_engine_gates.sh` runs all five (a few minutes) — for
 gateway/gmlib/builder-wide changes; otherwise run just the relevant row.
 
 Checklist details: real `su` credentials prove PM round-trip + auto-wake + no

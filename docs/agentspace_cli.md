@@ -78,6 +78,7 @@ snap show <ref>                            # full detail (ref = scenario:version
 snap tree [--scenario <name>]              # lineage tree
 snap note <ref> "<text>"                   # append a note (local-only until snap push)
 snap take <env_name> -m "<message>" [--note "<text>"] [--version X.X]
+                                           # scans the image for leaked keys before push (override: --allow-key-leak)
                                            # snapshot a running env → commit + push
 snap fork <ref> <new_env_name> [options]   # create a new env from a snap
   --soul <agentId>=<path>      (repeatable; relative to repo root)
@@ -86,7 +87,7 @@ snap fork <ref> <new_env_name> [options]   # create a new env from a snap
   --host <ip>                  (default localhost)
   --kick / --no-kick           (default: on for world snaps, off otherwise)
 snap pull <ghcr_tag>                       # import a snap created elsewhere
-snap push <ref>                            # push notes/metadata; also the image itself if ghcr lacks it (fresh world root)
+snap push <ref>                            # push notes/metadata; also the image itself if ghcr lacks it (fresh world root); same key scan as take
 snap rebuild-index [--repo <repo>]         # rebuild SQLite from ghcr.io labels
 ```
 

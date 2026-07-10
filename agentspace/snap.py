@@ -6,6 +6,7 @@ metadata; SQLite is a local cache. Notes are local-only until `snap push` is run
 
 import json
 import os
+import re
 import sys
 import time
 import uuid
@@ -245,11 +246,50 @@ def cmd_note(ref: str, text: str):
 
 # ---- take ----
 
+# ---- key-leak tripwire (scan images before they leave the machine) ----
+
+# Full key shape, not just the prefix: OpenClaw's bundled docs (in the base
+# image) contain 'sk-or-...' placeholders that a prefix scan false-positives on.
+KEY_REGEX = "sk-or-v1-[0-9a-f]{64}"
+
+
+def scan_for_key_leak(host: str, image: str) -> list[str]:
+    """Channels of `image` carrying a key-shaped string: the config (docker
+    commit preserves container env/labels/cmd in .Config) and the filesystem.
+    Both have leaked real keys before — the invariant and its mechanism are
+    in docs/agentspace_architecture.md."""
+    leaks = []
+    if re.search(KEY_REGEX, docker_host.inspect(host, image, format="{{json .Config}}")):
+        leaks.append("image config (.Config env/labels/cmd)")
+    r = docker_host.run(
+        host, "run", "--rm", "--entrypoint", "sh", image, "-c",
+        f"grep -rqE '{KEY_REGEX}' / "
+        "--exclude-dir=proc --exclude-dir=sys --exclude-dir=dev",
+        check=False)
+    if r.returncode == 0:
+        leaks.append("image filesystem")
+    return leaks
+
+
+def _push_scanned(host: str, image: str, allow_key_leak: bool):
+    """The ONE way snap images leave the machine: scan, refuse on leak, push."""
+    console.print(f"[dim]scanning {image} for leaked keys …[/dim]")
+    leaks = scan_for_key_leak(host, image)
+    if leaks:
+        msg = f"image {image} carries an OpenRouter key in: {', '.join(leaks)}"
+        if not allow_key_leak:
+            raise click.ClickException(
+                f"{msg}. Push refused (--allow-key-leak to override).")
+        console.print(f"[yellow]⚠ {msg} — pushing anyway (--allow-key-leak).[/yellow]")
+    docker_host.run(host, "push", image)
+
+
 def cmd_take(
     env_name: str,
     message: str,
     note: str | None = None,
     version: str | None = None,
+    allow_key_leak: bool = False,
 ):
     """Snapshot a running env: docker commit + push to ghcr.io with OCI labels."""
     env = db.get_env(env_name)
@@ -341,7 +381,7 @@ def cmd_take(
 
     console.print(f"[dim]pushing to ghcr.io …[/dim]")
     try:
-        docker_host.run(host, "push", ghcr_tag)
+        _push_scanned(host, ghcr_tag, allow_key_leak)
     except docker_host.DockerError as e:
         audit.log_error("snap.take", f"{scenario}:{version}", str(e), args={"env": env_name})
         raise click.ClickException(f"docker push failed: {e}")
@@ -367,7 +407,7 @@ def _agentspace_version() -> str:
 
 # ---- push (re-commit with updated labels, push to ghcr) ----
 
-def cmd_push(ref: str):
+def cmd_push(ref: str, allow_key_leak: bool = False):
     snap = resolve_snap_ref(ref)
     host = "localhost"  # snap push always runs against the local image cache
     ghcr_tag = snap["ghcr_tag"]
@@ -384,7 +424,7 @@ def cmd_push(ref: str):
             )
             return
         console.print(f"[dim]image not on ghcr.io yet; pushing …[/dim]")
-        docker_host.run(host, "push", ghcr_tag)
+        _push_scanned(host, ghcr_tag, allow_key_leak)
         audit.log("snap.push", f"{snap['scenario']}:{snap['version']}")
         console.print(f"[green]✓[/green] {snap['scenario']}:{snap['version']} pushed to ghcr.io.")
         return
@@ -399,7 +439,7 @@ def cmd_push(ref: str):
         snap["indexed_at"] = _now()
         labels = oci.make_labels(snap)
         oci.commit_with_labels(host, container, ghcr_tag, labels)
-        docker_host.run(host, "push", ghcr_tag)
+        _push_scanned(host, ghcr_tag, allow_key_leak)
     finally:
         docker_host.run(host, "rm", container, check=False)
 
@@ -552,26 +592,19 @@ def cmd_fork(
             )
 
     now = _now()
-    container_started = False
     try:
         console.print(f"[dim]starting container {new_env_name} …[/dim]")
-        run_args = [
-            "run", "-d",
-            "-e", f"OPENROUTER_API_KEY={inference_key}",
-            "--name", new_env_name,
-        ]
+        extra_args = []
         if sandboxed:
             # DooD: gateway drives the HOST daemon; workspace tree mounted at
             # the IDENTICAL absolute path (host daemon resolves mount paths in
             # the host namespace — see docs/runtime_openclaw.md §4).
-            run_args += [
+            extra_args = [
                 "-v", "/var/run/docker.sock:/var/run/docker.sock",
                 "-v", f"{env_root}:{env_root}",
             ]
-        run_args.append(ghcr_tag)
-        docker_host.run(host, *run_args)
-        container_started = True
-        rt.post_fork(host, new_env_name, new_env_name)
+        docker_host.start_env_container(host, new_env_name, ghcr_tag,
+                                        inference_key, extra_args)
 
         if sandboxed:
             console.print(f"[dim]rewriting workspace paths → {env_root} …[/dim]")
@@ -666,7 +699,7 @@ def cmd_fork(
 
     except Exception as e:
         # Partial-failure path: container may be up, key was minted. Log loudly and stop.
-        if container_started:
+        if docker_host.container_exists(host, new_env_name):
             audit.log_error(
                 "snap.fork",
                 new_env_name,

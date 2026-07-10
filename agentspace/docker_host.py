@@ -69,6 +69,33 @@ def stream(host: str, *args: str) -> subprocess.Popen:
     )
 
 
+# ---- key delivery (the invariant: keys are NEVER in committed snaps) ----
+#
+# The env's OpenRouter key lives ONLY on a tmpfs (memory — structurally
+# invisible to `docker commit`) and travels ONLY over stdin (never argv,
+# never container env: `docker run -e` values persist in the image's
+# .Config.Env across commit). tmpfs empties on container stop, so every
+# container-start path must re-inject (fork, `env start`).
+
+KEY_DIR = "/run/svc"  # bland on purpose: agent-visible, must not name the platform
+KEY_PATH = f"{KEY_DIR}/openrouter_key"
+
+
+def start_env_container(host: str, name: str, image: str, key: str,
+                        extra_args: Sequence[str] = ()) -> None:
+    """The ONE way env containers are started: tmpfs mounted, key injected."""
+    run(host, "run", "-d", "--tmpfs", f"{KEY_DIR}:mode=755",
+        "--name", name, *extra_args, image)
+    inject_key(host, name, key)
+
+
+def inject_key(host: str, container: str, key: str) -> None:
+    """World-readable in-container by design (shared budget, check_budget).
+    -u 0: the tmpfs is root-owned regardless of the image's default user."""
+    run(host, "exec", "-i", "-u", "0", container, "sh", "-c",
+        f"cat > {KEY_PATH} && chmod 444 {KEY_PATH}", input=key)
+
+
 # ---- convenience wrappers (kept thin; snap.py / env.py do the real work) ----
 
 def inspect(host: str, ref: str, format: str | None = None) -> str:

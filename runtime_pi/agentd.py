@@ -44,6 +44,9 @@ import time
 from pathlib import Path
 
 WORLD_DIR = Path(os.environ.get("AGENTD_WORLD_DIR", "/world"))
+# tmpfs — the control plane injects the key here on EVERY container start;
+# it is never on the image filesystem (docs/runtime_pi.md "Key delivery").
+KEY_FILE = Path("/run/svc/openrouter_key")
 
 # The Pi turn must finish inside the gateway's wake timeout (default 300s),
 # with headroom for scaffolding + usage reporting.
@@ -312,7 +315,12 @@ def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
         cmd.append("--continue")  # long-lived session, reopened per wake
 
     env = dict(os.environ)
-    env["OPENROUTER_API_KEY"] = (WORLD_DIR / "openrouter_key").read_text().strip()
+    try:
+        env["OPENROUTER_API_KEY"] = KEY_FILE.read_text().strip()
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"{KEY_FILE} missing — key not injected; the control plane must "
+            "re-inject it on every container start (env start / snap fork)")
 
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, env=env, cwd=str(home),
