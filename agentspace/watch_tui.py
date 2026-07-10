@@ -18,8 +18,9 @@ from functools import partial
 
 from rich.text import Text
 from textual.app import App
+from textual.binding import Binding
 from textual.containers import Horizontal
-from textual.widgets import Footer, Header, RichLog, Tree
+from textual.widgets import Header, RichLog, Static, Tree
 
 from . import logwatch
 
@@ -28,12 +29,28 @@ class WatchApp(App):
     CSS = """
     #views { width: 24; }
     #pane { border-left: solid $accent; padding: 0 1; }
+    #hints { dock: bottom; height: 1; padding: 0 1; color: $text-muted; background: $panel; }
     """
+    # Grouped key hints for the bottom bar. Log-pane scroll keys lead (that's the
+    # busy set); h/l page hints trail so they drop off first on a narrow screen.
+    HINTS = ("[b]j/k[/b] line  [b]i/m[/b] top/bottom  [b]f[/b] follow  "
+             "[b]↑↓ ws[/b] views  [b]q[/b] quit  [b]h/l[/b] page")
+    ENABLE_COMMAND_PALETTE = False   # kill the built-in ctrl+p palette
+    # Left pane (view list): the arrow keys (Tree's own bindings) navigate it and
+    # Enter expands; w/s mirror up/down. Right pane (log): plain lowercase letters
+    # scroll it — the focused Tree ignores letters, so they reach the app cleanly
+    # (no priority needed). Pairs read first=up, second=down, as you specified.
     BINDINGS = [
         ("q", "quit", "quit"),
-        ("p", "toggle_follow", "pause/follow"),
-        ("pagedown", "page(1)", "scroll"),
-        ("pageup", "page(-1)", "scroll"),
+        ("f", "toggle_follow", "follow"),
+        Binding("w", "tree_cursor(-1)", "view up", show=False),
+        Binding("s", "tree_cursor(1)", "view down", show=False),
+        Binding("j", "scroll(-1)", "line up", show=False),
+        Binding("k", "scroll(1)", "line down", show=False),
+        Binding("h", "page(-1)", "page up", show=False),
+        Binding("l", "page(1)", "page down", show=False),
+        Binding("i", "edge(-1)", "top", show=False),
+        Binding("m", "edge(1)", "bottom", show=False),
     ]
 
     def __init__(self, host: str, container: str):
@@ -56,7 +73,7 @@ class WatchApp(App):
             pane = RichLog(id="pane", wrap=True, max_lines=5000)
             pane.can_focus = False  # tree is the only focusable → owns arrows
             yield pane
-        yield Footer()
+        yield Static(self.HINTS, id="hints")
 
     def on_mount(self):
         # view_tree runs docker execs — worker, per the threading rule; the
@@ -81,7 +98,8 @@ class WatchApp(App):
             else:                                        # world/scenario: leaf
                 widget.root.add_leaf(view.name, data=view.name)
         widget.focus()
-        self._switch(next(iter(self.views)))
+        widget.cursor_line = 0        # highlight the first view (else no cursor
+        self._switch(next(iter(self.views)))  # shows until the first keypress)
 
     # Highlight IS selection. Debounced so holding an arrow scans the tree
     # freely and only the node you rest on starts a stream. An agent's own row
@@ -94,13 +112,51 @@ class WatchApp(App):
             self._debounce.stop()
         self._debounce = self.set_timer(0.25, lambda: self._switch(name))
 
+    def action_tree_cursor(self, direction: int):
+        tree = self.query_one(Tree)
+        (tree.action_cursor_down if direction > 0 else tree.action_cursor_up)()
+
+    # Scrolling up leaves the live edge, so it auto-pauses follow (new lines
+    # then append below without yanking the view down). Jump to the bottom (m)
+    # or hit `f` to resume. Intent, not scroll position, drives follow — so `f`
+    # can freeze the tail even while parked at the bottom, and a live stream's
+    # constant writes never fight the reader. animate=False so a held key
+    # scrolls crisply instead of queuing eased animations.
+    def action_scroll(self, direction: int):
+        pane = self.query_one(RichLog)
+        if direction < 0:
+            pane.scroll_up(animate=False)
+            self._pause(pane)
+        else:
+            pane.scroll_down(animate=False)
+
     def action_page(self, direction: int):
         pane = self.query_one(RichLog)
-        (pane.scroll_page_down if direction > 0 else pane.scroll_page_up)()
+        if direction < 0:
+            pane.scroll_page_up(animate=False)
+            self._pause(pane)
+        else:
+            pane.scroll_page_down(animate=False)
+
+    def action_edge(self, direction: int):
+        pane = self.query_one(RichLog)
+        if direction < 0:
+            pane.scroll_home(animate=False)
+            self._pause(pane)
+        else:
+            pane.scroll_end(animate=False)
+            pane.auto_scroll = True   # back at the live edge → follow
+
+    def _pause(self, pane):
+        if pane.auto_scroll:          # announce the follow→pause flip just once
+            pane.auto_scroll = False
+            self.notify("paused — m or f to follow", timeout=2)
 
     def action_toggle_follow(self):
         pane = self.query_one(RichLog)
         pane.auto_scroll = not pane.auto_scroll
+        if pane.auto_scroll:          # re-following → jump to the live edge
+            pane.scroll_end(animate=False)
         self.notify("following" if pane.auto_scroll else "paused — scroll freely",
                     timeout=2)
 
