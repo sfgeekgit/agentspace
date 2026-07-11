@@ -25,8 +25,10 @@ A brand-new world (`X.0` snap) is built from a **scen** via the menu:
 python3 zookeeper.py        # → "New world"
 ```
 
-The wizard picks a runtime (PI or openclaw), a scen, the agent count, a per-agent model
-+ persona, modules (none yet), and a world name, then builds a local World Root.
+The wizard picks a scen (its manifest's `runtime` key decides the runtime), the agent
+count, a per-agent model + persona, modules (none yet), and a world name, then builds
+a local World Root. A scen may pin a `source_image` in its manifest — the builder
+pulls it and layers the world on top; otherwise the bare runtime base is used.
 This is distinct from **Fork** (snap → env) and **Take** (env → snap). Scens and
 personas are authored as files in the repo — see `HOW_TO_MAKE_WORLDS_START_HERE.md`. The
 underlying call is `agentspace.builder.build_world_root(...)`.
@@ -120,6 +122,25 @@ env exec <name> <cmd...>                   # docker exec passthrough
 budget show [<env_name>]                   # live usage from OpenRouter
 budget topup <env_name> <amount_usd>       # increase the env's OpenRouter limit
 ```
+
+### scen
+
+Producers of a scen's pinned `source_image` (the environment image its worlds
+are built on — see `HOW_TO_MAKE_WORLDS_START_HERE.md` "The scen's
+environment"). Both scan (credentials in fs + image config, shell histories),
+stamp provenance labels, push to ghcr, read back the REMOTE registry digest,
+verify it pulls, and write it into the scen's scenario.toml.
+
+```
+scen env freeze <scen> <container>         # commit a banged-on workshop container
+                                           # (refuses volume/bind mounts; warns on
+                                           # dirty sources — used worlds are legal)
+scen env build <scen>                      # docker build the scen's env.Dockerfile
+                                           # (ARG AGENTSPACE_BASE contract)
+```
+
+Env images are tagged `env-<scen>-<n>` in the same ghcr repo as snaps; the
+snap index ignores them (`org.agentspace.kind=scen-environment`).
 
 ---
 
@@ -343,6 +364,7 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
     budget.py                  ← budget verbs
     registry.py                ← discover scens / personas / modules (scan git dirs)
     builder.py                 ← build a World Root from a scen + roster
+    scen.py                    ← scen env freeze / build (source_image producers)
     runtimes/__init__.py       ← dispatch on snap.runtime label
     runtimes/openclaw.py       ← openclaw flag→config translate + render_config, soul, gateway, kick
 ```

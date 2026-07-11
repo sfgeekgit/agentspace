@@ -37,7 +37,7 @@ def img(tag, *args, user=None):
 name = f"buildgate_{uuid.uuid4().hex[:6]}"
 snap = build_world_root(
     "mafia", [{"model": "gate/none", "persona": "minimal"}] * 8,
-    runtime="pi", world_name=name, seed=42,
+    world_name=name, seed=42,
     params={"hard_enforcement": True})
 tag = snap["ghcr_tag"]
 try:

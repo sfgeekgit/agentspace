@@ -35,6 +35,7 @@ LABEL_FIELDS = [
     "creation_message",
     "runtime",
     "runtime_version",
+    "source_image",
     "model",
     "agents",
     "soul_files",
@@ -104,10 +105,17 @@ def commit_with_labels(
     container: str,
     image_ref: str,
     labels: dict[str, str],
+    changes: tuple[str, ...] = (),
 ) -> str:
-    """`docker commit --change ...` and return the new image ID."""
+    """`docker commit --change ...` and return the new image ID.
+
+    `changes` = extra raw Dockerfile instructions (e.g. a runtime's
+    COMMIT_CHANGES config normalization) applied alongside the labels."""
+    args = change_args(labels)
+    for c in changes:
+        args.extend(["--change", c])
     out = docker_host.stdout(
-        host, "commit", *change_args(labels), container, image_ref
+        host, "commit", *args, container, image_ref
     ).strip()
     return out.split(":")[-1] if ":" in out else out
 

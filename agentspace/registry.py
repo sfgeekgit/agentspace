@@ -57,7 +57,7 @@ def _optional_parts(scen_dir: Path) -> dict[str, Any]:
         "has_world": (scen_dir / "world.md").is_file(),
         "has_logic": (scen_dir / "logic.py").is_file(),
         "has_kick": (scen_dir / "kick.txt").is_file(),
-        "has_gm": (scen_dir / "gm.py").is_file(),   # scen ships a game master (PI)
+        "has_gm": (scen_dir / "gm" / "main.py").is_file(),   # scen ships a game master (PI)
         "roles_dir": (scen_dir / "roles") if (scen_dir / "roles").is_dir() else None,
         "data_dir": (scen_dir / "data") if (scen_dir / "data").is_dir() else None,
     }
@@ -66,9 +66,9 @@ def _optional_parts(scen_dir: Path) -> dict[str, Any]:
 def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str, Any]:
     """Validate + normalize a raw manifest into the canonical scen dict.
 
-    Only the minimal v1 fields are interpreted (active/description/min_agents/
-    max_agents/module_blacklist). Adding new manifest fields later is
-    backward-safe: unknown keys are ignored here.
+    Interpreted fields: active/description/runtime/source_image/min_agents/
+    max_agents/module_blacklist/params/watch. Adding new manifest fields later
+    is backward-safe: unknown keys are ignored here.
     """
     try:
         min_agents = int(data.get("min_agents", 1))
@@ -86,11 +86,38 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
     if not isinstance(blacklist, list) or not all(isinstance(m, str) for m in blacklist):
         raise RegistryError(f"scen {name!r}: module_blacklist must be a list of strings")
 
+    parts = _optional_parts(scen_dir)
+
+    # A scen declares its runtime (REQUIRED); the wizard derives it from here
+    # instead of asking. This is dispatch, not runtime knowledge: the check that
+    # the name is known and supports the scen's capabilities (a gm.py needs a
+    # runtime with a GM adapter) lives with the runtime modules themselves.
+    runtime = data.get("runtime")
+    if not isinstance(runtime, str) or not runtime:
+        raise RegistryError(f'scen {name!r}: manifest must declare runtime = "<name>"')
+    from . import runtimes  # lazy: keeps the scanner import-light
+    try:
+        rt = runtimes.get(runtime)
+    except ValueError as e:
+        raise RegistryError(f"scen {name!r}: {e}")
+    if parts["has_gm"] and not getattr(rt, "SUPPORTS_GM", False):
+        raise RegistryError(
+            f"scen {name!r} ships a GM (gm/main.py) but runtime {runtime!r} has no GM support"
+        )
+
+    # OPTIONAL pinned source image (world-authoring design §5.1): any compatible
+    # image, however produced; the builder pulls it and layers the scen on top.
+    source_image = data.get("source_image")
+    if source_image is not None and (not isinstance(source_image, str) or not source_image):
+        raise RegistryError(f"scen {name!r}: source_image must be a non-empty string")
+
     return {
         "name": name,
         "dir": scen_dir,
         "active": bool(data.get("active", True)),
         "description": str(data.get("description", "")),
+        "runtime": runtime,
+        "source_image": source_image,
         "min_agents": min_agents,
         "max_agents": max_agents,
         "module_blacklist": list(blacklist),
@@ -102,7 +129,7 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
         # format, fields, filter). Declarative ONLY — no scen code runs
         # host-side; baked into world.json, interpreted by logwatch.py.
         "watch": list(data.get("watch", [])),
-        **_optional_parts(scen_dir),
+        **parts,
     }
 
 
@@ -115,6 +142,8 @@ def _inactive_scen_stub(name: str, scen_dir: Path, data: dict[str, Any]) -> dict
         "dir": scen_dir,
         "active": False,
         "description": str(data.get("description", "")),
+        "runtime": None,
+        "source_image": None,
         "min_agents": 0,
         "max_agents": 0,
         "module_blacklist": [],

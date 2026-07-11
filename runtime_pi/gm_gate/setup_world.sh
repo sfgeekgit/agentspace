@@ -1,9 +1,11 @@
 #!/bin/bash
 # Shared gate-world setup (run as root in a throwaway container, repo ro at
-# /repo). Assembles ANY scripted GM world: $1 = gm.py (repo-relative),
-# $2 = world.json content, $3 = moves dir (repo-relative; one <id>.moves file
-# per agent — the roster is derived from it), $4 = optional /gm/secrets.json
-# content. Agents run dummy_scripted_agent.sh. Zero tokens.
+# /repo). Assembles ANY scripted GM world: $1 = the GM entry file
+# (repo-relative; installed as /gm/code/main.py — a scen's gm/main.py or a
+# single-file gate fixture), $2 = world.json content, $3 = moves dir
+# (repo-relative; one <id>.moves file per agent — the roster is derived from
+# it), $4 = optional /gm/secrets.json content. Agents run
+# dummy_scripted_agent.sh. Zero tokens.
 set -euo pipefail
 GM_PY="$1"; WORLD_JSON="$2"; MOVES_DIR="$3"; SECRETS_JSON="${4:-}"
 
@@ -16,7 +18,6 @@ cp /repo/runtime_pi/shims/gateway /repo/runtime_pi/shims/submit /usr/local/bin/
 chmod 0755 /usr/local/bin/gateway /usr/local/bin/submit
 
 mkdir -p /world
-cp "/repo/$GM_PY" /world/gm.py
 printf '%s\n' "$WORLD_JSON" > /world/world.json
 
 for f in /repo/"$MOVES_DIR"/*.moves; do
@@ -30,7 +31,8 @@ for f in /repo/"$MOVES_DIR"/*.moves; do
 done
 
 useradd --no-user-group -M -d /gm gm 2>/dev/null || true
-mkdir -p /gm
+mkdir -p /gm/code
+cp "/repo/$GM_PY" /gm/code/main.py
 [ -n "$SECRETS_JSON" ] && printf '%s\n' "$SECRETS_JSON" > /gm/secrets.json
 chown -R gm /gm; chmod 0700 /gm
 

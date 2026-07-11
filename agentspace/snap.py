@@ -455,6 +455,11 @@ def cmd_pull(ghcr_tag: str):
     console.print(f"[dim]pulling {ghcr_tag} …[/dim]")
     docker_host.run(host, "pull", ghcr_tag)
     labels = oci.inspect_image_labels(host, ghcr_tag)
+    if labels.get("org.agentspace.kind") == "scen-environment":
+        raise click.ClickException(
+            f"image {ghcr_tag} is a scen environment (source image), not a snap — "
+            "reference it from a scenario.toml source_image instead."
+        )
     snap = oci.parse_labels(labels)
     if not snap.get("snap_id"):
         raise click.ClickException(
@@ -484,6 +489,12 @@ def cmd_rebuild_index(repo: str | None = None):
     for t in snap_tags:
         try:
             labels = oci.fetch_registry_labels(repo, t)
+            # Scen environment images (scen env freeze/build) live in the same
+            # repo under env-* tags — the prefix filter above skips them; this
+            # guards against one somehow wearing a snap- tag.
+            if labels.get("org.agentspace.kind") == "scen-environment":
+                console.print(f"[yellow]skipping {t} — scen environment, not a snap[/yellow]")
+                continue
             snap = oci.parse_labels(labels)
             if not snap.get("snap_id"):
                 console.print(f"[yellow]skipping {t} — no agentspace labels[/yellow]")

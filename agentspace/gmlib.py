@@ -1,7 +1,7 @@
 """gmlib — the shared, runtime-NEUTRAL game-master library scens build on.
 
-A scen ships a `gm.py` with `run(api, params)`; the runtime starts the GM as a
-dedicated `gm` user and calls that entry point. `api` is a GM (below). gm.py
+A scen ships `gm/main.py` with `run(api, params)`; the runtime starts the GM as
+a dedicated `gm` user and calls that entry point. `api` is a GM (below). GM code
 owns ALL game/world logic; gmlib owns the reusable plumbing (roster, concurrent
 rounds, structured collection, announce/policy/remove/roll, state persistence).
 
@@ -133,6 +133,6 @@ class GM:
 
 def run(adapter, scen_run, params, state_path):
     """Entry the runtime launcher calls: wire the adapter + state into a GM and
-    hand it to the scen's run(api, params). gm.py should treat run as
+    hand it to the scen's run(api, params). GM code should treat run as
     resumable — it may be called again after a restart (see the banner)."""
     scen_run(GM(adapter, state_path), params)

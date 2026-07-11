@@ -6,6 +6,7 @@
 # records intended vs played. Exists to prove the copy-a-scen workflow.
 
 active = true
+runtime = "pi"
 description = "Noisy PD — like pd, but each move is flipped with probability noise_p (scored as flipped)."
 min_agents = 2
 max_agents = 2

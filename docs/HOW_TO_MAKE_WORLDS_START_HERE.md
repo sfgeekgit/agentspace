@@ -83,6 +83,11 @@ env are all one command away for an agent.
 ```toml
 # scenario.toml
 active = true            # false → hidden from the New-World menu
+runtime = "pi"           # REQUIRED. The wizard derives the runtime from this
+                         # (GM scens need "pi"). No more runtime question.
+# source_image = "ghcr.io/…@sha256:…"   # OPTIONAL: pinned environment image
+                         # (see "The scen's environment" below). Absent →
+                         # the bare runtime base; text-only scens skip this.
 description = "one line shown in the menu"
 min_agents = 2
 max_agents = 2
@@ -92,7 +97,7 @@ module_blacklist = []    # module names this scen can't run with (none exist yet
 name = "rounds"          # The wizard prompts for each; the SAME scen builds a
 type = "int"             # different world root per value set. Types: int |
 label = "Number of rounds"  # float (min/max checked) | bool | str.
-default = 5              # Values reach your gm.py as `params`.
+default = 5              # Values reach your gm/main.py as `params`.
 min = 1
 max = 100
 ```
@@ -104,11 +109,74 @@ Optional files:
 | `world.md` | Shared world text every agent gets (as `WORLD.md`). Keep minimal. |
 | `roles/<role>.md` | One briefing per role → that agent's private `ROLE.md`. Self-describing; say what the agent CAN do. |
 | `logic.py` | Build-time hooks (next section). |
-| `gm.py` | The game master — run-time control code (the big section below). |
+| `gm/` | The game master package — run-time control code (the big section below). Entry point `gm/main.py` + any helpers/vendored code; baked to `/gm/code`, gm-owned 0700 — agents cannot read game logic. |
 | `FIRST_WAKE.md` | One-time birth message (onboarding richer than the frozen files). |
 | `kick.txt` | Overrides the default kick message. Rarely needed; unused in GM worlds (the GM does the waking). |
 | `data/` | Corpus, baked to `/data/corpus` (gigabytes OK — travels with the image). |
 | `gate/` | Optional scripted self-test (see Testing). Most scens don't need one. |
+
+## The scen's environment (source images)
+
+A scen's ENVIRONMENT — OS packages, python libraries, tools — is a Docker
+image the builder layers the world on top of. Most scens skip this entirely
+(no manifest key → the bare runtime base; zero new steps, zero new
+concepts). A scen that needs more (numpy, a solver, corpus tooling) pins one
+in its manifest:
+
+```toml
+source_image = "ghcr.io/…@sha256:…"   # ALWAYS a registry digest
+```
+
+Any compatible image is a legal source, however produced. Three ways to get
+the digest, in the order you'll actually use them:
+
+- **Freeze (the default): bang on a workshop container, ship exactly that.**
+  Start a plain container on the runtime base
+  (`docker run -it pi-world:base bash` for PI), install and test with no
+  record-keeping, then:
+
+      python3 zookeeper.py scen env freeze <scen> <container>
+
+  The verb is atomic: it refuses volume/bind mounts (`docker commit`
+  silently EXCLUDES their contents), scans for credentials — filesystem AND
+  image config, since commit preserves env vars — and shell histories,
+  stamps provenance labels, commits, pushes, reads back the REMOTE registry
+  digest, verifies it pulls, and writes it into scenario.toml. To add one
+  more library next week, start a new workshop container FROM the frozen
+  env and re-freeze — commits chain, nothing is redone.
+- **Recipe (optional graduation): `env.Dockerfile`.** Contract:
+  `ARG AGENTSPACE_BASE` / `FROM ${AGENTSPACE_BASE}`, additive-only by
+  convention. `zookeeper.py scen env build <scen>` builds it on the current
+  runtime base and runs the same publish tail. GOTCHA: editing
+  env.Dockerfile does NOTHING until you re-run `scen env build` — the
+  pinned digest is the truth; the Dockerfile is just its generator.
+  Graduate when a scen is a keeper (the recipe is usually the five installs
+  that survived the banging); until then the frozen path is tax-free.
+- **Salvage: freeze a snap or a used world.** Legal, loudly warned: prior
+  state CARRIES (below). Sometimes that's the experiment — a fresh cast
+  baked into a world with archaeological history to discover; usually you
+  want a clean workshop container instead.
+
+**What carries from a dirty source (and what doesn't).** Building a world
+root RESETS everything runtime-owned: all `u_*`/`gm` Linux users are
+deleted (no ghost agents in `gateway who`; a GM can't wake-and-bill the old
+cast), and `/data/gateway` (audit, public board, budget, spools,
+submissions, eliminations), `/world`, and `/gm` (GM code, state, secrets)
+are wiped. Everything else CARRIES — notably old agent home directories
+(left root-owned 0700: preserved but unreadable; deliberately open the
+permissions if the new cast is meant to dig) and `/data/corpus`.
+
+**The HARD rule applies to software.** Agents can see what's installed and
+can READ package source — `ls site-packages` is one command away. jax
+whispers "simulation"; a library whose modules are named `mechanisms/` or
+`adversarial_welfare` shouts. Keep the global environment genuinely generic;
+ship anything prejudicial inside `gm/` (→ `/gm/code`, unreadable by
+agents). The freeze verb's scan catches credential-shaped and history-shaped
+things — the PREJUDICE judgment is always yours.
+
+A huge corpus shared across many roots MAY be baked into the env image
+instead of `data/` (one layer shared by all sibling roots); per-scen
+choice, not policy.
 
 **Personas are not part of a scen.** A persona (`personas/<short_name>.md`)
 is a personality — the agent's `SOUL.md` — chosen per agent by the operator
@@ -145,16 +213,19 @@ Hidden information is first-class: each agent sees only its own `ROLE.md`;
 the full assignment is recorded in the operator's `audit.log` (and
 `/gm/secrets.json` if you use `gm_secrets`), never anywhere agents can reach.
 
-## The game master (`gm.py`)
+## The game master (`gm/`)
 
 A scen that must DRIVE the world — run rounds, collect moves, enforce
-phases, score, eliminate — ships a `gm.py`. ("GM" does not imply game: a
-shift coordinator or corpus-sort driver is a GM too.) It is deterministic
-Python, run as its own dedicated non-root user (`gm`), with a private home
-`/gm` that agents cannot read. Agents never see the GM except as messages
+phases, score, eliminate — ships a `gm/` package. ("GM" does not imply
+game: a shift coordinator or corpus-sort driver is a GM too.) It is
+deterministic Python, run as its own dedicated non-root user (`gm`), with a
+private home `/gm` that agents cannot read. The whole package — entry point
+`gm/main.py` plus any helpers or vendored code — is baked to `/gm/code`
+(gm-owned, 0700), so agents cannot read game logic either; siblings import
+plainly (`import my_helper`). Agents never see the GM except as messages
 from `gm` and board posts from `world`.
 
-The entry point:
+The entry point, `gm/main.py`:
 
 ```python
 import gmlib   # resolves in-container; you only ever use the `api` handed in
@@ -188,7 +259,7 @@ def run(api, params):        # called on every world (re)start — must RESUME
   `collect` it.
 - Rate/size caps, budget accounting, per-turn cost logging.
 
-**Your gm.py must do:**
+**Your GM code must do:**
 - All world/game logic: phases, who is woken when and with what prompt text,
   scoring, win conditions, what gets announced.
 - State persistence: keep ALL state in `api.load_state()/save_state()` and
@@ -202,7 +273,7 @@ def run(api, params):        # called on every world (re)start — must RESUME
   always set one, and consider a safety cap (e.g. mafia's `max_days`) so a
   degenerate world still terminates.
 
-**Your gm.py must NEVER do:**
+**Your GM code must NEVER do:**
 - Read agent homes or transcripts (adjudicate ONLY via `collect` /
   `activity`).
 - Parse agents' free-form chat as game input — moves come from `submit`.
@@ -272,7 +343,7 @@ The RULE: declarative only — a watch entry names a file and how to read it;
 scen code NEVER runs on the operator's host. If you want a readable view,
 write a readable file. Your GM already persists state every step; appending
 one human-readable line per game beat to a jsonl is the same discipline —
-see `glog()` in `scenarios/mafia/gm.py` (it records the hidden beats: night
+see `glog()` in `scenarios/mafia/gm/main.py` (it records the hidden beats: night
 targets, saves, investigations, role reveals — GM-home files are
 agent-unreachable, so spoilers are safe there).
 
@@ -297,7 +368,8 @@ cd /opt/agentspace-ctl
 python3 zookeeper.py          # menu → "New world"
 ```
 
-Wizard: runtime (**PI** — GM scens are PI-only) → scen → agent count →
+Wizard: scen (the manifest's `runtime` key decides the runtime — GM scens
+need PI) → agent count →
 per-agent model + persona → your params → world name → build. This produces
 a local **world root** (`<name>:1.0`, never run directly). Then:
 
@@ -319,8 +391,8 @@ record (seed, params, role answer key) → the operator-only `audit.log`.
 ## Testing your scen
 
 Cheap end-to-end check with zero tokens: a **scen gate** — scripted dummy
-agents play a predetermined game against your real gm.py inside a throwaway
-container. Most scens don't need one (gm.py is write-once; one real run
+agents play a predetermined game against your real GM inside a throwaway
+container. Most scens don't need one (GM code is write-once; one real run
 proves it — see `noisy_pd`). If yours is complex enough to want one, copy
 `scenarios/mafia/gate/`: a `moves/<id>.moves` file per agent (one line of
 `post …` / `send <id> …` / `submit …` actions per wake), a `gate.py` of

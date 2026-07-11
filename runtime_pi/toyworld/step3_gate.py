@@ -45,7 +45,6 @@ sp = builder.build_world_root(
     "hello_pi",
     [{"model": "anthropic/claude-haiku-4.5", "persona": "minimal"},
      {"model": "anthropic/claude-haiku-4.5", "persona": "minimal"}],
-    runtime="pi",
 )
 ref = f"hello_pi:{sp['version']}"
 ids = sp["agents"]

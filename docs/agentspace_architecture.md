@@ -214,6 +214,37 @@ via `snap fork --soul <agentId>=<path>`.
 
 The corpus (which may be gigabytes) travels with the snap on ghcr.io. It never needs to live on the control droplet. All subsequent forks of this scenario pull from ghcr.io and get the corpus automatically.
 
+## Scen Environment Images (source images)
+
+A scen may pin a `source_image` in its manifest — a Docker image carrying the
+scen's ENVIRONMENT (OS packages, libraries, tools) that the builder pulls by
+digest and layers the world on top of. No pin → the bare runtime base. The
+digest is produced by `scen env freeze` (commit a banged-on workshop
+container — the default) or `scen env build` (an `env.Dockerfile` recipe);
+authoring guidance is in `HOW_TO_MAKE_WORLDS_START_HERE.md`.
+
+Storage: same ghcr repo as snaps, tags `env-<scen>-<n>`, labeled
+`org.agentspace.kind=scen-environment` — the snap index skips them. Layer
+economics are the same as for snaps: the env sheet slots under every root and
+snap built on it, stored and transferred once.
+
+The three reproducibility promises (deliberately narrowed):
+
+1. **Exact (identity)** — a digest identifies the exact OCI filesystem +
+   image config an experiment used. It does NOT promise the image stays
+   hosted (GHCR package versions are deletable; restore window ~30 days),
+   nor identical execution across architectures/kernels.
+2. **Regenerative** — a git clone + the pinned digest builds a NEW root from
+   the scen: new dice, same rules, same environment.
+3. **Derivational (recipe scens only)** — `env.Dockerfile` re-derives an
+   *approximately equivalent* env on a current base; for forward evolution,
+   never exact replay.
+
+Availability is a policy, not a property of digests: keeper/published
+experiments get a `docker save` archive outside GHCR; drafts don't pay that
+tax. Sharing with friends requires the GHCR packages to be public
+(anonymous pulls).
+
 ## Snapshot / Fork Semantics
 
 **Snapshots are the primary research primitive**, not just a backup mechanism. The core experimental workflow is: run → snapshot → edit → fork → compare.

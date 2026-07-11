@@ -5,7 +5,9 @@ This is the thin HOST of the re-arch. It owns only the universal layer:
 - ask the runtime to render its native config for N agents,
 - compose per-agent seed files (persona -> SOUL.md, peers, optional role),
 - bake world text + a generic kick + any scen data,
-- assemble the image (run base -> cp staged tree -> commit with OCI labels),
+- assemble the image (resolve the source image — the scen's pinned
+  source_image or the bare runtime base -> cp staged tree -> commit with OCI
+  labels + normalized container config),
 - record provenance (non-secret -> labels; full build record incl. any secret
   role assignment -> audit.log ONLY).
 
@@ -39,6 +41,13 @@ def valid_world_name(name: str) -> bool:
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+# One `sh -c` probe for prior-world state in a container/image (dirty source,
+# §5.1): emits one marker word per finding. Shared with `scen env freeze`.
+DIRTY_SOURCE_PROBE = (
+    "grep -q '^u_' /etc/passwd && echo agent-users; "
+    "[ -e /world/world.json ] && echo world-state; "
+    "[ -d /data/openclaw/agents ] && echo oc-agent-state; true")
+
 def generate_agent_ids(n: int, rng: random.Random) -> list[str]:
     """n generic, non-sequential, unique agent IDs (HARD minimal-comms rule):
     'a' + 5 random digits. Nothing an agent could infer meaning from."""
@@ -66,13 +75,11 @@ def build_world_root(
     roster: list[dict[str, str]],
     *,
     world_name: str | None = None,
-    runtime: str = "openclaw",
     modules: tuple[str, ...] = (),
     params: dict[str, Any] | None = None,
     seed: int | None = None,
     version: str | None = None,
     host: str = "localhost",
-    base_image: str | None = None,
 ) -> dict[str, Any]:
     """Build a world-root (X.0) snap LOCALLY from a scen + roster.
 
@@ -97,7 +104,8 @@ def build_world_root(
 
     # ---- resolve scen + runtime, validate the universal constraints ----
     scen = registry.load_scen(scen_name)          # raises if missing/invalid
-    rt = runtimes.get(runtime)                     # raises if unknown runtime
+    runtime = scen["runtime"]                      # declared in scenario.toml
+    rt = runtimes.get(runtime)
     logic = registry.load_scen_logic(scen)         # None if no logic.py
     # Coerce/validate build-time params + fill defaults before anyone reads them.
     params = registry.validate_params(scen["params_schema"], params)
@@ -176,14 +184,56 @@ def build_world_root(
     ghcr_tag = versioning.ghcr_tag(identity, version)
     now = _now()
 
-    # ---- assemble the image: run base -> rt.bake -> commit ----
-    tmp_container = f"as-build-{snap_id[:12]}"
-    if base_image is None:
+    # ---- resolve the source image (world-authoring design §5.1): exactly two
+    # paths — scen pins a source_image (pulled; any compatible image, however
+    # produced), or the bare runtime base (text-only scens: zero tax) ----
+    source_image = scen["source_image"]
+    if source_image:
+        if docker_host.run(host, "pull", source_image, check=False).returncode != 0:
+            if docker_host.run(host, "image", "inspect", source_image,
+                               check=False).returncode != 0:
+                raise ValueError(
+                    f"source image {source_image!r}: pull failed and no local copy"
+                )
+            print(f"  ⚠ pull of {source_image} failed; using the local copy")
+        # Advisory label check (§5.2a): warn, never gate — legal sources
+        # (snaps, hand-made images) may carry no labels at all.
+        src_rt = oci.parse_labels(
+            oci.inspect_image_labels(host, source_image)).get("runtime")
+        if src_rt is None:
+            print("  ⚠ source image carries no agentspace labels — provenance unknown")
+        elif src_rt != runtime:
+            print(f"  ⚠ source image is labeled runtime={src_rt!r}; scen wants {runtime!r}")
+        base_image = source_image
+    else:
         base_image = rt.BASE_IMAGE
+
+    # ---- assemble the image: run source -> rt.bake -> commit ----
+    tmp_container = f"as-build-{snap_id[:12]}"
     # `docker run` is INSIDE the try so a partial create is still cleaned up
     # by the finally (otherwise the container name leaks and retries collide).
     try:
-        docker_host.run(host, "run", "-d", "--name", tmp_container, base_image)
+        # Assembly hardening (§5.4): a source image's USER/ENTRYPOINT/CMD must
+        # not break root assembly; the commit below normalizes the config back.
+        docker_host.run(host, "run", "-d", "--name", tmp_container,
+                        "--user", "root", "--entrypoint", "/bin/sh",
+                        base_image, "-c", "exec sleep infinity")
+        # Hard compatibility check: the source must actually contain the
+        # runtime — fail early and clearly instead of committing a broken root.
+        if docker_host.run(host, "exec", tmp_container, "test", "-e",
+                           rt.RUNTIME_MARKER, check=False).returncode != 0:
+            raise ValueError(
+                f"source image {base_image!r} does not contain the {runtime!r} "
+                f"runtime (missing {rt.RUNTIME_MARKER})"
+            )
+        # Dirty-source warning (§5.1): prior world state in the source carries
+        # forward into every root built on it. Legal — sometimes the point —
+        # but never silent. (What bake resets vs. carries: HOW_TO_MAKE_WORLDS.)
+        dirty = docker_host.stdout(
+            host, "exec", tmp_container, "sh", "-c", DIRTY_SOURCE_PROBE).split()
+        if dirty:
+            print(f"  ⚠ dirty source ({', '.join(dirty)}): prior world state "
+                  "carries forward into this root")
         # The runtime owns its staging layout (openclaw.json + seed
         # workspaces for OC; /world + per-agent Linux users for PI).
         rt.bake(
@@ -192,7 +242,7 @@ def build_world_root(
             seeds=seeds,
             world_md=world_md,
             kick_text=kick_text if kick_text.endswith("\n") else kick_text + "\n",
-            gm_py=(scen["dir"] / "gm.py").read_text(encoding="utf-8") if scen["has_gm"] else None,
+            gm_dir=(scen["dir"] / "gm") if scen["has_gm"] else None,
             params=params,
             gm_secrets=gm_secrets,
             watch=scen["watch"],
@@ -213,10 +263,13 @@ def build_world_root(
         snap = _snap_dict(
             snap_id=snap_id, scenario=identity, scen=scen_name, version=version,
             ghcr_tag=ghcr_tag, now=now, runtime=runtime,
-            agents=agents, model_label=model_label,
+            agents=agents, model_label=model_label, source_image=source_image,
         )
         labels = oci.make_labels(snap)
-        oci.commit_with_labels(host, tmp_container, ghcr_tag, labels)
+        # Commit-time config normalization (§5.4): the assembly hardening above
+        # (and anything a source image set) must not leak into the root.
+        oci.commit_with_labels(host, tmp_container, ghcr_tag, labels,
+                               changes=rt.COMMIT_CHANGES)
     finally:
         docker_host.run(host, "rm", "-f", tmp_container, check=False)
 
@@ -234,6 +287,7 @@ def build_world_root(
             "snap_id": snap_id,
             "scen": scen_name,
             "runtime": runtime,
+            "source_image": source_image,
             "seed": actual_seed,
             "params": params,
             "modules": list(modules),
@@ -246,7 +300,8 @@ def build_world_root(
     return snap
 
 def _snap_dict(
-    *, snap_id, scenario, scen, version, ghcr_tag, now, runtime, agents, model_label
+    *, snap_id, scenario, scen, version, ghcr_tag, now, runtime, agents,
+    model_label, source_image=None
 ) -> dict[str, Any]:
     from . import __version__
     src = "" if scen == scenario else f", scen={scen}"
@@ -265,6 +320,7 @@ def _snap_dict(
         ),
         "runtime": runtime,
         "runtime_version": None,
+        "source_image": source_image,  # pinned scen env, if any (§5.1 provenance)
         "model": model_label,
         "agents": [a["id"] for a in agents],
         # Reuse soul_files (existing column) for per-agent PERSONA provenance only.

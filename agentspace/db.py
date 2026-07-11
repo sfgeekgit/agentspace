@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS snaps (
     creation_message TEXT,
     runtime          TEXT,
     runtime_version  TEXT,
+    source_image     TEXT,
     model            TEXT,
     agents           TEXT,
     soul_files       TEXT,
@@ -83,6 +84,14 @@ def get_conn() -> sqlite3.Connection:
 
 def _init_schema(conn: sqlite3.Connection):
     conn.executescript(SCHEMA)
+    # CREATE TABLE IF NOT EXISTS never alters an existing db; add columns that
+    # postdate it here (idempotent — the error on an already-present column is
+    # swallowed). The db is a rebuildable cache, so this is convenience, not
+    # migration machinery.
+    try:
+        conn.execute("ALTER TABLE snaps ADD COLUMN source_image TEXT")
+    except sqlite3.OperationalError:
+        pass
     cur = conn.execute("SELECT value FROM _meta WHERE key = 'schema_version'")
     row = cur.fetchone()
     if row is None:

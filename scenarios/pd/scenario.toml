@@ -9,6 +9,7 @@
 # GM prototype — copy its shape for new game scens.
 
 active = true
+runtime = "pi"
 description = "Prisoner's Dilemma — 2 agents, repeated two-choice payoff interaction (refereed)."
 min_agents = 2
 max_agents = 2

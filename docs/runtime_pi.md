@@ -43,7 +43,7 @@ captures everything; no workspace tar). Inside it:
   a gateway wake with a logged cause.
 - **Optionally a scen-provided GM** — deterministic control code driving the
   world through a privileged gateway API. *(Not yet built — step 4.)* Scens
-  are meant to be runtime-agnostic: `gm.py` is written against a
+  are meant to be runtime-agnostic: the GM (`gm/main.py`) is written against a
   runtime-neutral `gmlib` interface with the pi_gateway calls in an adapter
   behind it, scen files (SOUL/ROLE/…) carry persona/scen content only —
   never messaging mechanics, which agentd injects as a runtime-owned preamble
@@ -296,7 +296,8 @@ quietly (default), or restart and then wake some/all agents.
 
 ## 4b. The game master (GM) — step 4
 
-A scen MAY ship a `gm.py`: deterministic control code that drives the world
+A scen MAY ship a `gm/` package (entry point `gm/main.py`, plus any helpers
+or vendored code): deterministic control code that drives the world
 (games, shift logic, corpus coordinators — "GM" ≠ "game"). Most scens have
 none. The GM is a **persistent, disk-resumable driver, not an agent** (plan
 decision 13): the runtime — never GM code — owns its process lifecycle.
@@ -331,7 +332,7 @@ Gateway GM API (all gm-or-operator gated; see `pi_gateway.py`):
   since a seq: soft-enforcement worlds referee norms from this (step 6).
 
 **`gmlib` (`agentspace/gmlib.py`, baked into the image) is the runtime-NEUTRAL
-library scens import** (`import gmlib`). It gives gm.py `api.agents()`,
+library scens import** (`import gmlib`). It gives the GM `api.agents()`,
 `api.wake()`, `api.wake_all()`, `api.round(agents, payload, valid, default)`
 (concurrent fan-out + collect — the staple), `api.collect()`, `api.announce()`,
 `api.policy()`, `api.remove()`, `api.roll_session()`, and `api.load_state()/
@@ -342,7 +343,7 @@ without touching gmlib or any scen (decision 10).
 **Persist-to-disk discipline (decision 14).** A snapshot captures only the
 filesystem, so the GM MUST keep game state on disk and save after every step;
 `run(api, params)` is re-entered on any restart and resumes from state. This is
-scen-author discipline, enforced only by example — see `scenarios/pd/gm.py`,
+scen-author discipline, enforced only by example — see `scenarios/pd/gm/main.py`,
 the reference prototype. Step-5 worked examples: `scenarios/noisy_pd`
 (pd copied per decision 8 + a real-noise twist; the copy-a-scen workflow) and
 `scenarios/multi_n_budget_test` (the GM at N>2: `api.round` fan-out/collect-N,
@@ -375,7 +376,7 @@ paths captured by `docker commit` → snaps stay complete observability bundles.
 ## 5a. Zookeeper surface (step 3)
 
 PI worlds are built and driven through the normal zookeeper flow: New World →
-runtime "PI" → scen/roster → fork → wake. Runtime dispatch rides the snap's
+scen (its manifest declares `runtime = "pi"`) → roster → fork → wake. Runtime dispatch rides the snap's
 `runtime` OCI label (`agentspace/runtimes/pi.py`). PI-specific env commands:
 
     zookeeper env kick <env> [--message ...]   # run the world: GM start/resume,
@@ -475,14 +476,14 @@ public rate cap (run it the same containerized way; see the script header).
 It is the successor of the OC-era 8-item sandbox checklist, automated.
 
 **Scen gates** — a scen MAY ship its own `gate/run.sh` for its game logic;
-most don't need one (scen gm.py is write-once and proven by a real run).
+most don't need one (scen GM code is write-once and proven by a real run).
 `scenarios/mafia/gate/` is the worked example: the same fully scripted
 6-agent game under BOTH enforcement modes (vote elimination + role reveal,
 doctor save vs kill, detective result delivery, and the split — a mafia
 night post DENIED by hard physics vs POSTED-then-refereed under soft).
 noisy_pd and multi_n_budget_test deliberately have none — either way is fine.
 Scen gates build on the shared harness: `gm_gate/setup_world.sh` (assembles
-any scripted world from a gm.py + a moves dir) + `gm_gate/
+any scripted world from a GM entry file + a moves dir) + `gm_gate/
 dummy_scripted_agent.sh` (plays one `post`/`send`/`submit` moves-line per
 wake).
 

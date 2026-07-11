@@ -9,6 +9,7 @@
 # capability, not this scen.
 
 active = true
+runtime = "openclaw"
 description = "Two agents in a closed world with a shared budget; basic comms test."
 min_agents = 2
 max_agents = 2

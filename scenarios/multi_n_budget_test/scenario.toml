@@ -8,6 +8,7 @@
 # didn't contribute plus your share.
 
 active = true
+runtime = "pi"
 description = "N-agent pooled-contribution game (public goods) — tests GM at N>2 + per-round cost."
 min_agents = 3
 max_agents = 12

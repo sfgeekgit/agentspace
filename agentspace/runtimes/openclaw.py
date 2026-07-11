@@ -21,6 +21,14 @@ from .. import docker_host
 NAME = "openclaw"
 MENU_NAME = "openclaw"
 BASE_IMAGE = "agentspace:base"
+# Present in any image carrying this runtime (npm -g install dir); the
+# builder's hard compatibility check for source images.
+RUNTIME_MARKER = "/usr/lib/node_modules/openclaw"
+SUPPORTS_GM = False                   # OC bake has no GM adapter; gm.py scens refuse to load
+# Canonical container config stamped onto every committed world root — see the
+# same constant (and the ENTRYPOINT-vs-CMD gotcha) in pi.py.
+COMMIT_CHANGES = ("USER root", "WORKDIR /data",
+                  'ENTRYPOINT ["sleep", "infinity"]', "CMD []")
 
 # Feature flags every OC world root carries (parity with simple2agent 4.0).
 DEFAULT_FEATURE_FLAGS = {"agent_to_agent": True, "fs_isolation": "sandbox"}
@@ -194,14 +202,14 @@ def _peers_md(self_id: str, all_ids: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, params=None,
+def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, params=None,
          gm_secrets=None, watch=None):
     """Assemble the OC world inside the build container: render openclaw.json,
     stage /data (config, world.md, kick, per-agent seed workspaces incl. the
     OC-specific PEERS.md), one `docker cp`. (Moved from builder._stage_world —
     the staging LAYOUT is runtime knowledge.)
 
-    gm_py/params/gm_secrets/watch are accepted for a uniform builder call but
+    gm_dir/params/gm_secrets/watch are accepted for a uniform builder call but
     ignored: the GM and `env watch` are PI-runtime features (no OC adapter)."""
     config_text = render_config([{"id": a["id"], "model": a["model"]} for a in agents])
     ids = [a["id"] for a in agents]

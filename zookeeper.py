@@ -353,6 +353,54 @@ def budget_topup(env_name, amount_usd):
     budget_mod.cmd_topup(env_name, amount_usd)
 
 
+# ---- scen group ----
+# NOTE: When you add a scen subcommand here, add it to menu_scen() below too.
+
+@cli.group()
+def scen():
+    """Scen authoring commands (environment images)."""
+
+
+@scen.group("env")
+def scen_env():
+    """Produce a scen's pinned source_image (freeze a workshop container or
+    build the env.Dockerfile recipe)."""
+
+
+@scen_env.command("freeze")
+@click.argument("scen_name")
+@click.argument("container")
+@click.option("--host", default="localhost", help="Docker host (default: localhost).")
+@click.option("--allow-key-leak", is_flag=True,
+              help="Publish even if the image scan finds an OpenRouter key.")
+def scen_env_freeze(scen_name, container, host, allow_key_leak):
+    """Freeze CONTAINER into SCEN_NAME's pinned environment image
+    (scan, label, commit, push, digest into scenario.toml)."""
+    from agentspace import scen as scen_mod
+    scen_mod.cmd_freeze(scen_name, container, host=host, allow_key_leak=allow_key_leak)
+
+
+@scen_env.command("build")
+@click.argument("scen_name")
+@click.option("--host", default="localhost", help="Docker host (default: localhost).")
+@click.option("--allow-key-leak", is_flag=True,
+              help="Publish even if the image scan finds an OpenRouter key.")
+def scen_env_build(scen_name, host, allow_key_leak):
+    """docker build SCEN_NAME's env.Dockerfile and publish it as the pinned
+    environment image (same tail as freeze)."""
+    from agentspace import scen as scen_mod
+    scen_mod.cmd_build(scen_name, host=host, allow_key_leak=allow_key_leak)
+
+
+@scen_env.command("shell")
+@click.argument("scen_name")
+def scen_env_shell(scen_name):
+    """Open an interactive workshop container on SCEN_NAME's resolved
+    environment image (kept after exit, ready to freeze)."""
+    from agentspace import scen as scen_mod
+    scen_mod.cmd_shell(scen_name)
+
+
 # ================================================================================
 # INTERACTIVE MENU
 # ================================================================================
@@ -853,21 +901,11 @@ def menu_new_world():
     from a scen + roster and never starts an env. Builds locally; push later.
     """
     from agentspace import registry, builder
-
-    # 1. runtime — pick by menu name (runtime label ↔ display name lives in
-    #    each runtime module).
     from agentspace import runtimes as rt_registry
-    rt_names = {m.MENU_NAME: n for n, m in rt_registry.REGISTRY.items()}
-    pick = _ask(lambda: questionary.select(
-        "Runtime:", choices=list(rt_names) + [questionary.Separator(), "← Back"]
-    ).ask())
-    if pick == "← Back":
-        return
-    runtime = rt_names[pick]
-    rt_module = rt_registry.get(runtime)
 
-    # 2. scen — surface any broken scens (with a one-key "disable" so the warning
-    #    isn't a permanent nag), then pick from the active ones.
+    # 1. scen — surface any broken scens (with a one-key "disable" so the warning
+    #    isn't a permanent nag), then pick from the active ones. The runtime is
+    #    DERIVED from the scen's manifest (runtime = "..."), not asked.
     while True:
         scens, problems = registry.scan_scens()
         if not problems:
@@ -903,8 +941,10 @@ def menu_new_world():
     if pick == "← Back":
         return
     scen = scens[labels.index(pick)]
+    runtime = scen["runtime"]
+    rt_module = rt_registry.get(runtime)
 
-    # 3. agent count — within the scen's min/max.
+    # 2. agent count — within the scen's min/max.
     while True:
         raw = _ask(lambda: questionary.text(
             f"Number of agents ({scen['min_agents']}–{scen['max_agents']}):"
@@ -919,7 +959,7 @@ def menu_new_world():
             continue
         break
 
-    # 4. roster — per-agent model + persona (with same-for-all shortcuts).
+    # 3. roster — per-agent model + persona (with same-for-all shortcuts).
     personas = registry.list_personas()
     if not personas:
         print("  No personas available (add files under personas/).")
@@ -948,11 +988,11 @@ def menu_new_world():
 
     roster = [{"model": models[i], "persona": persona_list[i]} for i in range(n)]
 
-    # 4.5 build-time params (decision 12) — collected from the scen's schema;
+    # 3.5 build-time params (decision 12) — collected from the scen's schema;
     #     the same scen builds different world roots per value set.
     params = _collect_params(scen["params_schema"])
 
-    # 5. modules — MANDATORY step (zero choices today; never silently skipped).
+    # 4. modules — MANDATORY step (zero choices today; never silently skipped).
     modules = registry.list_modules()
     if not modules:
         if _ask(lambda: questionary.select(
@@ -966,7 +1006,7 @@ def menu_new_world():
             "Modules to include:", choices=[m["name"] for m in modules]).ask())
         selected_modules = tuple(sel)
 
-    # 6. world name (blank → use the scen name as the identity). Validated inline
+    # 5. world name (blank → use the scen name as the identity). Validated inline
     #    so a bad name is caught here, not after the build has already started.
     while True:
         raw = _ask(lambda: questionary.text(
@@ -979,16 +1019,16 @@ def menu_new_world():
         break
     identity = world_name or scen["name"]
 
-    # 7. confirm + build.
+    # 6. confirm + build.
     if not _ask(lambda: questionary.confirm(
         f"Build World Root '{identity}' from scen '{scen['name']}' "
-        f"with {n} agent(s)?", default=True).ask()):
+        f"with {n} agent(s) (runtime {runtime})?", default=True).ask()):
         return
     print(f"  Building '{identity}' … (this runs docker; may take a moment)")
     try:
         snap = builder.build_world_root(
             scen["name"], roster,
-            world_name=world_name, runtime=runtime, modules=selected_modules,
+            world_name=world_name, modules=selected_modules,
             params=params,
         )
     except Exception as e:
@@ -998,6 +1038,54 @@ def menu_new_world():
     print(f"    Tag:    {snap['ghcr_tag']}")
     print(f"    Agents: {', '.join(snap['agents'])}")
     print("    Local only — push with the snap tooling when ready.\n")
+
+
+def menu_scen():
+    """Scen environment images: freeze a workshop container / build the recipe."""
+    from agentspace import registry, scen as scen_mod, runtimes as rt_registry
+    while True:
+        try:
+            choice = _ask(lambda: questionary.select(
+                "Scen environments:",
+                choices=[
+                    "Freeze — commit a workshop container as a scen's source_image",
+                    "Build  — docker build a scen's env.Dockerfile recipe",
+                    "Shell  — open a workshop container on a scen's environment",
+                    questionary.Separator(),
+                    "← Back",
+                ],
+            ).ask())
+        except _Cancelled:
+            return
+        if choice == "← Back":
+            return
+        try:
+            scens = registry.list_scens()
+            if not scens:
+                print("  No scenarios available.")
+                continue
+            labels = [f"{s['name']}  —  {s['description']}" for s in scens]
+            pick = _ask(lambda: questionary.select(
+                "Scenario:", choices=labels + [questionary.Separator(), "← Back"]).ask())
+            if pick == "← Back":
+                continue
+            s = scens[labels.index(pick)]
+            if choice.startswith("Freeze"):
+                base = rt_registry.get(s["runtime"]).BASE_IMAGE
+                print(f"  (workshop container: docker run -it {base} bash — "
+                      "bang on it, then freeze it here)")
+                container = _ask(lambda: questionary.text(
+                    "Container name or id to freeze:").ask()).strip()
+                if container:
+                    scen_mod.cmd_freeze(s["name"], container)
+            elif choice.startswith("Shell"):
+                scen_mod.cmd_shell(s["name"])
+            else:
+                scen_mod.cmd_build(s["name"])
+        except _Cancelled:
+            print("  (cancelled)")
+        except Exception as e:
+            _show_error(e)
 
 
 def launch_menu():
@@ -1016,6 +1104,7 @@ def launch_menu():
                 "What would you like to do?",
                 choices=[
                     "New world — build a World Root from a scenario",
+                    "Scen envs — freeze/build a scen's environment image",
                     "Snaps     — manage frozen images; fork one to start an env",
                     "Envs      — manage running world containers",
                     "Budget    — OpenRouter credit limits",
@@ -1036,6 +1125,8 @@ def launch_menu():
         try:
             if choice.startswith("New world"):
                 menu_new_world()
+            elif choice.startswith("Scen envs"):
+                menu_scen()
             elif choice.startswith("Snaps"):
                 menu_snap()
             elif choice.startswith("Envs"):

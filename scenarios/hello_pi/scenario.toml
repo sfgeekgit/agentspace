@@ -6,6 +6,7 @@
 # template to copy when starting a new scen (decision 8: copy, don't abstract).
 
 active = true
+runtime = "pi"
 description = "Minimal free-form world: N agents, no roles, no GM."
 min_agents = 2
 max_agents = 8

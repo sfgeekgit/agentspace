@@ -1,6 +1,6 @@
 #!/bin/bash
 # GM-gate container setup (run as root, repo mounted ro at /repo). Mirrors what
-# rt.bake produces: runtime + gmlib at /runtime_pi, PD gm.py at /world, two
+# rt.bake produces: runtime + gmlib at /runtime_pi, the PD GM at /gm/code, two
 # dummy agents, the dedicated gm user + /gm, gateway up. Zero tokens.
 set -euo pipefail
 
@@ -13,7 +13,6 @@ cp /repo/runtime_pi/shims/gateway /repo/runtime_pi/shims/submit /usr/local/bin/
 chmod 0755 /usr/local/bin/gateway /usr/local/bin/submit
 
 mkdir -p /world
-cp /repo/scenarios/pd/gm.py /world/gm.py
 printf '{"has_gm": true, "params": {"rounds": 3}}\n' > /world/world.json
 
 # Two dummy players: a1 always X, a2 always Y  (so each round is X vs Y).
@@ -28,7 +27,9 @@ for spec in a1:X a2:Y; do
 done
 
 useradd --no-user-group -M -d /gm gm 2>/dev/null || true
-mkdir -p /gm; chown gm /gm; chmod 700 /gm
+mkdir -p /gm/code
+cp /repo/scenarios/pd/gm/main.py /gm/code/main.py
+chown -R gm /gm; chmod 700 /gm
 
 mkdir -p /data/gateway /run/gateway; chmod 700 /data/gateway
 python3 /runtime_pi/pi_gateway.py >/var/log/gateway.log 2>&1 &

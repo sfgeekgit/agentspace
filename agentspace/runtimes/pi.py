@@ -23,6 +23,18 @@ NAME = "pi"
 MENU_NAME = "PI"
 
 BASE_IMAGE = "pi-world:base"          # agentspace:base + node + Pi (EXACT pin; formerly pi-world:step2)
+# Present in any image carrying this runtime (Pi's npm dir); the builder's hard
+# compatibility check for source images.
+RUNTIME_MARKER = "/pi"
+SUPPORTS_GM = True                    # gmd/gmlib adapter exists (GM scens are PI-only today)
+# Canonical container config stamped onto every committed world root
+# (docker commit --change): normalizes away whatever USER/ENTRYPOINT/CMD/
+# WORKDIR a source image carries — and the builder's own assembly hardening —
+# so `docker run -d <root>` always behaves the way the control plane expects.
+# GOTCHA (verified): `ENTRYPOINT []` is a SILENT NO-OP in commit --change
+# (`CMD []` does clear) — hence the run command lives in ENTRYPOINT here.
+COMMIT_CHANGES = ("USER root", "WORKDIR /data",
+                  'ENTRYPOINT ["sleep", "infinity"]', "CMD []")
 GATEWAY_LOG_PATH = "/var/log/gateway.log"
 SOCKET_PATH = "/run/gateway/gateway.sock"
 KICK_FILE_PATH = "/world/kick.txt"
@@ -84,12 +96,14 @@ def list_all_models() -> list[str]:
 
 # ---- world-root bake (called by builder inside the temp build container) ----
 
-def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, params=None,
+def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, params=None,
          gm_secrets=None, watch=None):
     """Assemble the PI world inside the build container.
 
     agents: [{"id", "model"}, ...];  seeds: {agent_id: {filename: text}}.
-    gm_py: the scen's gm.py source (str) if it ships a game master, else None.
+    gm_dir: the scen's gm/ directory (ships main.py) if it has a game master,
+    else None. Baked to /gm/code — gm-owned, unreadable by agents (closes the
+    old agent-readable /world/gm.py leak).
     params: validated build-time params, baked into world.json for the GM.
     gm_secrets: optional dict from logic.gm_secrets (e.g. the role answer key)
     baked to /gm/secrets.json — gm-owned, unreadable by agents.
@@ -97,6 +111,25 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, par
     then a single in-container script for users/ownership (the parts that
     must run as root against the container's /etc/passwd).
     """
+    # RESET (dirty sources are legal — world-authoring design §5.1/2a): the
+    # source may be a used world; runtime-owned state is reset here, the rest
+    # CARRIES. Old u_*/gm users are deleted (the gateway's roster IS
+    # /etc/passwd — leftover users would be listed by `who`, woken by a GM,
+    # and billed), orphaned homes go root-owned (userdel frees uids that
+    # useradd recycles lowest-first; without the chown one NEW agent would
+    # silently own one OLD home) and lose their on_wake; /data/gateway,
+    # /world and /gm are wiped (docker cp overlays but never deletes — a
+    # stale /gm/state.json would make a new GM world RESUME the old game).
+    # Old homes otherwise carry, 0700 root-owned: archaeology preserved,
+    # operator-gated. No-op on a pristine base.
+    docker_host.run(host, "exec", container, "sh", "-c",
+        'set -e; '
+        'for U in $(cut -d: -f1 /etc/passwd | grep -E "^u_|^gm$" || true); do '
+        '  userdel "$U"; '
+        'done; '
+        'if [ -d /agents ]; then chown -R root:root /agents; rm -f /agents/*/on_wake; fi; '
+        'rm -rf /data/gateway /world /gm')
+
     stage = Path(tempfile.mkdtemp(prefix="pi-bake-"))
     try:
         # runtime code — baked, not mounted: snaps must be self-contained.
@@ -116,16 +149,18 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, par
             "require_scratchpad": True,
             "messaging_norms": True,
             "max_tokens": 16384,  # per-turn output ceiling — roomy safety rail, not a leash
-            "has_gm": bool(gm_py),          # drives the GM preamble + run-the-world verb
-            "params": params or {},         # build-time values gmd/gm.py read
+            "has_gm": gm_dir is not None,   # drives the GM preamble + run-the-world verb
+            "params": params or {},         # build-time values gmd/gm code read
             "watch": watch or [],           # scen-declared `env watch` views (logwatch.py)
         }, indent=2) + "\n")
         (world / "kick.txt").write_text(kick_text or "")
-        if gm_py:
-            (world / "gm.py").write_text(gm_py)
+        if gm_dir is not None:
+            # The whole gm/ package (main.py + helpers + vendored code) →
+            # /gm/code; ownership/mode set by the root script below.
+            shutil.copytree(gm_dir, stage / "gm" / "code")
         if gm_secrets is not None:
             gm_home = stage / "gm"
-            gm_home.mkdir()
+            gm_home.mkdir(exist_ok=True)
             (gm_home / "secrets.json").write_text(json.dumps(gm_secrets, indent=2) + "\n")
 
         # CLI shims → staged /usr/local/bin (real files, not escaped strings).
@@ -162,12 +197,12 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_py=None, par
         '  chmod 0700 "/agents/$A"; '
         'done'
     )
-    if gm_py:
+    if gm_dir is not None:
         # Dedicated non-root GM user; /gm (0700) is its private, snapshot-durable
         # state home (agents cannot read it). The gateway recognizes uid → `gm`.
         script += (
             '; useradd --no-user-group -M -d /gm gm; '
-            'mkdir -p /gm; chown -R gm /gm; chmod 0700 /gm'  # -R: covers baked secrets.json
+            'mkdir -p /gm; chown -R gm /gm; chmod 0700 /gm'  # -R: covers code + secrets
         )
     docker_host.run(host, "exec", container, "sh", "-c", script)
 
@@ -243,7 +278,7 @@ GM_USER = "gm"
 
 
 def world_has_gm(host, container) -> bool:
-    return docker_host.run(host, "exec", container, "test", "-f", "/world/gm.py",
+    return docker_host.run(host, "exec", container, "test", "-f", "/gm/code/main.py",
                            check=False).returncode == 0
 
 

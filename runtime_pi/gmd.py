@@ -25,6 +25,9 @@ import gmlib  # noqa: E402
 
 SOCKET_PATH = os.environ.get("GATEWAY_SOCKET", "/run/gateway/gateway.sock")
 WORLD_DIR = Path(os.environ.get("GMD_WORLD_DIR", "/world"))
+# Scen GM code lives in the gm user's private home (0700 — agents cannot read
+# game logic), not in the agent-readable /world.
+GM_CODE_DIR = Path(os.environ.get("GMD_CODE_DIR", "/gm/code"))
 # Must exceed the gateway's gm_wake block (WAKE_TIMEOUT_S + 30 = 330s default).
 REQUEST_TIMEOUT_S = 400
 
@@ -82,7 +85,9 @@ class PiAdapter:
 
 
 def load_scen_gm():
-    spec = importlib.util.spec_from_file_location("scen_gm", WORLD_DIR / "gm.py")
+    # Helpers/vendored modules shipped alongside main.py import plainly.
+    sys.path.insert(0, str(GM_CODE_DIR))
+    spec = importlib.util.spec_from_file_location("scen_gm", GM_CODE_DIR / "main.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

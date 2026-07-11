@@ -12,6 +12,7 @@
 # One scen, two kinds of world root; playtesting both IS the experiment.
 
 active = true
+runtime = "pi"
 description = "Mafia — hidden roles, day votes, night kills; deterministic GM referee. 6-12 agents."
 min_agents = 6
 max_agents = 12

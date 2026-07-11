@@ -6,6 +6,7 @@
 # interaction otherwise.
 
 active = false
+runtime = "pi"
 description = "Minimal multi-role demo: one coordinator, the rest members."
 min_agents = 2
 max_agents = 8
