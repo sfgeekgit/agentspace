@@ -1,0 +1,22 @@
+# cilib pin for the commons_vote scen.
+# Vendored files (via gate/vendor.sh) must be byte-for-byte copies from this
+# commit. Bumping the pin: update this file, re-run gate/vendor.sh, then
+# re-run gate/offline_twin_equivalence.py.
+commit = 3744d45ae718364155c148a6eff2d097a157df6a
+repo = /home/cc/cilib
+pinned = 2026-07-11
+# host venv used for offline twin + sweeps: jax 0.10.2, numpy 2.5.1
+
+# Vendor list (verified 2026-07-11: transitive imports are jax/numpy/stdlib
+# only — no pandas/matplotlib on any of these paths):
+#   src/cilib/__init__.py            (imports cilib.core only)
+#   src/cilib/core/                  (whole package, EXCEPT simulation.py —
+#                                     unused here and imports pandas)
+#   src/cilib/metrics/               (whole package: transform, export,
+#                                     families/ — export is csv+numpy)
+#   experiments/basin_stability/__init__.py  (empty)
+#   experiments/basin_stability/state.py
+#   experiments/basin_stability/transforms.py
+#   experiments/basin_stability/policies.py
+# NOT vendored: environment.py (lax.scan runner — offline only),
+#   run_experiment.py, analysis.py, plots.py (offline sweep/analysis only).

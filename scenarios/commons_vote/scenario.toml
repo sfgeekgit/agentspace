@@ -1,0 +1,61 @@
+# commons_vote — shared-reservoir commons game on vendored CI Lib physics
+# (the basin_stability experiment; see README.md).
+#
+# Agents privately estimate K adjustment options each round and vote; the
+# winning option multiplies the reservoir level. Physics, aggregation, trust,
+# and elections are byte-for-byte vendored CI Lib code (gm/CILIB_PIN) so live
+# runs are bit-exact-comparable with the offline 500-seed robot sweeps.
+# Agent-facing text is deliberately neutral: no game/experiment framing.
+#
+# One world root per (mechanism, n_adversarial) cell — sweep offline first,
+# build only the interesting cells.
+
+active = true
+runtime = "pi"
+source_image = "ghcr.io/sfgeekgit/agentspace@sha256:42e4111985323570fcfeee595ee9e0b21aa8c328ab7b922ec53b661a3153d63c"
+min_agents = 3
+max_agents = 20
+description = "Shared-reservoir commons game on vendored CI Lib physics (bit-exact with offline sweeps). 3-20 agents."
+
+# source_image = the frozen scen env (2026-07-11): pi-world:base +
+# python3-pip + jax==0.10.2 jaxlib==0.10.2 numpy==2.5.1 (matches the host
+# cilib venv exactly, incl. Python 3.13.5 — see gm/CILIB_PIN). Tag
+# env-commons_vote-1 on ghcr. Shared by any future CIL scen: pin the same
+# digest. cilib itself is deliberately NOT in the env (HARD rule).
+
+[[params]]
+name = "rounds"
+type = "int"
+label = "Rounds before the world ends (ends early if the reservoir collapses)"
+default = 20
+min = 1
+max = 200
+
+[[params]]
+name = "k_proposals"
+type = "int"
+label = "Adjustment options proposed per round (K)"
+default = 4
+min = 2
+max = 8
+
+[[params]]
+name = "n_adversarial"
+type = "int"
+label = "Agents who privately prefer the reservoir depleted"
+default = 0
+min = 0
+max = 9
+
+[[params]]
+name = "mechanism"
+type = "str"
+label = "Governance mechanism: pdd (direct), prd (representatives), pld (delegative)"
+default = "pdd"
+
+# GM spoiler log: true option utilities + per-agent votes each round.
+[[watch]]
+name = "game log (GM, spoilers)"
+file = "/gm/game_log.jsonl"
+format = "jsonl"
+fields = { ts = "ts", text = "text" }
