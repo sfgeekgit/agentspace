@@ -70,6 +70,32 @@ def _assign_roles(
         )
     return list(roles)
 
+def plan_roster(
+    scen_name: str,
+    n: int,
+    params: dict[str, Any] | None = None,
+    seed: int | None = None,
+) -> tuple[int, list[str], list[str | None]]:
+    """Preview the seeded half of a build: (seed, agent ids, roles).
+
+    Pure — no docker, no writes. `build_world_root(..., seed=<returned seed>)`
+    re-derives exactly these values, because it mints the same rng and makes the
+    same two draws in the same order (ids, then roles). That lets the wizard
+    tell the operator each agent's ROLE before collecting the roster it will be
+    zipped against — without a seed or a half-consumed rng crossing the boundary.
+
+    Anything added to build_world_root's rng draws must stay AFTER those two.
+    """
+    scen = registry.load_scen(scen_name)
+    params = registry.validate_params(scen["params_schema"], params)
+    logic = registry.load_scen_logic(scen)
+    actual_seed = seed if seed is not None else random.Random().randint(0, 2**31 - 1)
+    rng = random.Random(actual_seed)
+    ids = generate_agent_ids(n, rng)          # draw 1 — must match build order
+    roles = _assign_roles(logic, n, params, rng)   # draw 2
+    return actual_seed, ids, roles
+
+
 def build_world_root(
     scen_name: str,
     roster: list[dict[str, str]],
@@ -88,6 +114,8 @@ def build_world_root(
     world_name: the snap's scenario identity (tag = snap-<world_name>-<ver>).
                 Defaults to scen_name. The source scen is recorded in the build
                 record + creation message.
+    seed:       reuse a seed from plan_roster() to get the ids/roles it previewed
+                (see there); omitted = fresh random seed, recorded in audit.log.
 
     Returns the snap dict (also upserted into the local SQLite index). Does NOT
     push — the operator pushes afterward.

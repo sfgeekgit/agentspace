@@ -307,9 +307,15 @@ def validate_params(schema: list[dict[str, Any]], values: dict[str, Any] | None)
 # personas
 # ---------------------------------------------------------------------------
 
+SUMMARY_CHARS = 80
+
+
 def _persona_summary(text: str) -> str:
-    """A short label for menus: the first meaningful line, skipping any leading
-    YAML frontmatter block, markdown headings, and horizontal rules."""
+    """A one-line preview for menus: meaningful body text up to SUMMARY_CHARS,
+    skipping any leading YAML frontmatter block, markdown headings, and
+    horizontal rules. Several lines are joined — one line alone is often a
+    stray aside that says nothing about the body under it. Empty string when
+    there is no body at all (the `blank` persona); callers label that."""
     lines = text.splitlines()
     i = 0
     if lines and lines[0].strip() == "---":  # leading frontmatter block
@@ -317,12 +323,15 @@ def _persona_summary(text: str) -> str:
         while i < len(lines) and lines[i].strip() != "---":
             i += 1
         i += 1  # step past the closing ---
+    out = ""
     for line in lines[i:]:
         s = line.strip()
         if not s or s.startswith("#") or set(s) <= set("-*_"):
             continue  # blank, heading, or rule (---, ***, ___)
-        return s
-    return ""
+        out = f"{out} {s}".strip()
+        if len(out) >= SUMMARY_CHARS:
+            break
+    return (out[:SUMMARY_CHARS].rstrip() + "…") if len(out) > SUMMARY_CHARS else out
 
 
 def load_persona(short_name: str) -> dict[str, Any]:

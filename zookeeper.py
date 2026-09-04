@@ -497,6 +497,33 @@ def _pick_model(label, prior=(), rt=None):
     ).ask())
 
 
+DEFAULT_PERSONA = "blank"   # least framing baked into SOUL.md — the study default
+
+
+def _pick_persona(label, personas, default=DEFAULT_PERSONA):
+    """Persona picker: short_name + a preview of the body, plus a way to READ a
+    full persona before committing to it. The preview is one line; the choice
+    controls how much framing every agent wakes up with, so the operator needs
+    the option to see all of it. Returns the chosen short_name."""
+    VIEW = "View full text…"
+    labels = [f"{p['short_name']}  —  {p['summary'] or '(no persona text)'}"
+              for p in personas]
+    preselect = next((l for l, p in zip(labels, personas)
+                      if p["short_name"] == default), None)
+    while True:
+        sel = _ask(lambda: questionary.select(
+            label, choices=labels + [VIEW], default=preselect).ask())
+        if sel != VIEW:
+            return personas[labels.index(sel)]["short_name"]
+        which = _ask(lambda: questionary.select(
+            "Read which persona?", choices=labels).ask())
+        p = personas[labels.index(which)]
+        body = p["text"].strip()
+        print(f"\n  ── {p['short_name']} " + "─" * 40)
+        print(body or "  (no persona text)")
+        print("  " + "─" * 46 + "\n")
+
+
 def menu_snap():
     # NOTE: Add new snap commands to this list AND as a handler below.
     from agentspace import snap as snap_mod
@@ -944,55 +971,84 @@ def menu_new_world():
     runtime = scen["runtime"]
     rt_module = rt_registry.get(runtime)
 
-    # 2. agent count — within the scen's min/max.
-    while True:
-        raw = _ask(lambda: questionary.text(
-            f"Number of agents ({scen['min_agents']}–{scen['max_agents']}):"
-        ).ask())
-        try:
-            n = int(raw)
-        except ValueError:
-            print("  Enter a whole number.")
-            continue
-        if not (scen["min_agents"] <= n <= scen["max_agents"]):
-            print(f"  Must be {scen['min_agents']}–{scen['max_agents']}.")
-            continue
-        break
+    # 2. build-time params (decision 12) — collected from the scen's schema;
+    #    the same scen builds different world roots per value set. BEFORE the
+    #    roster: assign_roles(n, params, rng) reads them (commons_vote sizes its
+    #    adversary count from n_adversarial), so roles can't be known until now.
+    params = _collect_params(scen["params_schema"])
 
-    # 3. roster — per-agent model + persona (with same-for-all shortcuts).
+    # 3. agent count. A select over the legal range makes an illegal count
+    #    unrepresentable, and collapses to a single choice when the scen pins
+    #    N (pd is 2–2). Wide ranges stay typed: a scen that omits max_agents
+    #    gets DEFAULT_MAX_AGENTS, and scrolling a 1000-item list to 50 is worse.
+    lo, hi = scen["min_agents"], scen["max_agents"]
+    if hi - lo <= 20:
+        n = int(_ask(lambda: questionary.select(
+            "Number of agents:", choices=[str(i) for i in range(lo, hi + 1)]).ask()))
+    else:
+        while True:
+            raw = _ask(lambda: questionary.text(f"Number of agents ({lo}–{hi}):").ask())
+            try:
+                n = int(raw)
+            except ValueError:
+                print("  Enter a whole number.")
+                continue
+            if not (lo <= n <= hi):
+                print(f"  Must be {lo}–{hi}.")
+                continue
+            break
+
+    # 4. roles FIRST, then the roster. The scen assigns roles from a seeded rng
+    #    (mafia and commons_vote shuffle; roles_demo picks a random index), so
+    #    "agent 3" is a lottery ticket until this runs. Previewing it here is
+    #    what makes "give the coordinator the stronger model" expressible at all
+    #    — the same seed goes to the build, which re-derives these exact values.
+    seed, ids, roles = builder.plan_roster(scen["name"], n, params)
+    show_roles = len(set(roles)) > 1   # uniform (or all-None) roles are noise
+
+    def slot(i):
+        return f"agent {i + 1}/{n}" + (f", role: {roles[i]}" if show_roles else "")
+
+    # 5. roster — per-agent model + persona (with same-for-all shortcuts).
     personas = registry.list_personas()
     if not personas:
         print("  No personas available (add files under personas/).")
         return
-    pchoices = [f"{p['short_name']}  —  {p['summary']}" for p in personas]
 
-    def pick_persona(label):
-        sel = _ask(lambda: questionary.select(label, choices=pchoices).ask())
-        return personas[pchoices.index(sel)]["short_name"]
+    def per_agent(pick_one):
+        """Walk agents one at a time. Esc steps BACK one agent instead of
+        discarding the whole wizard — at agent 1 it still cancels, as before."""
+        print("  (Esc goes back one agent)")
+        chosen = []
+        while len(chosen) < n:
+            try:
+                chosen.append(pick_one(len(chosen), chosen))
+            except _Cancelled:
+                if not chosen:
+                    raise
+                chosen.pop()
+        return chosen
 
     same_model = _ask(lambda: questionary.confirm(
         "Use the same backend model for every agent?", default=True).ask())
     if same_model:
         models = [_pick_model("Backend model:", rt=rt_module)] * n
     else:
-        models = []
-        for i in range(n):
-            models.append(_pick_model(f"Model for agent {i + 1}/{n}:", prior=models, rt=rt_module))
+        models = per_agent(lambda i, prior: _pick_model(
+            f"Model for {slot(i)}:", prior=prior, rt=rt_module))
 
     same_persona = _ask(lambda: questionary.confirm(
         "Use the same persona for every agent?", default=True).ask())
     if same_persona:
-        persona_list = [pick_persona("Persona for every agent:")] * n
+        persona_list = [_pick_persona("Persona for every agent:", personas)] * n
     else:
-        persona_list = [pick_persona(f"Persona for agent {i + 1}/{n}:") for i in range(n)]
+        persona_list = per_agent(lambda i, prior: _pick_persona(
+            f"Persona for {slot(i)}:", personas,
+            default=prior[-1] if prior else DEFAULT_PERSONA))
 
     roster = [{"model": models[i], "persona": persona_list[i]} for i in range(n)]
 
-    # 3.5 build-time params (decision 12) — collected from the scen's schema;
-    #     the same scen builds different world roots per value set.
-    params = _collect_params(scen["params_schema"])
-
-    # 4. modules — MANDATORY step (zero choices today; never silently skipped).
+    # 6. modules — MANDATORY step (zero choices today; never silently skipped).
     modules = registry.list_modules()
     if not modules:
         if _ask(lambda: questionary.select(
@@ -1006,7 +1062,7 @@ def menu_new_world():
             "Modules to include:", choices=[m["name"] for m in modules]).ask())
         selected_modules = tuple(sel)
 
-    # 5. world name (blank → use the scen name as the identity). Validated inline
+    # 7. world name (blank → use the scen name as the identity). Validated inline
     #    so a bad name is caught here, not after the build has already started.
     while True:
         raw = _ask(lambda: questionary.text(
@@ -1019,17 +1075,27 @@ def menu_new_world():
         break
     identity = world_name or scen["name"]
 
-    # 6. confirm + build.
+    # 8. confirm + build. Show the RESOLVED roster: the role→model pairing the
+    #    operator just made is only visible once ids, roles and picks are joined,
+    #    and after this it is a docker build. (Operator-facing only — a secret
+    #    role assignment stays out of labels; see builder._snap_dict.)
+    print(f"\n  World Root '{identity}'  ←  scen '{scen['name']}'  "
+          f"(runtime {runtime}, seed {seed})")
+    wid = max(len(i) for i in ids)
+    wrole = max((len(r or "") for r in roles), default=0)
+    for i, agent_id in enumerate(ids):
+        role = f"  {(roles[i] or ''):{wrole}}" if wrole else ""
+        print(f"    {agent_id:{wid}}{role}  {models[i]}  [{persona_list[i]}]")
+    print()
     if not _ask(lambda: questionary.confirm(
-        f"Build World Root '{identity}' from scen '{scen['name']}' "
-        f"with {n} agent(s) (runtime {runtime})?", default=True).ask()):
+        f"Build this World Root ({n} agent(s))?", default=True).ask()):
         return
     print(f"  Building '{identity}' … (this runs docker; may take a moment)")
     try:
         snap = builder.build_world_root(
             scen["name"], roster,
             world_name=world_name, modules=selected_modules,
-            params=params,
+            params=params, seed=seed,
         )
     except Exception as e:
         print(f"  Build failed: {e}")
