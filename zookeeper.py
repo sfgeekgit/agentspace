@@ -521,7 +521,7 @@ def _pick_persona(label, personas, default=DEFAULT_PERSONA):
         body = p["text"].strip()
         print(f"\n  ── {p['short_name']} " + "─" * 40)
         print(body or "  (no persona text)")
-        print("  " + "─" * 46 + "\n")
+        print("  " + "─" * 40 + "\n")
 
 
 def menu_snap():
@@ -1068,11 +1068,10 @@ def menu_new_world():
     #    role assignment stays out of labels; see builder._snap_dict.)
     print(f"\n  World Root '{identity}'  ←  scen '{scen['name']}'  "
           f"(runtime {runtime}, seed {seed})")
-    wid = max(len(i) for i in ids)
-    wrole = max((len(r or "") for r in roles), default=0)
+    wrole = max(len(r or "") for r in roles) if show_roles else 0
     for i, agent_id in enumerate(ids):
-        role = f"  {(roles[i] or ''):{wrole}}" if wrole else ""
-        print(f"    {agent_id:{wid}}{role}  {models[i]}  [{persona_list[i]}]")
+        role = f"  {(roles[i] or ''):{wrole}}" if show_roles else ""
+        print(f"    {agent_id}{role}  {models[i]}  [{persona_list[i]}]")
     print()
     if not _ask(lambda: questionary.confirm(
         f"Build this World Root ({n} agent(s))?", default=True).ask()):
