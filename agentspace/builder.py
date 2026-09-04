@@ -54,7 +54,8 @@ def generate_agent_ids(n: int, rng: random.Random) -> list[str]:
     ids: set[str] = set()
     while len(ids) < n:
         ids.add(f"a{rng.randint(10000, 99999)}")
-    return list(ids)
+    return sorted(ids)   # NOT list(): str hashing is per-process, so set order
+                         # would re-pair ids to roles differently on a replay
 
 def _assign_roles(
     logic: Any, n: int, params: dict[str, Any], rng: random.Random

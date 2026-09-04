@@ -29,9 +29,6 @@ MODULES_DIR = REPO_ROOT / "modules"
 
 SCEN_MANIFEST = "scenario.toml"
 
-# Sentinel upper bound when a scen omits max_agents. Generous; a scen that truly
-# cares pins its own max. (Kept finite so range checks and menus stay sane.)
-DEFAULT_MAX_AGENTS = 1000
 
 
 class RegistryError(Exception):
@@ -72,7 +69,11 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
     """
     try:
         min_agents = int(data.get("min_agents", 1))
-        max_agents = int(data.get("max_agents", DEFAULT_MAX_AGENTS))
+        # Required: the wizard offers this range as a list, so an unbounded scen
+        # would mean an unbounded menu. A scen that takes any N says so.
+        max_agents = int(data["max_agents"])
+    except KeyError:
+        raise RegistryError(f"scen {name!r}: max_agents is required")
     except (TypeError, ValueError) as e:
         raise RegistryError(f"scen {name!r}: min/max_agents must be integers ({e})")
     if min_agents < 1:

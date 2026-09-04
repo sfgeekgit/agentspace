@@ -977,26 +977,13 @@ def menu_new_world():
     #    adversary count from n_adversarial), so roles can't be known until now.
     params = _collect_params(scen["params_schema"])
 
-    # 3. agent count. A select over the legal range makes an illegal count
-    #    unrepresentable, and collapses to a single choice when the scen pins
-    #    N (pd is 2–2). Wide ranges stay typed: a scen that omits max_agents
-    #    gets DEFAULT_MAX_AGENTS, and scrolling a 1000-item list to 50 is worse.
-    lo, hi = scen["min_agents"], scen["max_agents"]
-    if hi - lo <= 20:
-        n = int(_ask(lambda: questionary.select(
-            "Number of agents:", choices=[str(i) for i in range(lo, hi + 1)]).ask()))
-    else:
-        while True:
-            raw = _ask(lambda: questionary.text(f"Number of agents ({lo}–{hi}):").ask())
-            try:
-                n = int(raw)
-            except ValueError:
-                print("  Enter a whole number.")
-                continue
-            if not (lo <= n <= hi):
-                print(f"  Must be {lo}–{hi}.")
-                continue
-            break
+    # 3. agent count — a select over the scen's legal range. An illegal count
+    #    becomes unrepresentable, and the list collapses to a single choice
+    #    when the scen pins N (pd is 2–2).
+    n = int(_ask(lambda: questionary.select(
+        "Number of agents:",
+        choices=[str(i) for i in
+                 range(scen["min_agents"], scen["max_agents"] + 1)]).ask()))
 
     # 4. roles FIRST, then the roster. The scen assigns roles from a seeded rng
     #    (mafia and commons_vote shuffle; roles_demo picks a random index), so
