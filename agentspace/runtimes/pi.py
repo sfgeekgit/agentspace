@@ -97,7 +97,7 @@ def list_all_models() -> list[str]:
 # ---- world-root bake (called by builder inside the temp build container) ----
 
 def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, params=None,
-         gm_secrets=None, watch=None):
+         gm_secrets=None, watch=None, runtime_flags=None):
     """Assemble the PI world inside the build container.
 
     agents: [{"id", "model"}, ...];  seeds: {agent_id: {filename: text}}.
@@ -141,7 +141,7 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, pa
 
         world = stage / "world"
         world.mkdir()
-        (world / "world.json").write_text(json.dumps({
+        cfg = {
             "model": agents[0]["model"],
             "models": {a["id"]: a["model"] for a in agents},
             "pi_bin": "/pi/node_modules/.bin/pi",
@@ -152,7 +152,11 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, pa
             "has_gm": gm_dir is not None,   # drives the GM preamble + run-the-world verb
             "params": params or {},         # build-time values gmd/gm code read
             "watch": watch or [],           # scen-declared `env watch` views (logwatch.py)
-        }, indent=2) + "\n")
+        }
+        # Scen overrides last: the defaults above are this runtime's physics, and
+        # a scen may replace any of them (registry.RUNTIME_FLAGS bounds the set).
+        cfg.update(runtime_flags or {})
+        (world / "world.json").write_text(json.dumps(cfg, indent=2) + "\n")
         (world / "kick.txt").write_text(kick_text or "")
         if gm_dir is not None:
             # The whole gm/ package (main.py + helpers + vendored code) →

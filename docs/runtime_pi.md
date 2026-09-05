@@ -214,8 +214,8 @@ can read peers' files.
    attribution, an OC-era impossibility), including a `scratch_updated`
    compliance bit.
 
-**`require_scratchpad`** (world.json, DEFAULT true — every scen author must
-actively decide): adds a standard preamble paragraph requiring the agent to
+**`require_scratchpad`** (world.json, DEFAULT true): adds a standard preamble
+paragraph requiring the agent to
 append its thinking for the turn to `scratch/thoughts.md` before acting — a
 deliberate, re-readable reflection log alongside the involuntary thinking
 blocks. Soft-enforced: compliance is visible per turn in `budget.jsonl`.
@@ -236,6 +236,12 @@ HIT line to stderr → the audit `wake_end` record. If it recurs, raise the
 world's cap — don't leave agents clipped. GOTCHA (verified on 0.80.3):
 `modelOverrides` in `settings.json` is silently ignored — it only works in
 `models.json`.
+
+**Scen overrides.** A scen may set `thinking`, `require_scratchpad`,
+`messaging_norms` or `max_tokens` in its `scenario.toml`; the value replaces
+this runtime's default in world.json (`registry.RUNTIME_FLAGS` bounds the set
+and types it). Omit them — as every scen in the repo does — and the defaults
+above stand.
 
 Config from `/world/world.json` (`model`, per-agent `models` map, `pi_bin`,
 `thinking`, `require_scratchpad`, `messaging_norms`, `max_tokens`);

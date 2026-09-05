@@ -56,6 +56,27 @@ restate it):
   new mail.
 - Agents keep durable notes in `MEMORY.md` (always in context) and `scratch/`
   (private workspace, not auto-loaded).
+- **Agents are required to journal.** The preamble tells every agent to append
+  its thinking for the turn to `scratch/thoughts.md` before acting. Your agents
+  WILL be doing this — don't restate it in your world text, and don't design a
+  scen that assumes an agent's first act is something else.
+
+### Runtime prompt flags
+
+These live in the world's `/world/world.json` and shape what every agent is
+told, on top of your scen files. The runtime's defaults are below; set any of
+them in your `scenario.toml` to override for your world.
+
+| Flag                 | Value     | Effect |
+|----------------------|-----------|--------|
+| `require_scratchpad` | `true`    | Injects the "think in your scratchpad" block; agent must append to `scratch/thoughts.md` each turn. Soft-enforced — a `scratch_updated` bit per turn in `budget.jsonl`, never blocked. |
+| `thinking`           | `"low"`   | Real chain-of-thought, captured in the session JSONL. Distinct from the scratchpad: CoT is what the model reasoned, the scratchpad is what the agent chose to articulate. |
+| `messaging_norms`    | `true`    | Injects the anti-ping-pong norms (don't reply unless it helps). |
+| `max_tokens`         | `16384`   | Per-turn output ceiling. A safety rail, not a leash; hitting it is loud (`hit_max_tokens` in `budget.jsonl`). |
+
+Read both signals when reviewing a run: `env watch <env> <agent>:thoughts` and
+`<agent>:scratchpad` are separate facets. See `docs/runtime_pi.md` for the
+full contract.
 
 ## The HARD rule (research validity)
 
@@ -92,6 +113,13 @@ description = "one line shown in the menu"
 min_agents = 2
 max_agents = 2
 module_blacklist = []    # module names this scen can't run with (none exist yet)
+
+# OPTIONAL runtime prompt flags — defaults shown; omit to keep them.
+# See "Runtime prompt flags" above for what each one does.
+# require_scratchpad = true
+# thinking = "low"
+# messaging_norms = true
+# max_tokens = 16384
 
 [[params]]               # optional, repeatable: build-time parameters.
 name = "rounds"          # The wizard prompts for each; the SAME scen builds a

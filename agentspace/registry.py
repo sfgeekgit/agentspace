@@ -29,6 +29,12 @@ MODULES_DIR = REPO_ROOT / "modules"
 
 SCEN_MANIFEST = "scenario.toml"
 
+# world.json prompt flags a scen MAY override in scenario.toml. These shape what
+# every agent is told, so they belong to the world, not to one agent's files.
+# Omit one and the runtime's own default stands.
+RUNTIME_FLAGS = {"thinking": str, "require_scratchpad": bool,
+                 "messaging_norms": bool, "max_tokens": int}
+
 
 
 class RegistryError(Exception):
@@ -130,6 +136,10 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
         # format, fields, filter). Declarative ONLY — no scen code runs
         # host-side; baked into world.json, interpreted by logwatch.py.
         "watch": list(data.get("watch", [])),
+        # Prompt-flag overrides for world.json (see RUNTIME_FLAGS). Absent keys
+        # keep the runtime's own default, so most scens declare none.
+        "runtime_flags": {k: typ(data[k]) for k, typ in RUNTIME_FLAGS.items()
+                          if k in data},
         **parts,
     }
 
@@ -148,6 +158,7 @@ def _inactive_scen_stub(name: str, scen_dir: Path, data: dict[str, Any]) -> dict
         "min_agents": 0,
         "max_agents": 0,
         "module_blacklist": [],
+        "runtime_flags": {},
         **_optional_parts(scen_dir),
     }
 

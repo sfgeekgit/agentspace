@@ -203,14 +203,15 @@ def _peers_md(self_id: str, all_ids: list[str]) -> str:
 
 
 def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, params=None,
-         gm_secrets=None, watch=None):
+         gm_secrets=None, watch=None, runtime_flags=None):
     """Assemble the OC world inside the build container: render openclaw.json,
     stage /data (config, world.md, kick, per-agent seed workspaces incl. the
     OC-specific PEERS.md), one `docker cp`. (Moved from builder._stage_world —
     the staging LAYOUT is runtime knowledge.)
 
-    gm_dir/params/gm_secrets/watch are accepted for a uniform builder call but
-    ignored: the GM and `env watch` are PI-runtime features (no OC adapter)."""
+    gm_dir/params/gm_secrets/watch/runtime_flags are accepted for a uniform
+    builder call but ignored: the GM, `env watch` and the world.json prompt
+    flags are PI-runtime features (no OC adapter)."""
     config_text = render_config([{"id": a["id"], "model": a["model"]} for a in agents])
     ids = [a["id"] for a in agents]
     stage = Path(tempfile.mkdtemp(prefix="oc-bake-"))

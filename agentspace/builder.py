@@ -275,6 +275,7 @@ def build_world_root(
             params=params,
             gm_secrets=gm_secrets,
             watch=scen["watch"],
+            runtime_flags=scen["runtime_flags"],
         )
         # Corpus copied straight from the scen dir into the container (NOT
         # staged) — it may be gigabytes; staging would copy it a second time.

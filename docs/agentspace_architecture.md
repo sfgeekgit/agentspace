@@ -372,15 +372,44 @@ Availability depends on model:
 
 For experiments that depend on inspecting raw reasoning, prefer models that expose it. Treat "what reasoning is visible" as an experimental variable, not a constant.
 
-### A.2 OpenClaw-level event logs
+### A.2 Runtime event logs (session transcripts)
 
-OpenClaw writes a per-session append-only JSONL event log under `/data/openclaw/agents/<agentId>/sessions/`. Every turn, tool call, tool result, message, and thinking block is recorded. Primary post-hoc observability source. Replayable and diffable across runs.
+Every runtime writes a per-session append-only JSONL transcript. Every turn,
+tool call, tool result, message, and thinking block is recorded. Primary
+post-hoc observability source. Replayable and diffable across runs.
 
-Because all state is inside `/data` and snapshots capture the full container filesystem, every snapshot is a complete observability bundle.
+- **PI runtime** — `$HOME/sessions/` in each agent's own home (`/agents/<id>/sessions/`),
+  written by one `pi --mode rpc` turn per wake and reopened with `--continue`.
+  The system prompt is frozen once per session beside the transcript as
+  `sessions/.sysprompt` and reused byte-identically on later wakes, so a
+  mid-session file edit never invalidates the cached history — which also means
+  the transcript records the prompt the agent actually ran under.
+  Per-turn cost/usage lands separately in the gateway's `/data/gateway/budget.jsonl`,
+  attributed per agent via peercred.
+- **OpenClaw runtime** — `/data/openclaw/agents/<agentId>/sessions/`.
+
+Because snapshots capture the full container filesystem, every snapshot is a
+complete observability bundle.
 
 ### A.3 Prompted scratchpads
 
-Agents are instructed via `SOUL.md` to write working reasoning to `/data/scratchpads/<agentId>.md` before taking actions. Append-only.
+Agents are required to append their working reasoning for a turn to
+`scratch/thoughts.md` in their own home before acting.
+
+The instruction is **runtime-owned**, not persona- or scen-owned: it is a fixed
+preamble block (`SCRATCH_REQUIRED` in `runtime_pi/agentd.py`) injected into the
+system prompt whenever the world's `require_scratchpad` flag is true (the
+default; a scen may turn it off in its manifest). It is deliberately not carried
+by `SOUL.md` or by scen text (plan decision 11: the preamble is runtime
+physics), so a world built with a minimal or empty persona still gets
+scratchpads.
+
+Soft-enforced rather than blocked: agentd compares the `scratch/` mtime across
+the turn and stamps a `scratch_updated` bit into that turn's `budget.jsonl`
+record, so non-compliance is visible per turn instead of being prevented.
+
+Live views: `env watch <env>` exposes `<agent>:scratchpad` and `<agent>:thoughts`
+as separate facets.
 
 This is a distinct signal from model-level CoT:
 - **Model-level CoT** = what the model actually reasoned (where exposed).
