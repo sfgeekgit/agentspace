@@ -10,7 +10,8 @@ Writes to a results tree that is a separate git repo (sister repo), default
 Does NOT commit/push: after writing it prints a cut-and-paste bash block to
 publish the run (git add/commit/push). See 2026-07-12_plan_result_json_generator.md.
 
-Sources, in order of trust: game_log.jsonl (docker cp, or --log), container +
+Handles both log grammars: commons_vote (votes/level) and support_desk
+(ticket queue). Sources, in order of trust: game_log.jsonl (docker cp, or --log), container +
 post-game snap image labels (docker inspect), live OpenRouter key (spend
 fallback), CLI args. Unknown fields are null, never guessed.
 """
@@ -50,8 +51,51 @@ def fetch_log(env, log_arg):
     return tmp
 
 
+# support_desk log grammar (scenarios/support_desk/gm/main.py glog()).
+DESK_WORLD = re.compile(r"world created: (\d+) reps, (\d+) customers, "
+                        r"(\d+) tickets, max_rounds (\d+)")
+DESK_ROUND = re.compile(r"round (\d+): opened (\S+); claimed (\S+); "
+                        r"lost (\S+); resolved (\S+); queue (\d+)")
+DESK_END = re.compile(r"(complete|capped): (\d+) rounds, (\d+)/(\d+) resolved")
+
+
+def parse_desk(lines):
+    """support_desk: ticket queue worked by reps. No 'level' — the outcome
+    measure is tickets resolved, so final_level stays null."""
+    world, rounds, outcome = None, [], None
+    listify = lambda s: [] if s == "-" else s.split(",")
+    for e in lines:
+        t = e["text"]
+        m = DESK_WORLD.match(t)
+        if m:
+            world = {"n_reps": int(m[1]), "n_customers": int(m[2]),
+                     "n_agents": int(m[1]) + int(m[2]),
+                     "tickets": int(m[3]), "max_rounds": int(m[4])}
+            continue
+        m = DESK_ROUND.match(t)
+        if m:
+            rounds.append({"n": int(m[1]), "opened": listify(m[2]),
+                           "claimed": listify(m[3]), "lost": listify(m[4]),
+                           "resolved": listify(m[5]), "queue": int(m[6])})
+            continue
+        m = DESK_END.match(t)
+        if m:
+            outcome = {"status": m[1], "rounds_played": int(m[2]),
+                       "resolved": int(m[3]), "tickets": int(m[4]),
+                       "final_level": None}
+    if outcome is None:   # no terminal line: the shift never finished
+        outcome = {"status": "stalled", "rounds_played": len(rounds),
+                   "resolved": sum(len(r["resolved"]) for r in rounds),
+                   "tickets": world["tickets"] if world else None,
+                   "final_level": None}
+    return world, rounds, outcome
+
+
 def parse_log(path):
     lines = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    if any(DESK_WORLD.match(e["text"]) for e in lines):
+        world, rounds, outcome = parse_desk(lines)
+        return world, rounds, outcome, log_timing(lines, rounds)
     world, rounds, outcome = None, [], None
     for e in lines:
         t = e["text"]
@@ -82,12 +126,15 @@ def parse_log(path):
         outcome = {"status": "stalled",
                    "final_level": rounds[-1]["level_after"] if rounds else None,
                    "rounds_played": len(rounds)}
-    timing = None
-    if lines:
-        t0, t1 = lines[0]["ts"], lines[-1]["ts"]
-        timing = {"started_ts": t0, "ended_ts": t1,
-                  "seconds_per_round": round((t1 - t0) / len(rounds), 2) if rounds else None}
-    return world, rounds, outcome, timing
+    return world, rounds, outcome, log_timing(lines, rounds)
+
+
+def log_timing(lines, rounds):
+    if not lines:
+        return None
+    t0, t1 = lines[0]["ts"], lines[-1]["ts"]
+    return {"started_ts": t0, "ended_ts": t1,
+            "seconds_per_round": round((t1 - t0) / len(rounds), 2) if rounds else None}
 
 
 def env_labels(env):
@@ -147,6 +194,12 @@ def live_key_usage(env):
     return None, None
 
 
+def outcome_summary(outcome):
+    if outcome.get("final_level") is not None:
+        return f"final level {outcome['final_level']}"
+    return f"{outcome.get('resolved')}/{outcome.get('tickets')} resolved"
+
+
 def push_block(results_dir, rel_run_dir, env, scen, status, level):
     """Cut-and-paste bash to publish this run to the sister repo. Keep this the
     single choke point so a future auto-push just calls git here instead."""
@@ -191,7 +244,7 @@ def main():
     model = args.model or g("model")
     souls = json.loads(g("soul_files") or "{}")
     agent_ids = json.loads(g("agents") or "[]") or sorted(
-        {a for r in rounds for a in r["votes"]})
+        {a for r in rounds for a in r.get("votes", {})})
     agents = [{"id": a, "model": model,
                "persona": args.persona or
                (souls.get(a, "").removeprefix("persona:") or None)}
@@ -234,6 +287,7 @@ def main():
 
     runline = {"run_name": env, "date": result["date"], "scen": world["scen"],
                "status": outcome["status"], "final_level": outcome["final_level"],
+               "resolved": outcome.get("resolved"), "tickets": outcome.get("tickets"),
                "spend_usd": spend, "path": f"{rel_run_dir}/result.json"}
     runs_path = results_dir / "runs.jsonl"
     old = [l for l in runs_path.read_text().splitlines()
@@ -243,12 +297,12 @@ def main():
 
     print(out_path)
     print(f"{env}: {outcome['status']}, {outcome['rounds_played']} rounds, "
-          f"final level {outcome['final_level']}")
+          f"{outcome_summary(outcome)}")
     print(f"spend ${spend} / cap ${cap}; snaps: {snaps}")
     print(f"root: {result['provenance']['world_root_snap']}")
     print()
     print(push_block(results_dir, rel_run_dir, env, world["scen"],
-                     outcome["status"], outcome["final_level"]))
+                     outcome["status"], outcome_summary(outcome)))
 
 
 if __name__ == "__main__":
