@@ -161,6 +161,12 @@ can read peers' files.
 2. **Drain the whole inbox** — every spooled message goes into this turn, not
    just `WAKE_CAUSES`. Mail moves to `inbox_done/` only AFTER the turn
    succeeds; a failed turn leaves it in place and the next wake retries.
+   Everything after a successful turn (archive, birth marker, then the cost
+   report) is BEST-EFFORT: the agent owns its home and may have moved the
+   mail itself mid-turn, so a missing spool file is skipped and any other
+   housekeeping error is logged, never fatal — a finished turn is never
+   reported failed, and its cost record is always sent. (Run-1 lesson: an
+   agent tidied its own inbox and crashed the wrapper 31 times.)
 3. **Prompt sandwich** via Pi's `--system-prompt` (replaces Pi's default
    coding prompt entirely):
 
@@ -319,8 +325,11 @@ decision 13): the runtime — never GM code — owns its process lifecycle.
 - **Agents interact with the GM only two ways:** they receive `gm_wake`
   payloads (delivered as messages from `gm`), and they `submit "<action>"` a
   structured action (the `submit` shim). They never read GM state; `gm_collect`
-  is how the GM reads a submission. The agent-facing GM physics paragraph is
-  injected into the sandwich only when world.json `has_gm` is set.
+  is how the GM reads a submission. The runtime injects NO GM paragraph into
+  the sandwich (dropped 2026-09-07 — it framed every world as a game): the
+  scen's own world/role text introduces the GM and `submit`
+  (`HOW_TO_MAKE_WORLDS_START_HERE.md`, "The game master"). world.json
+  `has_gm` now only drives the run-the-world verb (`env kick`).
 
 Gateway GM API (all gm-or-operator gated; see `pi_gateway.py`):
 

@@ -49,8 +49,12 @@ restate it):
     recipient (norm injected by the runtime: don't reply unless needed)
   - `gateway post "<text>"` — append to the shared public board; wakes NOBODY
   - `gateway read-public --since <seq>` — pull the board
-  - `submit "<action>"` — (GM worlds only) hand the GM a structured action
   - `check_budget` — the world's API spend
+  - `submit "<action>"` — (GM worlds only) hand the GM a structured action.
+    **The runtime does NOT teach this one.** How a GM presents itself
+    ("game master", "coordinator", nobody) is scen framing, so your
+    `world.md` or role briefing must say that `submit` exists and that only
+    what is submitted counts — see "The game master" below.
 - **First wake**: if your scen ships `FIRST_WAKE.md`, it is delivered once as
   the birth message (rich onboarding), then archived. Later wakes carry only
   new mail.
@@ -253,6 +257,17 @@ private home `/gm` that agents cannot read. The whole package — entry point
 plainly (`import my_helper`). Agents never see the GM except as messages
 from `gm` and board posts from `world`.
 
+**Your scen introduces the GM to the agents.** The runtime preamble says
+nothing about it (a fixed "game master" paragraph was dropped 2026-09-07:
+it called every world a game). So a GM scen's `world.md` or role briefing
+must carry, in whatever voice fits the fiction, the one piece of physics
+agents need: messages from `gm` (and board posts from `world`) are the
+coordinator; when it asks for a choice, run `submit "<action>"` in bash in
+the format its message states; it reads only what is submitted, never chat.
+`scenarios/pd/world.md` has the plain version, `commons_vote/world.md` the
+"coordinator" version. Without it your agents will answer the GM in chat and
+every round will collect the default.
+
 The entry point, `gm/main.py`:
 
 ```python
@@ -441,6 +456,7 @@ scen gate.
   — or a resumed round replays differently. (Tuples aren't valid seeds.)
 - **Always give `round()` a default** and cap runaway loops with a params
   safety valve; an all-abstain world must still end.
-- **Keep briefings free of mechanics** (how to send/submit is injected by
-  the runtime); state only what the role may do and any format the GM will
-  ask for.
+- **Keep briefings free of messaging mechanics** (how to send/post/read the
+  board is injected by the runtime); state only what the role may do and any
+  format the GM will ask for. The ONE exception is `submit`: the scen must
+  introduce it (see "The game master").

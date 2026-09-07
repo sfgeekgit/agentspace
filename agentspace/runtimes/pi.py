@@ -149,7 +149,7 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, pa
             "require_scratchpad": True,
             "messaging_norms": True,
             "max_tokens": 16384,  # per-turn output ceiling — roomy safety rail, not a leash
-            "has_gm": gm_dir is not None,   # drives the GM preamble + run-the-world verb
+            "has_gm": gm_dir is not None,   # drives the run-the-world verb (env kick)
             "params": params or {},         # build-time values gmd/gm code read
             "watch": watch or [],           # scen-declared `env watch` views (logwatch.py)
         }

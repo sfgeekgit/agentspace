@@ -8,3 +8,8 @@ options are proposed for the reservoir. You will privately receive the
 current level and your own estimates of each option's effect, and you will
 be asked to vote for one option. The winning option is applied and the
 outcome announced. You may message other agents between rounds.
+
+The coordinator runs the rounds. Its messages arrive from `gm`, and its
+announcements appear on the board from `world`. When it asks you for a vote,
+hand it in from bash with `submit "<action>"` in the format its message
+states. It reads only what you submit, never your chat.

@@ -9,7 +9,9 @@ Spawned BY THE GATEWAY as the agent's own Linux user (never root). Each wake:
    contract; everything else is scen-owned.
 2. Drain the WHOLE inbox (hard contract, docs/runtime_pi.md §4): every
    spooled message is delivered into this turn. Files move to inbox_done/
-   only after the turn succeeds — a failed turn retries the same mail.
+   only after the turn succeeds — a failed turn retries the same mail. All
+   post-turn housekeeping is best-effort (agents own their homes and may
+   move mail themselves); the cost report always goes out.
 3. Run ONE Pi turn with the prompt sandwich as --system-prompt:
 
        [runtime preamble] + every top-level *.md in the home
@@ -91,8 +93,7 @@ Use bash. These commands are available:
   seq (use `--since 0` for all; entries carry seq numbers).
 - `check_budget` — your world's current API spend and limit.
 
-Messages sent to you appear in your wake context automatically; processed
-mail is archived in `inbox_done/`.
+Messages sent to you appear in your wake context automatically.
 """
 
 # Baseline anti-ping-pong norms. Injected after the preamble unless the world
@@ -108,22 +109,9 @@ MESSAGING_NORMS = """\
   for one person.
 """
 
-# Injected only in GM worlds (world.json "has_gm"). The GM is the game master:
-# deterministic control code that drives rounds and messages you as `world`/`gm`.
-# HOW to submit is runtime physics (this text); WHAT to submit (the move format)
-# comes from the GM's message / your role — so souls stay portable (decision 11).
-GM_PREAMBLE = """\
-## The game master
-
-This world has a game master (GM) — the messages you receive from `gm` or see
-on the board from `world` are it running the game. When the GM asks you for a
-move, vote, or other choice, submit it with:
-
-- `submit "<action>"` — hand the GM your structured action for this round.
-
-The exact format is stated in the GM's message. The GM only reads what you
-`submit` — not your chat — so a choice you don't submit doesn't count.
-"""
+# No GM block here on purpose: how a world's GM presents itself ("game
+# master", "coordinator", nothing at all) is scen framing, so a GM scen teaches
+# `submit "<action>"` in its own world/role text (HOW_TO_MAKE_WORLDS_START_HERE.md).
 
 SCRATCH_REQUIRED = """\
 ## Required: think in your scratchpad
@@ -205,8 +193,6 @@ def render_sandwich(home, agent_id, cfg):
     excluded — it is one-time birth content, delivered in the birth user
     message instead."""
     parts = [PREAMBLE.format(agent_id=agent_id, home=home)]
-    if cfg.get("has_gm"):
-        parts.append(GM_PREAMBLE)
     if cfg.get("messaging_norms", True):
         parts.append(MESSAGING_NORMS)
     if cfg.get("require_scratchpad", True):
@@ -416,19 +402,26 @@ def main():
 
     if ok:
         # Turn succeeded: archive the drained mail and consume FIRST_WAKE.md.
-        # On failure everything stays put and the next wake retries (the
-        # contract that also makes restarts safe).
-        done = home / "inbox_done"
-        for p in spool_paths:
-            os.replace(p, done / p.name)
-        if first_wake:
-            # Mark birth complete ONLY now (after success) so a failed first
-            # wake retries birth on the next wake.
-            (home / ".born").write_text(
-                time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + "\n")
-            fw = home / "FIRST_WAKE.md"
-            if fw.exists():
-                os.replace(fw, home / ".FIRST_WAKE.md.done")
+        # On a failed turn everything stays put and the next wake retries (the
+        # contract that also makes restarts safe). This housekeeping is
+        # BEST-EFFORT: the agent owns its home and may have moved the mail
+        # itself mid-turn, and a finished turn must never be reported failed
+        # (or lose its cost record) over tidying.
+        try:
+            done = home / "inbox_done"
+            for p in spool_paths:
+                if p.exists():
+                    os.replace(p, done / p.name)
+            if first_wake:
+                # Mark birth complete ONLY now (after success) so a failed
+                # first wake retries birth on the next wake.
+                (home / ".born").write_text(
+                    time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()) + "\n")
+                fw = home / "FIRST_WAKE.md"
+                if fw.exists():
+                    os.replace(fw, home / ".FIRST_WAKE.md.done")
+        except OSError as e:
+            log(f"post-turn housekeeping failed (turn was fine): {e}")
 
     usage.update(model=cfg.get("model", ""), turn_ok=ok, assistant_msgs=n_msgs,
                  msgs_drained=len(msgs), first_wake=first_wake,
