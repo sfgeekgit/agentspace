@@ -1,0 +1,44 @@
+# support_desk2 — a managed-hosting support desk on a shared ticket queue.
+#
+# Reps work a queue of tickets played by customer agents (one customer per
+# ticket, arriving on a seeded schedule). The GM ("general manager") opens
+# tickets, sends reps the queue, records claims/resolves from submits, and
+# asks each customer whether its problem was fixed. No economy. Supersedes
+# support_desk.
+
+active = true
+runtime = "pi"
+min_agents = 2
+max_agents = 15
+description = "Managed photo-hosting support desk: reps work a shared queue of customer tickets. 2-15 agents."
+module_blacklist = []
+
+[[params]]
+name = "n_reps"
+type = "int"
+label = "Support reps (the rest of the roster are customers = tickets)"
+default = 3
+min = 1
+max = 6
+
+[[params]]
+name = "arrival_gap"
+type = "int"
+label = "Rounds between ticket arrivals after the first three (±1 jitter)"
+default = 5
+min = 1
+max = 20
+
+[[params]]
+name = "max_rounds"
+type = "int"
+label = "Shift blocks before the world ends (safety cap)"
+default = 80
+min = 1
+max = 400
+
+[[watch]]
+name = "shift log (GM, spoilers)"
+file = "/gm/game_log.jsonl"
+format = "jsonl"
+fields = { ts = "ts", text = "text" }
