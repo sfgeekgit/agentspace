@@ -19,11 +19,17 @@ Run with no arguments for the interactive menu.
 
 ## Creating a new world (World Root)
 
-A brand-new world (`X.0` snap) is built from a **scen** via the menu:
+A brand-new world (`X.0` snap) is built from a **scen** via the menu or the CLI:
 
 ```bash
 python3 zookeeper.py        # → "New world"
+python3 zookeeper.py world build support_desk2 -n 12 --model deepseek/deepseek-v4.1-flash \
+    --persona minimal --role-persona rep=blank --param n_reps=3 --name support_desk2
 ```
+
+The CLI form takes one model/persona for everyone plus `--role-model` /
+`--role-persona ROLE=VALUE` overrides; roles come from the scen's seeded
+assignment (`--seed` to pin it), params default from the manifest.
 
 The wizard picks a scen (its manifest's `runtime` key decides the runtime), the agent
 count, a per-agent model + persona, modules (none yet), and a world name, then builds
@@ -123,6 +129,14 @@ budget show [<env_name>]                   # live usage from OpenRouter
 budget topup <env_name> <amount_usd>       # increase the env's OpenRouter limit
 ```
 
+### world
+
+```
+world build <scen> -n N --model M [--persona P] [--role-model ROLE=M] [--role-persona ROLE=P]
+                   [--param NAME=VALUE] [--module NAME] [--name WORLD] [--seed N]
+                                           # build a World Root locally (menu: "New world")
+```
+
 ### scen
 
 Producers of a scen's pinned `source_image` (the environment image its worlds
@@ -135,6 +149,7 @@ verify it pulls, and write it into the scen's scenario.toml.
 scen env freeze <scen> <container>         # commit a banged-on workshop container
                                            # (refuses volume/bind mounts; warns on
                                            # dirty sources — used worlds are legal)
+scen deactivate <scen>                     # active=false in the manifest; hidden from New world
 scen env build <scen>                      # docker build the scen's env.Dockerfile
                                            # (ARG AGENTSPACE_BASE contract)
 ```
@@ -371,3 +386,12 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
 
 Only `zookeeper.py` imports `click`. Other modules are plain functions, callable from
 tests or programmatic use.
+
+**One verb, one library function, every front end.** A verb lives ONLY as a
+`cmd_*` function in `agentspace/`. `zookeeper.py` holds two renderings of it:
+the click command (three lines) and the interactive menu branch (prompts, then
+the same call). Front ends never touch docker, the db, or OpenRouter
+themselves, so behaviour cannot drift; coverage is checked mechanically —
+`python3 scripts/check_frontends.py` fails if any `cmd_*` is missing from
+either side. Adding a verb = library function + click command + menu branch.
+Internal helpers are not named `cmd_*`.

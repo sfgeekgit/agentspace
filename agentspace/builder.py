@@ -97,6 +97,26 @@ def plan_roster(
     return actual_seed, ids, roles
 
 
+def cmd_build(scen_name, roster, *, world_name=None, modules=(), params=None, seed=None):
+    """Build a world root and print the result (the verb both the CLI and the
+    wizard end in). Raises on failure; callers decide how to show it."""
+    snap = build_world_root(scen_name, roster, world_name=world_name,
+                            modules=modules, params=params, seed=seed)
+    print(f"\n  ✓ Built World Root {snap['scenario']}:{snap['version']}")
+    print(f"    Tag:    {snap['ghcr_tag']}")
+    print(f"    Agents: {', '.join(snap['agents'])}")
+    print("    Local only — push with the snap tooling when ready.\n")
+    return snap
+
+
+def roster_for(roles, model, persona, role_models=(), role_personas=()):
+    """One {model, persona} per agent from a default plus per-role overrides
+    given as "role=value" strings (the CLI's shape of the wizard's picks)."""
+    rm = dict(kv.split("=", 1) for kv in role_models)
+    rp = dict(kv.split("=", 1) for kv in role_personas)
+    return [{"model": rm.get(r, model), "persona": rp.get(r, persona)} for r in roles]
+
+
 def build_world_root(
     scen_name: str,
     roster: list[dict[str, str]],

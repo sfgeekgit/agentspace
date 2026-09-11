@@ -32,6 +32,8 @@ from pathlib import Path
 
 import click
 
+DEFAULT_PERSONA = "blank"   # least framing baked into SOUL.md — the study default
+
 try:
     import questionary
 except ImportError:
@@ -353,6 +355,43 @@ def budget_topup(env_name, amount_usd):
     budget_mod.cmd_topup(env_name, amount_usd)
 
 
+# ---- world group ----
+
+@cli.group()
+def world():
+    """Build world roots (X.0 snaps) from a scen. Menu: "New world"."""
+
+
+@world.command("build")
+@click.argument("scen_name")
+@click.option("-n", "n", type=int, required=True, help="Agent count.")
+@click.option("--model", required=True, help="Backend model for every agent.")
+@click.option("--persona", default=DEFAULT_PERSONA, show_default=True,
+              help="Persona for every agent.")
+@click.option("--role-model", multiple=True, metavar="ROLE=MODEL",
+              help="Model for agents with this role. Repeatable.")
+@click.option("--role-persona", multiple=True, metavar="ROLE=PERSONA",
+              help="Persona for agents with this role. Repeatable.")
+@click.option("--param", "params", multiple=True, metavar="NAME=VALUE",
+              help="Build-time param (scen defaults otherwise). Repeatable.")
+@click.option("--module", "modules", multiple=True, help="Module to include. Repeatable.")
+@click.option("--name", "world_name", default=None, help="World name (default: the scen name).")
+@click.option("--seed", type=int, default=None, help="Build seed (default: random).")
+def world_build(scen_name, n, model, persona, role_model, role_persona, params,
+                modules, world_name, seed):
+    """Build a World Root from SCEN_NAME. Roles come from the scen's seeded
+    assignment, so --role-* overrides map onto them without previewing."""
+    from agentspace import builder
+    params = dict(kv.split("=", 1) for kv in params)
+    seed, _ids, roles = builder.plan_roster(scen_name, n, params, seed=seed)
+    roster = builder.roster_for(roles, model, persona, role_model, role_persona)
+    try:
+        builder.cmd_build(scen_name, roster, world_name=world_name,
+                          modules=tuple(modules), params=params, seed=seed)
+    except Exception as e:
+        raise click.ClickException(str(e))
+
+
 # ---- scen group ----
 # NOTE: When you add a scen subcommand here, add it to menu_scen() below too.
 
@@ -392,6 +431,15 @@ def scen_env_build(scen_name, host, allow_key_leak):
     scen_mod.cmd_build(scen_name, host=host, allow_key_leak=allow_key_leak)
 
 
+@scen.command("deactivate")
+@click.argument("scen_name")
+def scen_deactivate(scen_name):
+    """Set active=false in SCEN_NAME's manifest (hides it from New world)."""
+    from agentspace import registry
+    registry.deactivate_scen(scen_name)
+    click.echo(f"disabled {scen_name} (active=false).")
+
+
 @scen_env.command("shell")
 @click.argument("scen_name")
 def scen_env_shell(scen_name):
@@ -414,6 +462,8 @@ def scen_env_shell(scen_name):
 #   - New env command?    → add to menu_env()
 #   - New budget command? → add to menu_budget()
 #   - New top-level group? → add menu_<group>() and add it to launch_menu()
+#   `python3 scripts/check_frontends.py` fails if a library cmd_* verb is
+#   missing from either side.
 #
 # Navigation: arrow keys to move, Enter to select. Ctrl-C / Ctrl-D / Esc cancels
 # the CURRENT action and returns to the menu (at a command list, it goes up one
@@ -497,7 +547,6 @@ def _pick_model(label, prior=(), rt=None):
     ).ask())
 
 
-DEFAULT_PERSONA = "blank"   # least framing baked into SOUL.md — the study default
 
 
 def _pick_persona(label, personas, default=DEFAULT_PERSONA):
@@ -1078,18 +1127,10 @@ def menu_new_world():
         return
     print(f"  Building '{identity}' … (this runs docker; may take a moment)")
     try:
-        snap = builder.build_world_root(
-            scen["name"], roster,
-            world_name=world_name, modules=selected_modules,
-            params=params, seed=seed,
-        )
+        builder.cmd_build(scen["name"], roster, world_name=world_name,
+                          modules=selected_modules, params=params, seed=seed)
     except Exception as e:
         print(f"  Build failed: {e}")
-        return
-    print(f"\n  ✓ Built World Root {snap['scenario']}:{snap['version']}")
-    print(f"    Tag:    {snap['ghcr_tag']}")
-    print(f"    Agents: {', '.join(snap['agents'])}")
-    print("    Local only — push with the snap tooling when ready.\n")
 
 
 def menu_scen():

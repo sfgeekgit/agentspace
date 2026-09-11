@@ -410,7 +410,7 @@ def render(ev: Event) -> str:
     return head + (f"[{style}]{body}[/]" if style else body)
 
 
-def cmd_watch_plain(host, container, view_name: str, follow: bool):
+def watch_plain(host, container, view_name: str, follow: bool):
     """Stream one view's rendered lines to stdout (pipe/grep-able; also the
     parser test harness). The TUI is the primary surface — see watch_tui.py."""
     from rich.console import Console

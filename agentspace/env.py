@@ -507,7 +507,7 @@ def cmd_watch(name: str, plain_view: str | None = None, follow: bool = True):
     audit.log("env.watch", name, args={"view": plain_view or "tui"})
     from . import logwatch
     if plain_view:
-        logwatch.cmd_watch_plain(host, name, plain_view, follow)
+        logwatch.watch_plain(host, name, plain_view, follow)
     else:
         from .watch_tui import WatchApp
         WatchApp(host, name).run()
