@@ -314,6 +314,7 @@ def build_world_root(
             snap_id=snap_id, scenario=identity, scen=scen_name, version=version,
             ghcr_tag=ghcr_tag, now=now, runtime=runtime,
             agents=agents, model_label=model_label, source_image=source_image,
+            scen_dir=scen["dir"],
         )
         labels = oci.make_labels(snap)
         # Commit-time config normalization (§5.4): the assembly hardening above
@@ -351,11 +352,19 @@ def build_world_root(
 
 def _snap_dict(
     *, snap_id, scenario, scen, version, ghcr_tag, now, runtime, agents,
-    model_label, source_image=None
+    model_label, source_image=None, scen_dir=None
 ) -> dict[str, Any]:
     from . import __version__
     src = "" if scen == scenario else f", scen={scen}"
     return {
+        # Attachments: the scen source as built (may be uncommitted; the image
+        # can't be re-derived from git), inherited by every descendant snap.
+        # `files` is explicitly empty so a salvaged source image's reports
+        # don't ride along (docker commit inherits labels).
+        "scen": scen,
+        "scen_url": f"https://github.com/{versioning.GHCR_REPO_DEFAULT}/tree/main/scenarios/{scen}",
+        "scen_src": oci.pack_dir(scen_dir) if scen_dir else None,
+        "files": {},
         "snap_id": snap_id,
         "scenario": scenario,          # world identity (== scen name if unnamed)
         "version": version,

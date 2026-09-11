@@ -131,11 +131,31 @@ def snap_note(snap_ref, text):
 @click.option("--version", default=None, help="Override auto-assigned version.")
 @click.option("--allow-key-leak", is_flag=True,
               help="Push even if the image scan finds an OpenRouter key.")
-def snap_take(env_name, message, note, version, allow_key_leak):
+@click.option("--attach", "attach", multiple=True, metavar="FILE",
+              help="Text file to store on the snap (results, findings). Repeatable.")
+def snap_take(env_name, message, note, version, allow_key_leak, attach):
     """Snapshot a running env: docker commit + push to ghcr.io with OCI labels."""
     from agentspace import snap as snap_mod
     snap_mod.cmd_take(env_name, message=message, note=note, version=version,
-                      allow_key_leak=allow_key_leak)
+                      allow_key_leak=allow_key_leak, attach=attach)
+
+
+@snap.command("attach")
+@click.argument("snap_ref")
+@click.argument("files", nargs=-1, required=True)
+def snap_attach(snap_ref, files):
+    """Store text FILES on a snap (local until `snap push`)."""
+    from agentspace import snap as snap_mod
+    snap_mod.cmd_attach(snap_ref, files)
+
+
+@snap.command("extract")
+@click.argument("snap_ref")
+@click.argument("dest")
+def snap_extract(snap_ref, dest):
+    """Write a snap's attached files and archived scen source into DEST."""
+    from agentspace import snap as snap_mod
+    snap_mod.cmd_extract(snap_ref, dest)
 
 
 @snap.command("fork")
@@ -585,6 +605,8 @@ def menu_snap():
                     "Show snap",
                     "Snap tree",
                     "Add note to snap",
+                    "Attach files to snap",
+                    "Extract snap attachments",
                     "Take snap  (commit running env to ghcr.io)",
                     "Fork snap  (start new env from a snap)",
                     "Pull snap  (fetch from ghcr.io)",
@@ -627,6 +649,20 @@ def menu_snap():
                     continue
                 snap_mod.cmd_note(ref, text)
 
+            elif choice == "Attach files to snap":
+                ref = _ask(lambda: questionary.text("Snap ref:").ask())
+                files = _ask(lambda: questionary.text("File paths (space-separated):").ask())
+                if not ref or not files:
+                    continue
+                snap_mod.cmd_attach(ref, tuple(files.split()))
+
+            elif choice == "Extract snap attachments":
+                ref = _ask(lambda: questionary.text("Snap ref:").ask())
+                dest = _ask(lambda: questionary.text("Destination directory:").ask())
+                if not ref or not dest:
+                    continue
+                snap_mod.cmd_extract(ref, dest)
+
             elif choice == "Take snap  (commit running env to ghcr.io)":
                 env_name = _ask(lambda: questionary.text("Env name:").ask())
                 if not env_name:
@@ -636,7 +672,9 @@ def menu_snap():
                     continue
                 note = _ask(lambda: questionary.text("Initial note (blank to skip):").ask())
                 version = _ask(lambda: questionary.text("Version override (blank for auto):").ask())
-                snap_mod.cmd_take(env_name, message=message, note=note or None, version=version or None)
+                files = _ask(lambda: questionary.text("Attach files (paths, space-separated; blank to skip):").ask())
+                snap_mod.cmd_take(env_name, message=message, note=note or None, version=version or None,
+                                  attach=tuple(files.split()) if files else ())
 
             elif choice == "Fork snap  (start new env from a snap)":
                 from agentspace import db, versioning

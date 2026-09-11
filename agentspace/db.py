@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_envs_snap ON envs(snap_id);
 
 _conn: sqlite3.Connection | None = None
 
-JSON_FIELDS = {"agents", "soul_files", "feature_flags", "notes"}
+JSON_FIELDS = {"agents", "soul_files", "feature_flags", "notes", "files"}
 
 
 def _ensure_state_dir():
@@ -88,10 +88,11 @@ def _init_schema(conn: sqlite3.Connection):
     # postdate it here (idempotent — the error on an already-present column is
     # swallowed). The db is a rebuildable cache, so this is convenience, not
     # migration machinery.
-    try:
-        conn.execute("ALTER TABLE snaps ADD COLUMN source_image TEXT")
-    except sqlite3.OperationalError:
-        pass
+    for col in ("source_image", "scen", "scen_url", "scen_src", "files"):
+        try:
+            conn.execute(f"ALTER TABLE snaps ADD COLUMN {col} TEXT")
+        except sqlite3.OperationalError:
+            pass
     cur = conn.execute("SELECT value FROM _meta WHERE key = 'schema_version'")
     row = cur.fetchone()
     if row is None:

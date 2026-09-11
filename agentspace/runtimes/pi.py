@@ -264,7 +264,7 @@ def agent_state(host, container) -> str:
     callers use that as the running probe (parity with OC)."""
     out = docker_host.stdout(
         host, "exec", container, "sh", "-c",
-        "pgrep -f pi_gateway.py >/dev/null 2>&1 && echo GW; "
+        "pgrep -f '[p]i_gateway.py' >/dev/null 2>&1 && echo GW; "   # [p]: don't match this sh -c itself
         "ls /agents/*/sessions/*.jsonl >/dev/null 2>&1 && echo KICKED; :",
     )
     toks = out.split()

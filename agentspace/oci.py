@@ -17,7 +17,7 @@ from . import docker_host
 LABEL_PREFIX = "org.agentspace."
 
 # Snap metadata fields that need JSON encoding when written to OCI labels.
-JSON_FIELDS = {"agents", "soul_files", "feature_flags", "notes"}
+JSON_FIELDS = {"agents", "soul_files", "feature_flags", "notes", "files"}
 
 # Numeric fields that need string<->float conversion.
 NUMERIC_FIELDS = {"budget_usd", "budget_used"}
@@ -44,7 +44,16 @@ LABEL_FIELDS = [
     "budget_used",
     "agentspace_ver",
     "notes",
+    # Attachments (docs/agentspace_cli.md "Attachments"): scen source archived at
+    # build, and small operator files (results, findings) on any snap. Labels
+    # live in the image config, outside the container filesystem.
+    "scen",        # scenarios/<scen> directory name (scenario = world name)
+    "scen_url",    # convenience: expected GitHub URL of that directory
+    "scen_src",    # base64(tar.gz) of that directory minus data/ and caches
+    "files",       # {filename: text} operator attachments (snap attach / take --attach)
 ]
+LABEL_MAX = 100_000   # bytes per label value: each is ONE `docker commit --change`
+                      # argv entry and Linux caps a single arg at 128 KB
 
 
 def make_labels(snap: dict[str, Any]) -> dict[str, str]:
@@ -61,6 +70,9 @@ def make_labels(snap: dict[str, Any]) -> dict[str, str]:
             out[key] = f"{float(value):.2f}"
         else:
             out[key] = str(value)
+        if len(out[key].encode()) > LABEL_MAX:
+            raise ValueError(f"label {field} is {len(out[key].encode())} bytes; "
+                             f"max {LABEL_MAX} (one docker --change argument)")
     return out
 
 
@@ -95,7 +107,8 @@ def change_args(labels: dict[str, str]) -> list[str]:
         # The --change value is parsed by the daemon as a Dockerfile LABEL
         # instruction, so values with spaces need Dockerfile-style quoting
         # (subprocess argv quoting alone is not enough).
-        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+        # `$` too: LABEL values get Dockerfile variable substitution ("$5" → "").
+        escaped = v.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
         args.extend(["--change", f'LABEL {k}="{escaped}"'])
     return args
 
@@ -217,3 +230,50 @@ def list_registry_tags(repo: str) -> list[str]:
         next_path = link.split(";", 1)[0].strip().lstrip("<").rstrip(">")
         path = next_path.split("/v2/" + repo + "/", 1)[-1]
     return tags
+
+
+# ---- attachments ----
+
+SRC_EXCLUDE = {"data", ".git", "__pycache__", ".venv", "node_modules"}
+
+
+def pack_dir(path) -> str:
+    """base64(tar.gz) of a directory, minus SRC_EXCLUDE names (the corpus is
+    in the image already; caches are noise). Deterministic order, no mtimes."""
+    import base64, io, tarfile
+    from pathlib import Path
+    root = Path(path)
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=9) as tar:
+        for f in sorted(root.rglob("*")):
+            rel = f.relative_to(root)
+            if SRC_EXCLUDE & set(rel.parts) or not f.is_file():
+                continue
+            info = tar.gettarinfo(f, arcname=str(rel))
+            info.mtime = 0
+            with f.open("rb") as fh:
+                tar.addfile(info, fh)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def unpack_dir(b64: str, dest) -> None:
+    """Inverse of pack_dir into `dest` (created). `filter="data"` refuses
+    paths that escape dest and strips dangerous modes."""
+    import base64, io, tarfile
+    from pathlib import Path
+    Path(dest).mkdir(parents=True, exist_ok=True)
+    with tarfile.open(fileobj=io.BytesIO(base64.b64decode(b64)), mode="r:gz") as tar:
+        tar.extractall(dest, filter="data")
+
+
+def read_attachments(paths) -> dict[str, str]:
+    """{basename: text} for `snap attach` / `take --attach`. Text only."""
+    from pathlib import Path
+    out = {}
+    for p in paths:
+        p = Path(p)
+        try:
+            out[p.name] = p.read_text()
+        except UnicodeDecodeError:
+            raise ValueError(f"{p}: attachments must be text (base64 it yourself if you must)")
+    return out

@@ -170,7 +170,11 @@ def cmd_show(ref: str):
         f"  Agents:    {', '.join(snap.get('agents') or [])}{souls_str}\n"
         f"  Flags:     {flags_str}\n\n"
         f"  Budget at snap:  ${float(snap.get('budget_usd') or 0):.2f} limit "
-        f"/ ${float(snap.get('budget_used') or 0):.2f} used"
+        f"/ ${float(snap.get('budget_used') or 0):.2f} used\n\n"
+        f"  Scen:      {snap.get('scen') or '—'}  {snap.get('scen_url') or ''}\n"
+        f"  Source:    {f'{len(snap['scen_src']) // 1024} KB archived at build' if snap.get('scen_src') else '—'}\n"
+        f"  Files:     " + (", ".join(f"{k} ({len(v.encode()) // 1024} KB)"
+                                       for k, v in sorted((snap.get('files') or {}).items())) or "—")
     )
     console.print(Panel(body, title=title, expand=False))
 
@@ -244,6 +248,40 @@ def cmd_note(ref: str, text: str):
     )
 
 
+# ---- attach / extract (labels; see docs/agentspace_cli.md "Attachments") ----
+
+def cmd_attach(ref: str, paths: tuple[str, ...]):
+    """Store text files on a snap as the `files` label. Local until `snap push`
+    (which re-commits the image with the new labels, like notes)."""
+    snap = resolve_snap_ref(ref)
+    try:
+        files = {**(snap.get("files") or {}), **oci.read_attachments(paths)}
+        oci.make_labels({"files": files})        # size check now, not at push
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    snap["files"], snap["notes_dirty"] = files, 1
+    db.upsert_snap(snap)
+    audit.log("snap.attach", f"{snap['scenario']}:{snap['version']}", args={"files": sorted(files)})
+    console.print(f"[green]attached:[/green] {', '.join(sorted(files))}")
+    console.print(f"[yellow]⚠  Not yet on ghcr.io. Run "
+                  f"'agentspace snap push {snap['scenario']}:{snap['version']}' to sync.[/yellow]")
+
+
+def cmd_extract(ref: str, dest: str):
+    """Write a snap's attachments to `dest`: files/<name> and, if the snap
+    carries its scen source, scen/<scen>/… ."""
+    from pathlib import Path
+    snap = resolve_snap_ref(ref)
+    out = Path(dest)
+    for name, text in (snap.get("files") or {}).items():
+        (out / "files").mkdir(parents=True, exist_ok=True)
+        (out / "files" / Path(name).name).write_text(text)
+    if snap.get("scen_src"):
+        oci.unpack_dir(snap["scen_src"], out / "scen" / (snap.get("scen") or "scen"))
+    n = len(snap.get("files") or {})
+    console.print(f"[green]✓[/green] {n} file(s){' + scen source' if snap.get('scen_src') else ''} → {out}")
+
+
 # ---- take ----
 
 # ---- key-leak tripwire (scan images before they leave the machine) ----
@@ -290,8 +328,11 @@ def cmd_take(
     note: str | None = None,
     version: str | None = None,
     allow_key_leak: bool = False,
+    attach: tuple[str, ...] = (),
 ):
-    """Snapshot a running env: docker commit + push to ghcr.io with OCI labels."""
+    """Snapshot a running env: docker commit + push to ghcr.io with OCI labels.
+    `attach` = text files (results, findings) stored on the snap as the `files`
+    label; take pushes, so attach here to have them in the first upload."""
     env = db.get_env(env_name)
     if env is None:
         raise click.ClickException(f"env {env_name!r} not found. Try 'agentspace env list'.")
@@ -357,6 +398,11 @@ def cmd_take(
         "budget_used": budget_info.get("budget_used"),
         "agentspace_ver": _agentspace_version(),
         "notes": notes_arr,
+        # scen source: inherited. files: this run's only (never the parent's).
+        "scen": parent_snap.get("scen"),
+        "scen_url": parent_snap.get("scen_url"),
+        "scen_src": parent_snap.get("scen_src"),
+        "files": oci.read_attachments(attach),
     }
 
     # Sandboxed envs keep workspaces on the host; tar them INTO the container

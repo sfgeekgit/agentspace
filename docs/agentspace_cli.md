@@ -85,7 +85,7 @@ snap list [--scenario <name>] [--json]    # table; * marks unpushed notes
 snap show <ref>                            # full detail (ref = scenario:version, snap_id prefix, or ghcr tag)
 snap tree [--scenario <name>]              # lineage tree
 snap note <ref> "<text>"                   # append a note (local-only until snap push)
-snap take <env_name> -m "<message>" [--note "<text>"] [--version X.X]
+snap take <env_name> -m "<message>" [--note "<text>"] [--version X.X] [--attach FILE]...
                                            # scans the image for leaked keys before push (override: --allow-key-leak)
                                            # snapshot a running env → commit + push
 snap fork <ref> <new_env_name> [options]   # create a new env from a snap
@@ -94,6 +94,8 @@ snap fork <ref> <new_env_name> [options]   # create a new env from a snap
   --budget <usd>               (credit limit; default 2.00)
   --host <ip>                  (default localhost)
   --kick / --no-kick           (default: on for world snaps, off otherwise)
+snap attach <ref> <file>...                # store text files on a snap (local until snap push)
+snap extract <ref> <dir>                   # write a snap's attachments + archived scen source to <dir>
 snap pull <ghcr_tag>                       # import a snap created elsewhere
 snap push <ref>                            # push notes/metadata; also the image itself if ghcr lacks it (fresh world root); same key scan as take
 snap rebuild-index [--repo <repo>]         # rebuild SQLite from ghcr.io labels
@@ -243,6 +245,28 @@ Rules:
 The smallest unused child is auto-assigned. Override with `--version`.
 
 ---
+
+## Attachments
+
+A snap carries, as OCI labels (image config, outside the container filesystem,
+unreachable by agents; see `agentspace/oci.py` LABEL_FIELDS):
+
+| Label                    | Set at   | Inherited by children | Holds                                                   |
+|--------------------------|----------|-----------------------|---------------------------------------------------------|
+| `org.agentspace.scen`    | build    | yes                   | `scenarios/<scen>` directory name (`scenario` = world name) |
+| `org.agentspace.scen_url`| build    | yes                   | expected GitHub URL of that directory (convenience; may not resolve yet) |
+| `org.agentspace.scen_src`| build    | yes                   | base64(tar.gz) of that directory as it was on disk, minus `data/` (the corpus is in the image) and caches |
+| `org.agentspace.files`   | take / attach | no               | `{filename: text}` — result.json, findings md, dev notes |
+
+`snap take --attach` puts files in the first upload. `snap attach` adds later
+and `snap push` re-commits the image with the new labels (manifest changes,
+layers don't). `snap extract` writes `files/<name>` and `scen/<scen>/…`.
+Without this tool: `docker inspect <image> --format '{{json .Config.Labels}}'`,
+then `base64 -d | tar xz` for the source.
+
+Limits: text files only; ≤100 KB per label after encoding (each label is one
+`docker commit --change` argument; Linux caps an argument at 128 KB). The
+largest scen archive today is 50 KB. Transcripts stay inside the image.
 
 ## Notes and push semantics
 

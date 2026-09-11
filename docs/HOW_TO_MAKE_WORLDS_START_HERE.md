@@ -428,7 +428,8 @@ python3 zookeeper.py snap take myrun -m "mid-game"  # snapshot any moment; fork 
 python3 zookeeper.py env kill myrun              # done (snaps persist on ghcr)
 ```
 
-Provenance: non-secret metadata → OCI labels on the snap; the full build
+Provenance: non-secret metadata → OCI labels on the snap, including your scen
+directory as it was on disk (`scen_src`; `snap extract` recovers it); the full build
 record (seed, params, role answer key) → the operator-only `audit.log`.
 
 ## Testing your scen
