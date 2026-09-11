@@ -10,7 +10,7 @@ Writes to a results tree that is a separate git repo (sister repo), default
 Does NOT commit/push: after writing it prints a cut-and-paste bash block to
 publish the run (git add/commit/push). See 2026-07-12_plan_result_json_generator.md.
 
-Handles both log grammars: commons_vote (votes/level) and support_desk
+Handles both log grammars: commons_vote (votes/level) and support_desk2
 (ticket queue). Sources, in order of trust: game_log.jsonl (docker cp, or --log), container +
 post-game snap image labels (docker inspect), live OpenRouter key (spend
 fallback), CLI args. Unknown fields are null, never guessed.
@@ -51,17 +51,18 @@ def fetch_log(env, log_arg):
     return tmp
 
 
-# support_desk log grammar (scenarios/support_desk/gm/main.py glog()).
+# support_desk2 log grammar (scenarios/support_desk2/gm/main.py glog()).
 DESK_WORLD = re.compile(r"world created: (\d+) reps, (\d+) customers, "
-                        r"(\d+) tickets, max_rounds (\d+)")
-DESK_ROUND = re.compile(r"round (\d+): opened (\S+); claimed (\S+); "
-                        r"lost (\S+); resolved (\S+); queue (\d+)")
-DESK_END = re.compile(r"(complete|capped): (\d+) rounds, (\d+)/(\d+) resolved")
+                        r"arrival_gap (\d+), max_rounds (\d+)")
+DESK_ROUND = re.compile(r"round (\d+): opened (\S+); claimed (\S+); lost (\S+); "
+                        r"resolved (\S+); confirmed (\S+); queue (\d+); woke (\d+)")
+DESK_END = re.compile(r"(complete|capped): (\d+) rounds, (\d+)/(\d+) resolved, "
+                      r"(\d+) confirmed yes")
 
 
 def parse_desk(lines):
-    """support_desk: ticket queue worked by reps. No 'level' — the outcome
-    measure is tickets resolved, so final_level stays null."""
+    """support_desk2: ticket queue worked by reps (tickets = customers). No
+    'level' — the outcome measure is tickets resolved, so final_level stays null."""
     world, rounds, outcome = None, [], None
     listify = lambda s: [] if s == "-" else s.split(",")
     for e in lines:
@@ -70,19 +71,21 @@ def parse_desk(lines):
         if m:
             world = {"n_reps": int(m[1]), "n_customers": int(m[2]),
                      "n_agents": int(m[1]) + int(m[2]),
-                     "tickets": int(m[3]), "max_rounds": int(m[4])}
+                     "tickets": int(m[2]), "arrival_gap": int(m[3]),
+                     "max_rounds": int(m[4])}
             continue
         m = DESK_ROUND.match(t)
         if m:
             rounds.append({"n": int(m[1]), "opened": listify(m[2]),
                            "claimed": listify(m[3]), "lost": listify(m[4]),
-                           "resolved": listify(m[5]), "queue": int(m[6])})
+                           "resolved": listify(m[5]), "confirmed": listify(m[6]),
+                           "queue": int(m[7]), "woke": int(m[8])})
             continue
         m = DESK_END.match(t)
         if m:
             outcome = {"status": m[1], "rounds_played": int(m[2]),
                        "resolved": int(m[3]), "tickets": int(m[4]),
-                       "final_level": None}
+                       "confirmed_yes": int(m[5]), "final_level": None}
     if outcome is None:   # no terminal line: the shift never finished
         outcome = {"status": "stalled", "rounds_played": len(rounds),
                    "resolved": sum(len(r["resolved"]) for r in rounds),
