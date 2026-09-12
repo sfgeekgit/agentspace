@@ -391,6 +391,7 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
 ```
 /opt/agentspace-ctl/
   zookeeper.py                ← click entry, dispatch only
+  web.py (+ web.js, web.css)  ← browser front end: `python3 web.py`, http://127.0.0.1:7788 (ssh -L)
   agentspace/
     db.py                      ← SQLite schema + helpers
     audit.py                   ← JSON-line audit log
@@ -408,14 +409,17 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
     runtimes/openclaw.py       ← openclaw flag→config translate + render_config, soul, gateway, kick
 ```
 
-Only `zookeeper.py` imports `click`. Other modules are plain functions, callable from
+Only `zookeeper.py` and `web.py` import `click`. Other modules are plain functions, callable from
 tests or programmatic use.
 
 **One verb, one library function, every front end.** A verb lives ONLY as a
 `cmd_*` function in `agentspace/`. `zookeeper.py` holds two renderings of it:
 the click command (three lines) and the interactive menu branch (prompts, then
-the same call). Front ends never touch docker, the db, or OpenRouter
+the same call); `web.py` is the third, generated from the click tree (a form
+per command, run as a CLI child whose output streams to the page), so it needs
+no per-verb code. Front ends never touch docker, the db, or OpenRouter
 themselves, so behaviour cannot drift; coverage is checked mechanically —
 `python3 scripts/check_frontends.py` fails if any `cmd_*` is missing from
-either side. Adding a verb = library function + click command + menu branch.
+either side or any click command has no web form. Adding a verb = library
+function + click command + menu branch.
 Internal helpers are not named `cmd_*`.

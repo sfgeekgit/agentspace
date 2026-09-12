@@ -34,10 +34,7 @@ import click
 
 DEFAULT_PERSONA = "blank"   # least framing baked into SOUL.md — the study default
 
-try:
-    import questionary
-except ImportError:
-    questionary = None
+questionary = None   # imported by launch_menu(); the CLI never needs it
 
 
 # ---- secrets loading ----
@@ -1225,7 +1222,10 @@ def launch_menu():
     DEVELOPER: If you add a new top-level click group, add it as a choice here
     and write a corresponding menu_<group>() function above.
     """
-    if questionary is None:
+    global questionary
+    try:
+        import questionary
+    except ImportError:
         sys.exit("questionary is required for the interactive menu.\nInstall it with: pip install questionary")
 
     print("\n  agentspace control panel\n  arrow keys to navigate · Enter to select · Esc / Ctrl-C to cancel\n")

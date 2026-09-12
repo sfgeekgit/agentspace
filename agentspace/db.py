@@ -75,7 +75,7 @@ def get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
         _ensure_state_dir()
-        _conn = sqlite3.connect(DB_PATH)
+        _conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA foreign_keys = ON")
         _init_schema(_conn)

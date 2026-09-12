@@ -347,6 +347,7 @@ class Watcher(_Streamer):
             for raw in self.proc.stdout:
                 path, _, line = raw.rstrip("\n").partition("\t")
                 if path == "\x00PING":
+                    yield []   # keepalive: lets a blocked consumer notice its client left
                     continue
                 if path == "\x00SYNC":
                     synced = True

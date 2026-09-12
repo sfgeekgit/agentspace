@@ -1,0 +1,98 @@
+/* agentspace web UI — look and feel copied from the demo site (/srv/agentspace/site). */
+:root {
+  --bg: #f7f8fa; --card: #fff; --head: #fafbfc; --ink: #0f172a; --body: #374151; --muted: #64748b; --faint: #94a3b8;
+  --line: #e5e7eb; --soft: #f1f5f9; --ac: #6366f1; --acdk: #4f46e5; --actint: #eef2ff; --acborder: #c7d2fe;
+  --active: #059669; --dormant: #d97706; --stopped: #94a3b8; --missing: #dc2626;
+  --mono: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--ac); text-decoration: none; cursor: pointer; }
+a:hover { text-decoration: underline; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 8px 0 4px; }
+h2 { font-size: 15px; font-weight: 700; margin: 26px 0 10px; }
+h3 { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); margin: 18px 0 6px; }
+code, pre, #out, #pane, #views, #chatlog, #runs, #summary { font-family: var(--mono); }
+button { font: inherit; font-size: 13px; background: #fff; border: 1px solid #cbd5e1; color: #1f2937; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+button:hover { background: var(--soft); }
+.primary { display: inline-block; background: var(--ac); color: #fff; border: 1px solid var(--ac); font-weight: 600; font-size: 14px; padding: 9px 16px; border-radius: 10px; box-shadow: 0 8px 20px rgba(99, 102, 241, .28); }
+.primary:hover { background: var(--acdk); text-decoration: none; }
+input, select, textarea { font: inherit; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; width: 100%; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--acborder); box-shadow: 0 0 0 3px var(--actint); }
+input[type=checkbox] { width: auto; }
+label { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12.5px; }
+label > span { flex: none; width: 120px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.dim, .cut { color: var(--faint); } .cut { font-style: italic; }
+.err { color: var(--missing); } .warn { color: var(--dormant); }
+.note { color: var(--muted); font-size: 12.5px; }
+
+/* console */
+.shell { display: flex; height: 100vh; }
+#nav { flex: none; width: 240px; background: var(--card); border-right: 1px solid var(--line); padding: 18px; overflow: auto; }
+.brand b { display: block; font-size: 17px; letter-spacing: -.01em; }
+.brand small { color: var(--faint); font-size: 11px; }
+#nav .primary { display: block; text-align: center; margin: 16px 0 4px; }
+#envs a, #snaps div { display: block; font-size: 12.5px; padding: 3px 0; border-top: 1px solid var(--soft); color: var(--ink); }
+#envs small { float: right; font-family: var(--mono); font-size: 11px; color: var(--stopped); }
+#envs .active small { color: var(--active); } #envs .dormant small { color: var(--dormant); }
+#envs .missing small, #envs .unreachable small { color: var(--missing); }
+#snaps div { color: var(--muted); font-size: 11.5px; } #snaps b { font-family: var(--mono); color: var(--ink); font-weight: 600; }
+main { flex: 1; min-width: 0; display: flex; }
+#verbs { flex: none; width: 380px; overflow: auto; padding: 8px 18px 18px; border-right: 1px solid var(--line); background: var(--card); }
+#verbs details { border-top: 1px solid var(--soft); padding: 6px 0; }
+#verbs summary { cursor: pointer; font-size: 13px; } #verbs summary b { font-family: var(--mono); font-weight: 600; }
+.doc { color: var(--faint); font-size: 12px; }
+#verbs form, #verbs .note { padding: 8px 0 4px 14px; }
+#verbs form button { margin: 4px 0 0 128px; }
+#outbox { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px 18px; }
+#runs { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; margin-bottom: 10px; min-height: 18px; }
+#runs a { color: var(--ac); } #runs a.done { color: var(--muted); }
+.outhead { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+#outlabel { font-family: var(--mono); font-weight: 700; color: var(--ink); } #elapsed { margin-left: auto; font-family: var(--mono); }
+#out { flex: 1; min-height: 120px; margin: 0; overflow: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 12.5px; line-height: 1.5; }
+#out div { min-height: 1lh; white-space: pre; }
+
+/* watch */
+body[data-env] { display: flex; flex-direction: column; height: 100vh; }
+header { display: flex; align-items: baseline; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--card); }
+header h1 { margin: 0; } #sub { color: var(--muted); font-family: var(--mono); font-size: 13px; }
+.right { margin-left: auto; display: flex; gap: 12px; align-items: center; } #paused { color: var(--dormant); font-size: 12px; }
+.split { display: flex; flex: 1; min-height: 0; }
+#views { flex: none; width: 232px; margin: 0; padding: 10px 8px; list-style: none; overflow: auto; border-right: 1px solid var(--line); background: var(--card); font-size: 12.5px; }
+#views ul { list-style: none; margin: 0; padding: 0 0 0 16px; }
+#views summary { cursor: pointer; padding: 0 0 0 6px; }
+.view { display: block; padding: 4px 10px; cursor: pointer; border-radius: 6px; }
+summary .view { display: inline-block; }
+.view:hover { background: var(--soft); } .view.sel { background: var(--actint); color: var(--acdk); font-weight: 700; }
+.col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#pane { flex: 1; overflow: auto; padding: 8px 0; font-size: 12.5px; line-height: 1.5; }
+#pane > .dim, #pane > .cut { padding: 4px 18px; }
+.ev { display: flex; gap: 12px; padding: 2px 18px; } .ev:hover { background: var(--soft); }
+.ts { flex: none; width: 60px; color: var(--faint); } .who { flex: none; font-weight: 700; }
+.text { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--body); }
+.kind-thinking .text { color: var(--faint); font-style: italic; } .kind-tool .text { color: #0891b2; }
+.kind-user .text { color: var(--active); } .kind-announce .text { font-weight: 700; color: var(--dormant); }
+.kind-pm .text { color: #c026d3; } .kind-move .text { font-weight: 700; }
+.kind-wake .text, .kind-info .text, .kind-raw .text { color: var(--faint); } .kind-deny .text { color: var(--missing); }
+#chat { display: flex; gap: 8px; align-items: center; padding: 9px 18px; border-top: 1px solid var(--line); background: var(--card); margin: 0; }
+#chatwho { flex: none; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+#chatlog { max-height: 30vh; overflow: auto; padding: 6px 18px; font-size: 12.5px; background: var(--card); border-top: 1px solid var(--soft); white-space: pre-wrap; }
+#chat[hidden] + #chatlog { display: none; }
+#chatlog .you { color: var(--muted); } #chatlog .reply { color: var(--ink); margin-bottom: 6px; }
+
+/* wizard */
+.wiz { max-width: 760px; padding: 30px 34px; }
+.card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin: 8px 0; color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
+.card:hover { border-color: var(--ink); text-decoration: none; } .card b { font-family: var(--mono); font-size: 16px; }
+.wiz label > span { width: 340px; font-family: inherit; font-size: 12.5px; }
+.wiz .primary { margin-top: 18px; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+th { text-align: left; font-weight: 600; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); padding: 8px 12px; background: var(--head); border-bottom: 1px solid var(--line); }
+td { padding: 7px 12px; border-bottom: 1px solid var(--soft); font-size: 13px; vertical-align: middle; white-space: nowrap; }
+td code { color: var(--muted); }
+.personas details { margin: 6px 0; font-size: 12.5px; } .personas summary { cursor: pointer; font-family: var(--mono); }
+.personas pre { white-space: pre-wrap; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 12px; color: var(--body); }
+.chk { display: inline-flex; width: auto; margin-right: 16px; }
+#summary { font-size: 12.5px; color: var(--muted); margin-top: 18px; }
+.wiz #out { height: 40vh; margin-top: 18px; }

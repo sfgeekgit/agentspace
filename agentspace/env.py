@@ -3,6 +3,7 @@
 import os
 import re
 import shutil
+import time
 from datetime import datetime, timezone
 
 import click
@@ -496,15 +497,22 @@ def cmd_roll_sessions(name: str, agent: str | None = None):
                   f"fresh session (and re-rendered files) at each agent's next wake.")
 
 
-def cmd_watch(name: str, plain_view: str | None = None, follow: bool = True):
-    """Live log watcher: Textual TUI (default) or --plain single-view stream.
-    Views/parsers live in logwatch.py; the TUI shell in watch_tui.py."""
+def prepare_watch(name: str, view: str) -> tuple[str, str]:
+    """cmd_watch's preconditions and audit record; returns (host, container).
+    Raises ClickException for an unknown/non-PI/stopped env."""
     env = _require_env(name)
     _require_pi(env)
     host = env["host"] or "localhost"
     if not docker_host.container_running(host, name):
         raise click.ClickException(f"env {name!r} is not running — 'env start {name}' first.")
-    audit.log("env.watch", name, args={"view": plain_view or "tui"})
+    audit.log("env.watch", name, args={"view": view})
+    return host, name
+
+
+def cmd_watch(name: str, plain_view: str | None = None, follow: bool = True):
+    """Live log watcher: Textual TUI (default) or --plain single-view stream.
+    Views/parsers live in logwatch.py; the TUI shell in watch_tui.py."""
+    host, _ = prepare_watch(name, plain_view or "tui")
     from . import logwatch
     if plain_view:
         logwatch.watch_plain(host, name, plain_view, follow)
@@ -513,11 +521,42 @@ def cmd_watch(name: str, plain_view: str | None = None, follow: bool = True):
         WatchApp(host, name).run()
 
 
+def _send_and_wait(rt, host, name, agent, text) -> str | None:
+    """cmd_chat's loop body: operator PM in, wait for the wake that started
+    after the send to end, read the newest assistant text. None on timeout."""
+    mark = rt.audit_line_count(host, name)
+    rt.kick_agent(host, name, agent, text)
+    deadline = time.monotonic() + 300
+    while time.monotonic() < deadline:
+        if rt.wake_ended_since(host, name, agent, mark):
+            break
+        time.sleep(2)
+    else:
+        return None
+    return rt.last_assistant_text(host, name, agent)
+
+
+def chat_turn(name: str, agent: str, text: str) -> str:
+    """One web chat turn: cmd_chat's pre-loop checks (silently), then
+    _send_and_wait, then the same reply strings cmd_chat prints."""
+    env = _require_env(name)
+    rt = _require_pi(env)
+    host = env["host"] or "localhost"
+    if agent not in env_agent_ids(name):
+        raise click.ClickException(f"no agent {agent!r} in env {name!r}.")
+    if not rt.gateway_running(host, name):
+        rt.start_gateway(host, name)
+        rt.wait_for_gateway(host, name)
+    reply = _send_and_wait(rt, host, name, agent, text)
+    if reply is None:
+        return "no wake_end within 300s — see env logs."
+    return reply or "(no reply text — norms allow silence)"
+
+
 def cmd_chat(name: str, agent: str):
     """Minimal operator REPL: each line is sent as an operator PM; the agent's
     reply is read from its session transcript once the wake ends. Ctrl-D/empty
     line to leave. Shares the agent's ONE session with everything else."""
-    import time as _time
     env = _require_env(name)
     rt = _require_pi(env)
     host = env["host"] or "localhost"
@@ -536,16 +575,9 @@ def cmd_chat(name: str, agent: str):
             break
         if not line:
             break
-        mark = rt.audit_line_count(host, name)
-        rt.kick_agent(host, name, agent, line)
-        deadline = _time.monotonic() + 300
-        while _time.monotonic() < deadline:
-            if rt.wake_ended_since(host, name, agent, mark):
-                break
-            _time.sleep(2)
-        else:
+        reply = _send_and_wait(rt, host, name, agent, line)
+        if reply is None:
             console.print("[yellow]no wake_end within 300s — see env logs.[/yellow]")
             continue
-        reply = rt.last_assistant_text(host, name, agent)
         console.print(f"[bold]{agent}[/bold]: {reply or '(no reply text — norms allow silence)'}")
     audit.log("env.chat", name, args={"agent": agent})
