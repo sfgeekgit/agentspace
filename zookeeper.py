@@ -300,10 +300,16 @@ def env_logs(name, agent, all_agents, everything, follow):
               help="Stream one view to stdout instead of the TUI "
                    "(a bad VIEW name lists what's available).")
 @click.option("--no-follow", is_flag=True, help="With --plain: dump what exists and exit.")
-def env_watch(name, plain_view, no_follow):
+@click.option("--replay", is_flag=True,
+              help="Not live: replay the run so far from its first event, paced by "
+                   "the original timestamps (the container must be up; dormant is fine).")
+@click.option("--speed", type=click.FloatRange(min=0, min_open=True), default=1.0,
+              show_default=True, metavar="N", help="With --replay: N× faster, e.g. 2 or 10.")
+def env_watch(name, plain_view, no_follow, replay, speed):
     """Live log watcher for a PI env — TUI with a sidebar of views (q to quit)."""
     from agentspace import env as env_mod
-    env_mod.cmd_watch(name, plain_view=plain_view, follow=not no_follow)
+    env_mod.cmd_watch(name, plain_view=plain_view, follow=not no_follow,
+                      replay=speed if replay else None)
 
 
 @env.command("chat")

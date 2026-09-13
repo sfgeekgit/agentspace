@@ -509,16 +509,18 @@ def prepare_watch(name: str, view: str) -> tuple[str, str]:
     return host, name
 
 
-def cmd_watch(name: str, plain_view: str | None = None, follow: bool = True):
+def cmd_watch(name: str, plain_view: str | None = None, follow: bool = True,
+              replay: float | None = None):
     """Live log watcher: Textual TUI (default) or --plain single-view stream.
+    replay=N: the run so far at N× its original pace instead of live.
     Views/parsers live in logwatch.py; the TUI shell in watch_tui.py."""
     host, _ = prepare_watch(name, plain_view or "tui")
     from . import logwatch
     if plain_view:
-        logwatch.watch_plain(host, name, plain_view, follow)
+        logwatch.watch_plain(host, name, plain_view, follow, replay)
     else:
         from .watch_tui import WatchApp
-        WatchApp(host, name).run()
+        WatchApp(host, name, replay).run()
 
 
 def _send_and_wait(rt, host, name, agent, text) -> str | None:

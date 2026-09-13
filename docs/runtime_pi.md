@@ -434,7 +434,12 @@ Implementation (`agentspace/logwatch.py` + `watch_tui.py`): one tiny streamer
 loop runs in-container via docker exec and re-globs the view's file patterns
 each cycle — late-appearing session files and rollovers are picked up by
 construction. `env watch --plain <view> [--no-follow]` streams one rendered
-view to stdout for piping/grep. `env logs` remains the raw-tail surface
+view to stdout for piping/grep. `--replay [--speed N]` (TUI, --plain, and
+the web watch page's speed select) is not live: a `--once` read of the whole
+run, each event yielded after the original gap ÷ N (ISO or epoch-float `ts`;
+none → no wait) in half-second keepalive ticks, so a view switch or a closed
+tab ends it promptly. The container must be up (dormant is fine); a stopped
+env cannot be replayed. `env logs` remains the raw-tail surface
 (its `--all -f` uses the same streamer, lines prefixed `path<TAB>`).
 Hard-won invariants (each was a live bug): streamers run WITHOUT
 `docker exec -i` and with stdin=/dev/null — an attached docker client reads

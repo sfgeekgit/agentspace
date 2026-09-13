@@ -53,10 +53,10 @@ class WatchApp(App):
         Binding("m", "edge(1)", "bottom", show=False),
     ]
 
-    def __init__(self, host: str, container: str):
+    def __init__(self, host: str, container: str, replay: float | None = None):
         super().__init__()
-        self.host, self.container = host, container
-        self.title = f"watch — {container}"
+        self.host, self.container, self.replay = host, container, replay
+        self.title = f"watch — {container}" + (f"  (replay {replay:g}×)" if replay else "")
         self.watcher = None
         self._current = None
         self._debounce = None
@@ -181,7 +181,7 @@ class WatchApp(App):
         if old:
             old.stop()
         watcher = logwatch.Watcher(self.host, self.container, self.views[name],
-                                   backfill=200)
+                                   backfill=200, replay=self.replay)
         with self._lock:
             if self._current != name:
                 stale = True
@@ -203,6 +203,9 @@ class WatchApp(App):
                          for e in chunk[i:i + 50]]
                 # call_from_thread waits for the paint — natural throttling
                 self.call_from_thread(self._write_lines, name, pane, lines)
+        if self.replay and self._current == name:   # a replay has an end; live has none
+            self.call_from_thread(self._write_lines, name, pane,
+                                  [Text("replay ended", style="dim italic")])
 
     def _show_empty(self, name, pane):
         if self._current != name:

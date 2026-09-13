@@ -119,7 +119,9 @@ env kill <name> [--force]                  # docker stop + rm; disables OpenRout
 env watch <name> [--plain VIEW]            # PI: live log TUI — sidebar of views (spectator
                                            # feed, board, announcements, budget, per-agent
                                            # thoughts/says/messages/scratchpad, scen-declared
-                                           # views); --plain streams one view for piping
+                                           # views); --plain streams one view for piping;
+                                           # --replay [--speed N]: not live — the run so far,
+                                           # paced by its timestamps (container up; dormant ok)
 env logs <name> [--agent <id>] [-f]        # raw tails: gateway log; or one agent's session JSONL
 env exec <name> <cmd...>                   # docker exec passthrough
 ```

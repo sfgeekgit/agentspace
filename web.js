@@ -165,8 +165,10 @@ if ($("pane")) {
       chat.elements.text.disabled = busy.has(name);
       $("chatwho").textContent = `you → ${name}:`;
     }
+    const speed = $("speed").value;   // "" = live; N = replay the run so far at N×
+    $("live").lastChild.textContent = speed ? `replaying ${speed}×` : "streaming live";
     let first = true, empty = null;
-    stream(`/stream/${enc(env)}/${enc(name)}`, lines => {
+    stream(`/stream/${enc(env)}/${enc(name)}${speed ? "?replay=" + speed : ""}`, lines => {
       if (g !== gen) return;
       const evs = lines.filter(l => l).map(l => JSON.parse(l));   // a blank line is a keepalive
       if (first && !evs.length) pane.append(empty = el("div", "nothing to see here yet", "dim"));
@@ -174,7 +176,7 @@ if ($("pane")) {
       if (evs.length && empty) { empty.remove(); empty = null; }
       add(pane, evs.map(render));
     }, {signal: ctl.signal})
-      .then(() => { if (g === gen) { $("live").hidden = true; add(pane, [el("div", "stream ended", "dim")]); } })
+      .then(() => { if (g === gen) { $("live").hidden = true; add(pane, [el("div", speed ? "replay ended" : "stream ended", "dim")]); } })
       .catch(e => { if (g === gen && e.name !== "AbortError") { $("live").hidden = true; add(pane, [el("div", e.message, "ev kind-deny")]); } });
   }
   fetch("/views/" + enc(env)).then(r => r.json()).then(d => {
@@ -207,6 +209,7 @@ if ($("pane")) {
       .finally(() => { busy.delete(agent); if (current === agent) chat.elements.text.disabled = false; });
   };
   pane.onscroll = () => { $("paused").hidden = atBottom(pane); };
+  $("speed").onchange = () => { if (current) select(current); };   // restart the view, live or as a replay
 }
 
 // ---- wizard ----

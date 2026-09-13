@@ -284,10 +284,12 @@ def watch_page(name):
              ("runtime", snap.get("runtime")), ("host", env["host"] or "localhost"), ("agents", len(snap.get("agents") or [])),
              ("created", (env.get("created_at") or "")[:16])]
     meta = "".join(f"<span>{k} <b>{esc(str(v))}</b></span>" for k, v in facts if v)
+    speeds = "".join(f"<option value={n}>replay {n}×</option>" for n in (1, 2, 5, 10, 30))
     body = (f'<header><a href="/">← console</a><div class=hrow><h1>{esc(name)}</h1><span class="dot {esc(status.split(" ")[0])}">● {esc(status)}</span>'
             f'<span id=actions></span></div><div class=meta>{meta}</div></header>'
             f'<div class=split><aside id=agents><h3>Agents</h3>{cards or "<p class=dim>none recorded</p>"}</aside><div class=col>'
-            f'<div class=tabs><ul id=views><li class=dim>loading views…</li></ul><span id=paused hidden>paused — scroll to the bottom to follow</span></div>'
+            f'<div class=tabs><ul id=views><li class=dim>loading views…</li></ul><span id=paused hidden>paused — scroll to the bottom to follow</span>'
+            f'<select id=speed title="replay the run so far, paced by its own timestamps"><option value="">live</option>{speeds}</select></div>'
             f'<div id=pane></div><div id=live hidden><span class=pulse></span>streaming live</div>'
             f'<form id=chat hidden><span id=chatwho></span><input name=text autocomplete=off placeholder="message the agent (Enter to send)">'
             f'<button>Send</button></form><div id=chatlog></div></div>'
@@ -487,7 +489,7 @@ class Handler(BaseHTTPRequestHandler):
             u = budget_mod.usage(env)
             return self.reply(200, json.dumps({"used": u and u[0], "limit": u[1] if u else env.get("budget_usd")}), JSON)
         if m == "GET" and len(seg) == 3 and seg[0] == "stream":
-            return self.stream_view(seg[1], seg[2])
+            return self.stream_view(seg[1], seg[2], q)
         if m == "POST" and len(seg) == 3 and seg[0] == "chat":
             return self.chat(seg[1], seg[2], body)
         if m == "GET" and seg == ["new"]:
@@ -517,7 +519,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, json.dumps(MODELS[name]), JSON)
         self.reply(404, "not found")
 
-    def stream_view(self, name, view_name):
+    def stream_view(self, name, view_name, q):
+        try:
+            replay = max(float((q.get("replay") or ["0"])[0]), 0) or None   # ?replay=N: the run so far, paced, N× speed
+        except ValueError:
+            return self.reply(400, "replay must be a number")
         try:
             host, _ = env_mod.prepare_watch(name, view_name)
         except click.ClickException as err:   # a hand-typed URL for a stopped env: a message, not a status
@@ -526,7 +532,7 @@ class Handler(BaseHTTPRequestHandler):
         view = next((v for v in views if v.name == view_name), None)
         if view is None:
             return self.reply(404, f"no view {view_name!r}. Views: {', '.join(v.name for v in views)}")
-        watcher = logwatch.Watcher(host, name, view, backfill=200)
+        watcher = logwatch.Watcher(host, name, view, backfill=200, replay=replay)
         self.start_stream(NDJSON)
         try:
             for chunk in watcher.events():     # backlog as one chunk, then one event per chunk; [] = keepalive

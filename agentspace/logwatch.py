@@ -11,9 +11,11 @@ Docs: docs/runtime_pi.md ("watching a world").
 """
 
 import json
+import time
 import uuid
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable, Iterator
 
 from rich.markup import escape
@@ -105,6 +107,17 @@ def _j(line: str) -> dict | None:
 def _trim(s: str, n: int = 160) -> str:
     s = str(s)
     return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _epoch(ts: str) -> float | None:
+    """Event ts → seconds since the epoch: ISO (audit, board, sessions) or a
+    bare float (scen logs such as game_log.jsonl); None if absent/unparseable."""
+    for parse in (float, lambda s: datetime.fromisoformat(s).timestamp()):
+        try:
+            return parse(ts)
+        except ValueError:
+            pass
+    return None
 
 
 # ---- parsers ----
@@ -324,24 +337,28 @@ class _Streamer:
 
 class Watcher(_Streamer):
     """One running stream of a view. stop() kills the docker exec, which
-    unblocks any thread iterating events() — how the TUI switches views."""
+    unblocks any thread iterating events() — how the TUI switches views.
+    replay=N: not live — the run so far from its first event, paced by the
+    original gaps at N× speed (a whole-run --once read, never trimmed)."""
 
     def __init__(self, host, container, view: View, follow: bool = True,
-                 backfill: int | None = None):
-        self.view = view
-        self.backfill = backfill
+                 backfill: int | None = None, replay: float | None = None):
+        self.view, self.replay = view, replay
+        self.backfill = None if replay else backfill
         # cap the first pass to ≈4KB/event: the backlog is trimmed to the last
         # `backfill` events host-side anyway — don't ship whole grown files
         super().__init__(host, container,
-                         "--follow-sync" if follow else "--once", view.patterns,
-                         cap_bytes=backfill * 4096 if backfill else None)
+                         "--follow-sync" if follow and not replay else "--once",
+                         view.patterns,
+                         cap_bytes=self.backfill * 4096 if self.backfill else None)
 
     def events(self) -> Iterator[list[Event]]:
         """Yield CHUNKS of Events: the pre-existing backlog (everything before
         the streamer's first-pass sync marker, or before EOF in --once mode)
         arrives as ONE chunk — trimmed to the last `backfill` if given — then
         live lines follow one per chunk. Chunking is what lets the TUI paint
-        the backlog in a single callback instead of thousands."""
+        the backlog in a single callback instead of thousands. A replay has
+        no backlog: every event is its own paced chunk (_paced)."""
         buf, synced = deque(maxlen=self.backfill), False
         try:
             for raw in self.proc.stdout:
@@ -361,10 +378,28 @@ class Watcher(_Streamer):
                     yield [ev]
                 else:
                     buf.append(ev)
-            if not synced and buf:   # --once mode / stream died pre-sync
-                yield list(buf)
+            if not synced:   # --once mode / stream died pre-sync
+                yield from self._paced(buf) if self.replay and buf else (list(buf),)
         finally:
             self.stop()
+
+    def _paced(self, evs) -> Iterator[list[Event]]:
+        """Replay: each event alone, after the original gap ÷ speed. The wait
+        is half-second ticks yielding [] (the keepalive: a gone web client is
+        noticed) and ends early once stop() was called (a TUI view switch)."""
+        prev = None
+        for ev in evs:
+            t = _epoch(ev.ts)
+            wait = (t - prev) / self.replay if t is not None and prev is not None else 0
+            while wait > 0 and not self._stopped:
+                yield []
+                time.sleep(min(wait, 0.5))
+                wait -= 0.5
+            if self._stopped:
+                return
+            yield [ev]
+            if t is not None:
+                prev = t
 
 
 class RawTail(_Streamer):
@@ -382,8 +417,9 @@ class RawTail(_Streamer):
     terminate = _Streamer.stop
 
 
-def stream_view(host, container, view: View, follow: bool) -> Iterator[Event]:
-    for chunk in Watcher(host, container, view, follow).events():
+def stream_view(host, container, view: View, follow: bool,
+                replay: float | None = None) -> Iterator[Event]:
+    for chunk in Watcher(host, container, view, follow, replay=replay).events():
         yield from chunk
 
 
@@ -411,7 +447,8 @@ def render(ev: Event) -> str:
     return head + (f"[{style}]{body}[/]" if style else body)
 
 
-def watch_plain(host, container, view_name: str, follow: bool):
+def watch_plain(host, container, view_name: str, follow: bool,
+                replay: float | None = None):
     """Stream one view's rendered lines to stdout (pipe/grep-able; also the
     parser test harness). The TUI is the primary surface — see watch_tui.py."""
     from rich.console import Console
@@ -422,7 +459,7 @@ def watch_plain(host, container, view_name: str, follow: bool):
         names = ", ".join(v.name for v in views_for(host, container))
         raise SystemExit(f"no view {view_name!r}. Views: {names}")
     try:
-        for ev in stream_view(host, container, view, follow):
+        for ev in stream_view(host, container, view, follow, replay):
             console.print(render(ev))
             console.file.flush()  # line-buffered even when piped (tail/grep)
     except KeyboardInterrupt:
