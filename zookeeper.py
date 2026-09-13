@@ -10,11 +10,15 @@ The real work lives in agentspace/*.py.
 ║  Every command in this file MUST be available in BOTH of these ways:        ║
 ║    1. As a click command with flags (for scripting / automation)             ║
 ║    2. In the interactive menu (for human operators)                          ║
+║    3. In the web UI (web.py) — automatic: its form is generated from the     ║
+║       click command, so nothing to write; see docs/agentspace_cli.md         ║
 ║                                                                              ║
 ║  When you add a new click command:                                           ║
 ║    • Add it to the appropriate click group below (snap, env, budget, etc.)  ║
 ║    • Add a matching entry in the corresponding menu_<group>() function       ║
 ║      in the INTERACTIVE MENU section at the bottom of this file             ║
+║    • Run scripts/check_frontends.py — it checks all three front ends; a      ║
+║      param shape web.py cannot render (see web.py _control) fails it         ║
 ║                                                                              ║
 ║  When you add a whole new click group:                                       ║
 ║    • Add the group and its commands below as usual                           ║
@@ -22,7 +26,7 @@ The real work lives in agentspace/*.py.
 ║    • Add the new group as a top-level choice in launch_menu()                ║
 ║                                                                              ║
 ║  Failing to update the menu means human operators lose access to your        ║
-║  feature. Both modes must stay in sync.                                      ║
+║  feature. All three front ends must stay in sync.                            ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 

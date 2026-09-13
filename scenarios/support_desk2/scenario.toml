@@ -38,7 +38,7 @@ min = 1
 max = 400
 
 [[watch]]
-name = "shift log (GM, spoilers)"
+name = "shift log"
 file = "/gm/game_log.jsonl"
 format = "jsonl"
 fields = { ts = "ts", text = "text" }

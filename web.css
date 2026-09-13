@@ -32,6 +32,7 @@ label > span { flex: none; width: 120px; color: var(--muted); font-family: var(-
 /* console */
 .shell { display: flex; height: 100vh; }
 #nav { flex: none; width: 240px; background: var(--card); border-right: 1px solid var(--line); padding: 18px; overflow: auto; }
+.brand { display: block; color: var(--ink); } .brand:hover { text-decoration: none; }
 .brand b { display: block; font-size: 17px; letter-spacing: -.01em; }
 .brand small { color: var(--faint); font-size: 11px; }
 #nav .primary { display: block; text-align: center; margin: 16px 0 4px; }
@@ -82,7 +83,7 @@ header { padding: 12px 20px 10px; border-bottom: 1px solid var(--line); backgrou
 .view { padding: 0 0 9px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .view:hover { color: var(--ink); } .view.sel { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
 .brk { flex-basis: 100%; height: 0; } .lbl { font-family: var(--mono); color: var(--faint); padding-bottom: 9px; } .act { color: var(--ac); }
-#paused { color: var(--dormant); font-size: 12px; margin-bottom: 9px; } #follow { margin-bottom: 8px; }
+#paused { color: var(--dormant); font-size: 12px; margin-bottom: 9px; white-space: nowrap; }
 #pane { flex: 1; overflow: auto; padding: 8px 0; font-size: 12.5px; line-height: 1.5; }
 #pane > .dim, #pane > .cut { padding: 4px 18px; }
 .ev { display: flex; gap: 12px; padding: 2px 18px; } .ev:hover { background: var(--soft); }

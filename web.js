@@ -206,7 +206,6 @@ if ($("pane")) {
       .catch(err => wait.replaceWith(el("div", err.message, "err")))
       .finally(() => { busy.delete(agent); if (current === agent) chat.elements.text.disabled = false; });
   };
-  $("follow").onclick = () => { pane.scrollTop = pane.scrollHeight; };
   pane.onscroll = () => { $("paused").hidden = atBottom(pane); };
 }
 

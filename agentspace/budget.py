@@ -9,6 +9,16 @@ from . import audit, db, openrouter
 console = Console()
 
 
+def usage(env: dict) -> tuple[float, float] | None:
+    """(used, limit) in USD from the env's OpenRouter key; None when it has none.
+    cmd_show's per-row read, shared with the web UI's budget panel."""
+    if not env.get("openrouter_key"):
+        return None
+    data = openrouter.get_key_info(env["openrouter_key"])
+    data = data.get("data") or data
+    return float(data.get("usage") or 0), float(data.get("limit") or env.get("budget_usd") or 0)
+
+
 def cmd_show(env_name: str | None = None):
     if env_name:
         envs = [db.get_env(env_name)]
@@ -26,17 +36,12 @@ def cmd_show(env_name: str | None = None):
 
     for e in envs:
         used = limit = remaining = "—"
-        if e.get("openrouter_key"):
-            try:
-                info = openrouter.get_key_info(e["openrouter_key"])
-                data = info.get("data") or info
-                used_v = float(data.get("usage") or 0)
-                limit_v = float(data.get("limit") or e.get("budget_usd") or 0)
-                used = f"${used_v:.2f}"
-                limit = f"${limit_v:.2f}"
-                remaining = f"${max(0.0, limit_v - used_v):.2f}"
-            except Exception as ex:
-                used = f"err: {ex}"
+        try:
+            if (u := usage(e)) is not None:
+                used, limit = f"${u[0]:.2f}", f"${u[1]:.2f}"
+                remaining = f"${max(0.0, u[1] - u[0]):.2f}"
+        except Exception as ex:
+            used = f"err: {ex}"
         table.add_row(e["name"], used, limit, remaining)
     console.print(table)
 

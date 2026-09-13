@@ -29,7 +29,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import click
 
 import zookeeper                                   # loads secrets; the click tree is zookeeper.cli
-from agentspace import audit, builder, db, env as env_mod, logwatch, openrouter, registry, runtimes, versioning
+from agentspace import audit, budget as budget_mod, builder, db, env as env_mod, logwatch, registry, runtimes, versioning
 
 PORT = int(os.environ.get("AGENTSPACE_WEB_PORT", 7788))   # override for a second worktree; the service uses the default
 REPO = Path(__file__).resolve().parent
@@ -259,7 +259,7 @@ def console_page():
         else:
             body = f"<p class=note>on the watch page: <code>{esc(SPECIAL[key])}&lt;env&gt;</code> — open an env from the list</p>"
         verbs.append(f"<details><summary><b>{esc(key)}</b> <span class=doc>{esc(cmd.get_short_help_str(120))}</span></summary>{body}</details>")
-    body = (f'<div class=shell><aside id=nav><div class=brand><b>agentspace</b><small>operator console</small></div>'
+    body = (f'<div class=shell><aside id=nav><a class=brand href="/"><b>agentspace</b><small>operator console</small></a>'
             f'<a class=primary href=/new>New world</a><h3>envs</h3><div id=envs>{envs or "<span class=dim>none</span>"}</div>'
             f'<h3>snaps</h3><div id=snaps>{snap_html or "<span class=dim>none</span>"}</div></aside>'
             f'<main><section id=verbs>{"".join(verbs)}</section><section id=outbox><div id=runs></div>{OUT}</section></main></div>{dl}')
@@ -287,7 +287,7 @@ def watch_page(name):
     body = (f'<header><a href="/">← console</a><div class=hrow><h1>{esc(name)}</h1><span class="dot {esc(status.split(" ")[0])}">● {esc(status)}</span>'
             f'<span id=actions></span></div><div class=meta>{meta}</div></header>'
             f'<div class=split><aside id=agents><h3>Agents</h3>{cards or "<p class=dim>none recorded</p>"}</aside><div class=col>'
-            f'<div class=tabs><ul id=views><li class=dim>loading views…</li></ul><span id=paused hidden>paused</span><button id=follow>Follow</button></div>'
+            f'<div class=tabs><ul id=views><li class=dim>loading views…</li></ul><span id=paused hidden>paused — scroll to the bottom to follow</span></div>'
             f'<div id=pane></div><div id=live hidden><span class=pulse></span>streaming live</div>'
             f'<form id=chat hidden><span id=chatwho></span><input name=text autocomplete=off placeholder="message the agent (Enter to send)">'
             f'<button>Send</button></form><div id=chatlog></div></div>'
@@ -480,13 +480,12 @@ class Handler(BaseHTTPRequestHandler):
             except click.ClickException as err:
                 data = {"error": err.format_message()}
             return self.reply(200, json.dumps(data), JSON)
-        if m == "GET" and len(seg) == 2 and seg[0] == "budget":   # what budget show reads, as JSON
+        if m == "GET" and len(seg) == 2 and seg[0] == "budget":   # budget show's numbers, as JSON
             env = db.get_env(seg[1])
             if env is None:
                 return self.reply(404, "no such env")
-            data = openrouter.get_key_info(env["openrouter_key"]) if env.get("openrouter_key") else {}
-            data = data.get("data") or data
-            return self.reply(200, json.dumps({"used": data.get("usage"), "limit": data.get("limit") or env.get("budget_usd")}), JSON)
+            u = budget_mod.usage(env)
+            return self.reply(200, json.dumps({"used": u and u[0], "limit": u[1] if u else env.get("budget_usd")}), JSON)
         if m == "GET" and len(seg) == 3 and seg[0] == "stream":
             return self.stream_view(seg[1], seg[2])
         if m == "POST" and len(seg) == 3 and seg[0] == "chat":
