@@ -21,7 +21,7 @@ python3 zookeeper.py snap tree                           # see what's available
 python3 zookeeper.py snap fork simple2agent:1.0 env7     # spin up a fresh env
 python3 zookeeper.py env logs env7 -f                    # watch it run
 python3 zookeeper.py snap take env7 -m "round 1 done"    # snapshot a moment
-python3 web.py                                           # same menu in a browser: ssh -L 7788:127.0.0.1:7788, then http://127.0.0.1:7788/
+# the web UI runs as a service (deploy/): ssh -L 7788:127.0.0.1:7788, then http://127.0.0.1:7788/
 ```
 
 

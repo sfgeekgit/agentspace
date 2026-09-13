@@ -310,11 +310,12 @@ def build_world_root(
         # (per-agent models live in the build record + baked openclaw.json).
         distinct_models = {a["model"] for a in agents}
         model_label = next(iter(distinct_models)) if len(distinct_models) == 1 else "mixed"
+        roster = [{"id": a["id"], "model": a["model"], "persona": a["persona"], "role": a["role"]}
+                  for a in agents]
         snap = _snap_dict(
             snap_id=snap_id, scenario=identity, scen=scen_name, version=version,
-            ghcr_tag=ghcr_tag, now=now, runtime=runtime,
-            agents=agents, model_label=model_label, source_image=source_image,
-            scen_dir=scen["dir"],
+            ghcr_tag=ghcr_tag, now=now, runtime=runtime, agents=agents, roster=roster,
+            model_label=model_label, source_image=source_image, scen_dir=scen["dir"],
         )
         labels = oci.make_labels(snap)
         # Commit-time config normalization (§5.4): the assembly hardening above
@@ -329,8 +330,7 @@ def build_world_root(
     snap["notes_dirty"] = 0
     db.upsert_snap(snap)
 
-    # Full build record — the external (audit-log-only) home for everything,
-    # including any secret role assignment. Non-secret bits also live in labels.
+    # Full build record (the roster also rides on the snap's labels).
     audit.log(
         "world.create",
         f"{identity}:{version}",
@@ -342,16 +342,13 @@ def build_world_root(
             "seed": actual_seed,
             "params": params,
             "modules": list(modules),
-            "roster": [
-                {"id": a["id"], "model": a["model"], "persona": a["persona"], "role": a["role"]}
-                for a in agents
-            ],
+            "roster": roster,
         },
     )
     return snap
 
 def _snap_dict(
-    *, snap_id, scenario, scen, version, ghcr_tag, now, runtime, agents,
+    *, snap_id, scenario, scen, version, ghcr_tag, now, runtime, agents, roster,
     model_label, source_image=None, scen_dir=None
 ) -> dict[str, Any]:
     from . import __version__
@@ -382,10 +379,10 @@ def _snap_dict(
         "source_image": source_image,  # pinned scen env, if any (§5.1 provenance)
         "model": model_label,
         "agents": [a["id"] for a in agents],
-        # Reuse soul_files (existing column) for per-agent PERSONA provenance only.
-        # Role assignment is NEVER put here — it can be a secret answer key and
-        # labels are readable via `docker inspect`; roles live in audit.log + the
-        # agent's own ROLE.md only.
+        # Per-agent id/model/persona/role, inherited by every child snap and env.
+        # Labels are readable by anyone who can pull the image, never by agents
+        # inside it (2026-09-13: role spoilers to people are accepted).
+        "roster": roster,
         "soul_files": {a["id"]: f"persona:{a['persona']}" for a in agents},
         "feature_flags": dict(runtimes.get(runtime).DEFAULT_FEATURE_FLAGS),
         "budget_usd": None,

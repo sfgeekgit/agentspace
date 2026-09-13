@@ -1,0 +1,15 @@
+# agentspace web UI, loopback only (reach it with ssh -L 7788:127.0.0.1:7788).
+# Install: sudo cp deploy/agentspace-web.service /etc/systemd/system/ && sudo systemctl enable --now agentspace-web
+[Unit]
+Description=agentspace web UI (loopback only)
+After=docker.service
+
+[Service]
+User=cc
+WorkingDirectory=/opt/agentspace-ctl
+ExecStart=/usr/bin/python3 /opt/agentspace-ctl/web.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

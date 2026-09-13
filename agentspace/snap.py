@@ -392,6 +392,7 @@ def cmd_take(
         "runtime_version": parent_snap.get("runtime_version"),
         "model": parent_snap.get("model"),
         "agents": parent_snap.get("agents") or [],
+        "roster": parent_snap.get("roster"),
         "soul_files": parent_snap.get("soul_files") or {},
         "feature_flags": parent_snap.get("feature_flags") or {},
         "budget_usd": budget_info.get("budget_usd"),

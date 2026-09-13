@@ -6,6 +6,7 @@ Verbs run as `zookeeper.py` child processes whose output streams to the page
 Verb forms are generated from the click tree, so a new click command appears
 here with nothing else done. Stdlib only. Binds 127.0.0.1:7788 — reach it with
 `ssh -L 7788:127.0.0.1:7788 control-01`; anyone on the port can run any verb.
+Runs as the `agentspace-web` systemd service (deploy/agentspace-web.service).
 """
 import collections
 import dataclasses
@@ -28,9 +29,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import click
 
 import zookeeper                                   # loads secrets; the click tree is zookeeper.cli
-from agentspace import audit, builder, db, env as env_mod, logwatch, registry, runtimes, versioning
+from agentspace import audit, builder, db, env as env_mod, logwatch, openrouter, registry, runtimes, versioning
 
-PORT = 7788
+PORT = int(os.environ.get("AGENTSPACE_WEB_PORT", 7788))   # override for a second worktree; the service uses the default
 REPO = Path(__file__).resolve().parent
 ZK = [sys.executable, "-u", str(REPO / "zookeeper.py")]   # the gate swaps this for a fixture
 SPECIAL = {                      # the only verb names written in this file
@@ -234,7 +235,7 @@ def _tree(name, host, refresh):
 # ---- pages ----
 
 def console_page():
-    envs = "".join(f'<a href="/watch/{esc(x["name"])}" target=_blank class="{esc((x["status"] or "").split(" ")[0])}">'
+    envs = "".join(f'<a href="/watch/{esc(x["name"])}" class="{esc((x["status"] or "").split(" ")[0])}">'
                    f'{esc(x["name"])}<small>{esc(x["status"] or "?")}</small></a>' for x in db.list_envs())
     snaps = db.list_snaps()
     snaps.sort(key=lambda s: (not versioning.is_world_root(s["version"]), s["scenario"]))   # world roots first
@@ -266,13 +267,32 @@ def console_page():
 
 
 def watch_page(name):
-    if db.get_env(name) is None:
+    """Header and agent cards from the db rows (no docker); views, stream and budget fill in from JS."""
+    env = db.get_env(name)
+    if env is None:
         return None
-    body = (f'<header><a href="/">← console</a><h1>{esc(name)}</h1><span id=sub></span>'
-            f'<span class=right><span id=paused hidden>paused — scroll down or Follow</span><button id=follow>Follow</button></span></header>'
-            f'<div class=split><ul id=views><li class=dim>loading views…</li></ul><div class=col><div id=pane></div>'
+    snap = db.get_snap_by_id(env["snap_id"]) or {}
+    roster = {a["id"]: a for a in snap.get("roster") or []}    # roots built before the roster label: ids only
+    cards = "".join(
+        f'<div class=card data-name="{esc(a)}"><b>{esc(a)}</b>'
+        + (f'<span class=role>{esc(r["role"])}</span>' if r.get("role") else "")
+        + (f'<i>{esc(r["persona"])}</i>' if r.get("persona") else "")
+        + (f'<small>{esc(r["model"])}</small>' if r.get("model") else "") + "</div>"
+        for a in snap.get("agents") or [] for r in [roster.get(a, {})])
+    status = env["status"] or "?"
+    facts = [("snap", f'{snap["scenario"]}:{snap["version"]}' if snap else env["snap_id"][:8]), ("scen", snap.get("scen")),
+             ("runtime", snap.get("runtime")), ("host", env["host"] or "localhost"), ("agents", len(snap.get("agents") or [])),
+             ("created", (env.get("created_at") or "")[:16])]
+    meta = "".join(f"<span>{k} <b>{esc(str(v))}</b></span>" for k, v in facts if v)
+    body = (f'<header><a href="/">← console</a><div class=hrow><h1>{esc(name)}</h1><span class="dot {esc(status.split(" ")[0])}">● {esc(status)}</span>'
+            f'<span id=actions></span></div><div class=meta>{meta}</div></header>'
+            f'<div class=split><aside id=agents><h3>Agents</h3>{cards or "<p class=dim>none recorded</p>"}</aside><div class=col>'
+            f'<div class=tabs><ul id=views><li class=dim>loading views…</li></ul><span id=paused hidden>paused</span><button id=follow>Follow</button></div>'
+            f'<div id=pane></div><div id=live hidden><span class=pulse></span>streaming live</div>'
             f'<form id=chat hidden><span id=chatwho></span><input name=text autocomplete=off placeholder="message the agent (Enter to send)">'
-            f'<button>Send</button></form><div id=chatlog></div></div></div>')
+            f'<button>Send</button></form><div id=chatlog></div></div>'
+            f'<aside id=side><h3>Shared budget</h3><div id=budget><b>…</b><div class=bar><div></div></div><small>loading</small></div>'
+            f'<div id=outbox hidden>{OUT}</div></aside></div>')
     return page(f"watch — {name}", body, env=name)
 
 
@@ -460,6 +480,13 @@ class Handler(BaseHTTPRequestHandler):
             except click.ClickException as err:
                 data = {"error": err.format_message()}
             return self.reply(200, json.dumps(data), JSON)
+        if m == "GET" and len(seg) == 2 and seg[0] == "budget":   # what budget show reads, as JSON
+            env = db.get_env(seg[1])
+            if env is None:
+                return self.reply(404, "no such env")
+            data = openrouter.get_key_info(env["openrouter_key"]) if env.get("openrouter_key") else {}
+            data = data.get("data") or data
+            return self.reply(200, json.dumps({"used": data.get("usage"), "limit": data.get("limit") or env.get("budget_usd")}), JSON)
         if m == "GET" and len(seg) == 3 and seg[0] == "stream":
             return self.stream_view(seg[1], seg[2])
         if m == "POST" and len(seg) == 3 and seg[0] == "chat":

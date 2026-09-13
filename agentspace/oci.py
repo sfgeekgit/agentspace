@@ -17,7 +17,7 @@ from . import docker_host
 LABEL_PREFIX = "org.agentspace."
 
 # Snap metadata fields that need JSON encoding when written to OCI labels.
-JSON_FIELDS = {"agents", "soul_files", "feature_flags", "notes", "files"}
+JSON_FIELDS = {"agents", "roster", "soul_files", "feature_flags", "notes", "files"}
 
 # Numeric fields that need string<->float conversion.
 NUMERIC_FIELDS = {"budget_usd", "budget_used"}
@@ -38,6 +38,7 @@ LABEL_FIELDS = [
     "source_image",
     "model",
     "agents",
+    "roster",      # [{id, model, persona, role}] per agent
     "soul_files",
     "feature_flags",
     "budget_usd",

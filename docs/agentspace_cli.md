@@ -391,7 +391,8 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
 ```
 /opt/agentspace-ctl/
   zookeeper.py                ← click entry, dispatch only
-  web.py (+ web.js, web.css)  ← browser front end: `python3 web.py`, http://127.0.0.1:7788 (ssh -L)
+  web.py (+ web.js, web.css)  ← browser front end, http://127.0.0.1:7788 via ssh -L; the agentspace-web
+                                 service (deploy/agentspace-web.service); AGENTSPACE_WEB_PORT for a 2nd worktree
   agentspace/
     db.py                      ← SQLite schema + helpers
     audit.py                   ← JSON-line audit log

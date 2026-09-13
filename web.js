@@ -29,6 +29,7 @@ async function stream(url, onLines, opts = {}) {
 // Append nodes as one fragment; keep 5000 entries; scroll once per frame, only if it was at the bottom.
 const atBottom = p => p.scrollHeight - p.scrollTop - p.clientHeight < 4;
 function add(pane, nodes) {
+  if (!nodes.length) return;   // a keepalive-only read schedules no frame
   const stick = atBottom(pane), frag = document.createDocumentFragment();
   for (const n of nodes) frag.append(n);
   pane.append(frag);
@@ -41,8 +42,9 @@ function add(pane, nodes) {
 
 // ---- the output pane (console and wizard): follows one run at a time ----
 let gen = 0, ctl = null, timer = null, label = "";
-function followRun(id, lbl, req) {   // req = {url, body}: a log follow that streams on its POST and dies with this page
+function followRun(id, lbl, req, onEnd) {   // req = {url, body}: a log follow that streams on its POST and dies with this page
   const g = ++gen, out = $("out");
+  let exit = null;
   if (ctl) ctl.abort();
   ctl = new AbortController();
   label = lbl; $("outlabel").textContent = lbl; $("stop").dataset.id = req ? "" : id;
@@ -51,9 +53,13 @@ function followRun(id, lbl, req) {   // req = {url, body}: a log follow that str
   clearInterval(timer);
   timer = setInterval(() => { $("elapsed").textContent = Math.round((Date.now() - t0) / 1000) + "s"; }, 1000);
   const opts = req ? {method: "POST", body: req.body, signal: ctl.signal} : {signal: ctl.signal};
-  stream(req ? req.url : "/runs/" + id, lines => { if (g === gen) add(out, lines.map(l => el("div", cut(l)))); }, opts)
+  stream(req ? req.url : "/runs/" + id, lines => {
+    if (g !== gen) return;
+    add(out, lines.map(l => el("div", cut(l))));
+    for (const l of lines) { const m = l.match(/^\[exit (-?\d+)\]$/); if (m) exit = +m[1]; }
+  }, opts)
     .catch(e => { if (g === gen) add(out, [el("div", e.name === "AbortError" ? "[stopped]" : "[error: " + e.message + "]", "err")]); })
-    .finally(() => { if (g === gen) { clearInterval(timer); refreshRuns(); } });
+    .finally(() => { if (g === gen) { clearInterval(timer); refreshRuns(); if (onEnd) onEnd(exit); } });
 }
 if ($("stop")) $("stop").onclick = () => {
   if (!ctl) return;
@@ -93,20 +99,52 @@ if ($("verbs")) {
   refreshRuns();
 }
 
-// ---- watch page: sidebar of views, one streamed pane, chat on agent views ----
+// ---- watch page: agent cards, view tabs, one streamed pane, chat on agent views ----
 if ($("pane")) {
   const env = document.body.dataset.env, pane = $("pane"), chat = $("chat"), views = $("views");
-  const agents = new Set(), logs = {}, busy = new Set();
+  const cards = [...document.querySelectorAll("#agents .card")], agents = new Set(cards.map(c => c.dataset.name));
+  const logs = {}, busy = new Set(), facets = {}, world = [];   // facets[agent] = its facet view names
   let current = null;
   const PAL = ["#0891b2", "#059669", "#ca8a04", "#c026d3", "#2563eb", "#0d9488", "#65a30d", "#d97706", "#db2777", "#7c3aed"];
   const whoColor = w => ["world", "GM"].includes(w) ? "#6366f1"
     : PAL[[...w].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % PAL.length];
-  const item = (name, tag, text) => {
-    const n = el(tag, text || name, "view");
-    n.dataset.name = name;
-    n.onclick = e => { e.preventDefault(); select(name); };   // in a <summary>: select, don't toggle
-    return n;
+  for (const c of cards) { c.querySelector("b").style.color = whoColor(c.dataset.name); c.onclick = () => select(c.dataset.name); }
+  const st = document.querySelector(".dot").textContent.replace("● ", "").split(" ")[0];   // last-known status
+  const known = /^(active|dormant|stopped|missing)$/.test(st);
+  const okFor = {Start: st === "stopped", Wake: /^(active|dormant)$/.test(st), Sleep: st === "active",
+                 "Take snap": st !== "missing", Kill: true, "Top up": true};   // Wake stays on while active: a nudge for a stuck world
+  const PARAM = {"snap take": "env_name", "budget topup": "env_name"};   // the env argument's name; "name" otherwise
+  const action = (label, verb, asks = {}, after) => {   // runs the verb from here; output streams into the side column
+    const off = known && !okFor[label], b = el("button", label, "btn" + (label === "Kill" ? " danger" : ""));
+    b.disabled = off;
+    if (off) b.title = `not while ${st}`;
+    b.onclick = () => {
+      const body = new URLSearchParams({[PARAM[verb] || "name"]: env});
+      for (const [k, q] of Object.entries(asks)) { const v = prompt(q); if (v == null || !v.trim()) return; body.set(k, v.trim()); }
+      if (label === "Kill") { if (!confirm(`${verb} ${env}? This cannot be undone.`)) return; body.set("force", "on"); }
+      $("outbox").hidden = false;
+      post("/run/" + verb.replaceAll(" ", "/"), body).then(r => r.json())
+        .then(({id}) => followRun(id, `${verb} ${env}`, null, exit => { if (exit === 0 && after) after(); })).catch(e => alert(e.message));
+    };
+    return b;
   };
+  const reload = () => location.reload();
+  $("actions").replaceChildren(action("Start", "env start", {}, reload), action("Wake", "env kick", {}, reload), action("Sleep", "env sleep", {}, reload),
+                               action("Take snap", "snap take", {message: "One-line label for the snap:"}),
+                               action("Kill", "env kill", {}, () => { location.href = "/"; }));
+  $("budget").append(action("Top up", "budget topup", {amount_usd: "Amount to add (USD):"}, reload));
+  const tab = (name, label) => { const li = el("li", label, "view" + (name === current ? " sel" : "")); li.onclick = () => select(name); return li; };
+  function tabs() {   // world views always; the selected agent's session + facets after a separator
+    const agent = current && current.split(":")[0];
+    views.replaceChildren(...world.map(n => tab(n, n)));
+    if (agents.has(agent)) {   // second row: the agent's session, facets, and a shortcut to the chat box
+      const msg = el("li", "message", "view act");
+      msg.onclick = () => { if (current !== agent) select(agent); chat.elements.text.focus(); };
+      views.append(el("li", "", "brk"), el("li", agent, "lbl"), tab(agent, "session"),
+                   ...(facets[agent] || []).map(k => tab(k, k.split(":").pop())), msg);
+    }
+    for (const c of cards) c.classList.toggle("sel", c.dataset.name === agent);
+  }
   function render(ev) {
     if (ev.error) return el("div", ev.error, "ev kind-deny");
     const d = el("div", "", "ev kind-" + ev.kind);
@@ -119,9 +157,8 @@ if ($("pane")) {
     const g = ++gen;
     if (ctl) ctl.abort();
     ctl = new AbortController();
-    current = name; document.title = `watch — ${env} · ${name}`; $("sub").textContent = name;
-    pane.replaceChildren(); $("paused").hidden = true;
-    for (const v of views.querySelectorAll(".view")) v.classList.toggle("sel", v.dataset.name === name);
+    current = name; document.title = `watch — ${env} · ${name}`;
+    tabs(); pane.replaceChildren(); $("paused").hidden = true; $("live").hidden = false;
     chat.hidden = !agents.has(name);
     if (!chat.hidden) {
       $("chatlog").replaceChildren(logs[name] ??= el("div"));   // each agent keeps its own log
@@ -137,28 +174,26 @@ if ($("pane")) {
       if (evs.length && empty) { empty.remove(); empty = null; }
       add(pane, evs.map(render));
     }, {signal: ctl.signal})
-      .then(() => { if (g === gen) add(pane, [el("div", "stream ended", "dim")]); })
-      .catch(e => { if (g === gen && e.name !== "AbortError") add(pane, [el("div", e.message, "ev kind-deny")]); });
+      .then(() => { if (g === gen) { $("live").hidden = true; add(pane, [el("div", "stream ended", "dim")]); } })
+      .catch(e => { if (g === gen && e.name !== "AbortError") { $("live").hidden = true; add(pane, [el("div", e.message, "ev kind-deny")]); } });
   }
   fetch("/views/" + enc(env)).then(r => r.json()).then(d => {
-    views.replaceChildren();
     if (d.error) {   // stopped → env start; non-PI → env logs (the menu's raw-tail chooser)
       const verb = d.error.includes("not running") ? "env start" : "env logs";
       const a = el("a", `→ ${verb} ${env} on the console`);
       a.href = `/?open=${enc(verb)}&name=${enc(env)}`;
-      views.append(el("li", d.error, "err"), el("li")).lastChild.append(a);
+      views.replaceChildren(el("li", d.error, "err"), el("li")); views.lastChild.append(a);
       return;
     }
-    for (const [name, kids] of d.views) {
-      if (!kids.length) { views.append(item(name, "li")); continue; }
-      agents.add(name);
-      const li = el("li"), det = el("details"), sum = el("summary"), ul = el("ul");
-      sum.append(item(name, "span"));
-      for (const k of kids) ul.append(item(k, "li", k.split(":").pop()));
-      det.append(sum, ul); li.append(det); views.append(li);
-    }
+    for (const [name, kids] of d.views) kids.length ? facets[name] = kids : world.push(name);
     if (d.views.length) select(d.views[0][0]);
   }).catch(e => views.replaceChildren(el("li", e.message, "err")));
+  fetch("/budget/" + enc(env)).then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); }).then(b => {
+    const used = +b.used || 0, limit = +b.limit || 0, box = $("budget");
+    box.querySelector("b").textContent = `$${used.toFixed(2)}`;
+    box.querySelector("small").textContent = limit ? `of $${limit.toFixed(2)} limit · $${Math.max(0, limit - used).toFixed(2)} remaining` : "no limit recorded";
+    box.querySelector(".bar div").style.width = limit ? Math.min(100, 100 * used / limit) + "%" : "0";
+  }).catch(e => { $("budget").querySelector("small").textContent = e.message; });
   chat.onsubmit = e => {
     e.preventDefault();
     const text = chat.elements.text.value.trim(), agent = current, log = logs[agent];
@@ -197,3 +232,21 @@ if ($("step3")) {
 for (const b of document.querySelectorAll("button[data-disable]")) b.onclick = () =>   // step 1: the menu's inline disable
   post("/run/scen/deactivate", new URLSearchParams({scen_name: b.dataset.disable})).then(r => r.json())
     .then(({id}) => stream("/runs/" + id, () => {})).then(() => location.reload()).catch(err => alert(err.message));
+
+// ---- draggable column edges (console: nav, verbs; watch: agents, side); widths remembered per browser ----
+for (const [id, sign] of [["nav", 1], ["verbs", 1], ["agents", 1], ["side", -1]]) {
+  const col = $(id);
+  if (!col) continue;
+  const g = el("div", "", "gutter"), key = "col:" + id;
+  try { if (localStorage[key]) col.style.width = localStorage[key]; } catch {}
+  col.insertAdjacentElement(sign > 0 ? "afterend" : "beforebegin", g);
+  g.onpointerdown = e => {
+    const x0 = e.clientX, w0 = col.offsetWidth;
+    g.setPointerCapture(e.pointerId); g.classList.add("drag"); document.body.style.userSelect = "none";
+    g.onpointermove = ev => { col.style.width = Math.max(120, w0 + sign * (ev.clientX - x0)) + "px"; };
+    g.onpointerup = () => {
+      g.onpointermove = null; g.classList.remove("drag"); document.body.style.userSelect = "";
+      try { localStorage[key] = col.style.width; } catch {}
+    };
+  };
+}
