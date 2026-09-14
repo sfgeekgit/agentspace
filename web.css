@@ -129,3 +129,5 @@ td code { color: var(--muted); }
 .chk { display: inline-flex; width: auto; margin-right: 16px; }
 #summary { font-size: 12.5px; color: var(--muted); margin-top: 18px; }
 .wiz #out { height: 40vh; margin-top: 18px; }
+.wiz .next { margin-top: 8px; line-height: 1.5; font-size: 13.5px; } .wiz .next li { margin-bottom: 6px; }
+form label span i { display: block; font-style: normal; font-size: 10.5px; color: var(--faint); }

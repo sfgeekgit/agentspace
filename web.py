@@ -139,7 +139,7 @@ def form_html(path, cmd):
     """The <form> for one click command: a label + control per param, in cmd.params order."""
     rows = "".join(
         f'<label title="{esc(getattr(p, "help", None) or "")}">'
-        f'<span>{esc(next((o for o in p.opts if o.startswith("--")), p.opts[0]))}</span>{_control(p, path)}</label>'
+        f'<span>{esc(next((o for o in p.opts if o.startswith("--")), p.opts[0]))}{"" if p.required else "<i>optional</i>"}</span>{_control(p, path)}</label>'
         for p in cmd.params)
     return f'<form data-path="{" ".join(path)}">{rows}<button>Run</button></form>'
 
@@ -425,7 +425,15 @@ def wizard3(scen, fields):
             f'<input type=hidden name=params value="{esc(json.dumps(params))}"><input type=hidden name=n value="{n}">'
             f'<input type=hidden name=seed value="{seed}">'
             f'<p id=summary>World Root <b id=wname>{esc(scen["name"])}</b> ← scen {esc(scen["name"])} (runtime {esc(scen["runtime"])}, seed {seed})</p>'
-            f'<button class=primary>Build</button></form>{OUT}</div>')
+            f'<button class=primary>Build</button></form>{OUT}'
+            f'<h2>Then: run it and watch</h2><ol class=next>'
+            f'<li>Build makes a <b>world snap</b> (the name above, version 1.0 or the next free one) and shows it in the console\'s snap list. Nothing runs yet.</li>'
+            f'<li>On the <a href="/">console</a>, run <b>snap fork</b>: snap_ref = that snap, new_env_name = a name for this run, --budget = the dollar cap. '
+            f'This mints the env\'s key, starts its container, and (for a world snap) kicks the agents, so the run begins at once.</li>'
+            f'<li>Open the new env from the console\'s left column: the <b>watch page</b>. The <b>feed</b> view shows every turn as it happens; '
+            f'the agent cards open each agent\'s transcript, and the <b>budget</b> box shows spend.</li>'
+            f'<li>If nothing is happening, press <b>Wake</b> (a world with a game master starts its GM; otherwise every agent is woken). '
+            f'<b>Sleep</b> pauses the run and its spend; <b>Take snap</b> keeps the result. See <a href="/help">help</a> for the states.</li></ol></div>')
     return page(f"New world — {scen['name']}", body)
 
 

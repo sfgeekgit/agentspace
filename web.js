@@ -109,14 +109,15 @@ if ($("pane")) {
   const whoColor = w => ["world", "GM"].includes(w) ? "#6366f1"
     : PAL[[...w].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % PAL.length];
   for (const c of cards) { c.querySelector("b").style.color = whoColor(c.dataset.name); c.onclick = () => select(c.dataset.name); }
-  const st = document.querySelector(".dot").textContent.replace("● ", "").split(" ")[0];   // last-known status
-  const known = /^(active|dormant|stopped|missing)$/.test(st);
-  const up = /^(active|dormant)$/.test(st);
-  const okFor = {Start: st === "stopped", Wake: up, Sleep: st === "active", Stop: up, Post: st === "active", Exec: up, Logs: up,
-                 "Roll sessions": up, "Take snap": st !== "missing", Kill: true, "Top up": true};   // Wake stays on while active: a nudge for a stuck world
+  let st = document.querySelector(".dot").textContent.replace("● ", "").split(" ")[0];   // last-known status; the live probe below replaces it
+  const okFor = label => {   // Wake stays on while active: a nudge for a stuck world
+    const up = /^(active|dormant)$/.test(st);
+    return {Start: st === "stopped", Wake: up, Sleep: st === "active", Stop: up, Post: st === "active", Exec: up, Logs: up,
+            "Roll sessions": up, "Take snap": st !== "missing", Kill: true, "Top up": true}[label];
+  };
   const PARAM = {"snap take": "env_name", "budget topup": "env_name"};   // the env argument's name; "name" otherwise
   const action = (label, verb, asks = {}, after) => {   // runs the verb from here; output streams into the side column
-    const off = known && !okFor[label], b = el("button", label, "btn" + (label === "Kill" ? " danger" : ""));
+    const off = /^(active|dormant|stopped|missing)$/.test(st) && !okFor(label), b = el("button", label, "btn" + (label === "Kill" ? " danger" : ""));
     b.disabled = off;
     if (off) b.title = `not while ${st}`;
     b.onclick = () => {
@@ -132,17 +133,19 @@ if ($("pane")) {
     return b;
   };
   const reload = () => location.reload();
-  $("actions").replaceChildren(action("Start", "env start", {}, reload), action("Wake", "env kick", {}, reload), action("Sleep", "env sleep", {}, reload),
+  const renderActions = () => $("actions").replaceChildren(action("Start", "env start", {}, reload), action("Wake", "env kick", {}, reload), action("Sleep", "env sleep", {}, reload),
                                action("Stop", "env stop", {}, reload), action("Post", "env post", {message: "Message for the public board:"}),
                                action("Exec", "env exec", {cmd: "Command to run in the container:"}),
                                action("Logs", "env logs", {agent: "Agent id for its session log; blank = gateway log (optional)"}),
                                action("Roll sessions", "env roll-sessions", {agent: "Agent id; blank = all agents (optional)"}),
                                action("Take snap", "snap take", {message: "One-line label for the snap:"}),
                                action("Kill", "env kill", {}, () => { location.href = "/"; }));
+  renderActions();
   $("budget").append(action("Top up", "budget topup", {amount_usd: "Amount to add (USD):"}, reload));
   const meta = document.querySelector(".meta"), dot = document.querySelector(".dot");
   fetch("/info/" + enc(env)).then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); }).then(i => {   // env show's facts: live status + the rest
     dot.textContent = "● " + i.Status; dot.className = "dot " + i.Status.split(" ")[0];
+    st = i.Status.split(" ")[0]; renderActions();   // buttons follow the live status, not the stored one
     for (const [k, label] of [["Started", "started"], ["Runtime", "ran"], ["Flags", "flags"], ["Container", "container"], ["Enter", "enter"]])
       if (i[k] && i[k] !== "—") { const s = el("span", label + " "); s.append(el("b", i[k])); meta.append(s); }
   }).catch(e => meta.append(el("span", e.message, "err")));

@@ -258,6 +258,7 @@ def cmd_start(name: str):
     rt.wait_for_gateway(host, name)
 
     audit.log("env.start", name)
+    db.set_env_status(name, "active")   # container + gateway up; stop/sleep/kick record theirs, start must too
     console.print(f"[green]✓[/green] env {name} container started, gateway up. "
                   f"Wake agents with 'agentspace env kick {name}' if needed.")
 
