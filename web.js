@@ -111,8 +111,9 @@ if ($("pane")) {
   for (const c of cards) { c.querySelector("b").style.color = whoColor(c.dataset.name); c.onclick = () => select(c.dataset.name); }
   const st = document.querySelector(".dot").textContent.replace("● ", "").split(" ")[0];   // last-known status
   const known = /^(active|dormant|stopped|missing)$/.test(st);
-  const okFor = {Start: st === "stopped", Wake: /^(active|dormant)$/.test(st), Sleep: st === "active",
-                 "Take snap": st !== "missing", Kill: true, "Top up": true};   // Wake stays on while active: a nudge for a stuck world
+  const up = /^(active|dormant)$/.test(st);
+  const okFor = {Start: st === "stopped", Wake: up, Sleep: st === "active", Stop: up, Post: st === "active", Exec: up, Logs: up,
+                 "Roll sessions": up, "Take snap": st !== "missing", Kill: true, "Top up": true};   // Wake stays on while active: a nudge for a stuck world
   const PARAM = {"snap take": "env_name", "budget topup": "env_name"};   // the env argument's name; "name" otherwise
   const action = (label, verb, asks = {}, after) => {   // runs the verb from here; output streams into the side column
     const off = known && !okFor[label], b = el("button", label, "btn" + (label === "Kill" ? " danger" : ""));
@@ -120,7 +121,9 @@ if ($("pane")) {
     if (off) b.title = `not while ${st}`;
     b.onclick = () => {
       const body = new URLSearchParams({[PARAM[verb] || "name"]: env});
-      for (const [k, q] of Object.entries(asks)) { const v = prompt(q); if (v == null || !v.trim()) return; body.set(k, v.trim()); }
+      for (const [k, q] of Object.entries(asks)) {   // a prompt ending "(optional)" may be left blank; Cancel or a blank required one aborts
+        const v = prompt(q); if (v == null || !(v.trim() || q.endsWith("(optional)"))) return; if (v.trim()) body.set(k, v.trim());
+      }
       if (label === "Kill") { if (!confirm(`${verb} ${env}? This cannot be undone.`)) return; body.set("force", "on"); }
       $("outbox").hidden = false;
       post("/run/" + verb.replaceAll(" ", "/"), body).then(r => r.json())
@@ -130,9 +133,19 @@ if ($("pane")) {
   };
   const reload = () => location.reload();
   $("actions").replaceChildren(action("Start", "env start", {}, reload), action("Wake", "env kick", {}, reload), action("Sleep", "env sleep", {}, reload),
+                               action("Stop", "env stop", {}, reload), action("Post", "env post", {message: "Message for the public board:"}),
+                               action("Exec", "env exec", {cmd: "Command to run in the container:"}),
+                               action("Logs", "env logs", {agent: "Agent id for its session log; blank = gateway log (optional)"}),
+                               action("Roll sessions", "env roll-sessions", {agent: "Agent id; blank = all agents (optional)"}),
                                action("Take snap", "snap take", {message: "One-line label for the snap:"}),
                                action("Kill", "env kill", {}, () => { location.href = "/"; }));
   $("budget").append(action("Top up", "budget topup", {amount_usd: "Amount to add (USD):"}, reload));
+  const meta = document.querySelector(".meta"), dot = document.querySelector(".dot");
+  fetch("/info/" + enc(env)).then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); }).then(i => {   // env show's facts: live status + the rest
+    dot.textContent = "● " + i.Status; dot.className = "dot " + i.Status.split(" ")[0];
+    for (const [k, label] of [["Started", "started"], ["Runtime", "ran"], ["Flags", "flags"], ["Container", "container"], ["Enter", "enter"]])
+      if (i[k] && i[k] !== "—") { const s = el("span", label + " "); s.append(el("b", i[k])); meta.append(s); }
+  }).catch(e => meta.append(el("span", e.message, "err")));
   const tab = (name, label) => { const li = el("li", label, "view" + (name === current ? " sel" : "")); li.onclick = () => select(name); return li; };
   function tabs() {   // world views always; the selected agent's session + facets after a separator
     const agent = current && current.split(":")[0];

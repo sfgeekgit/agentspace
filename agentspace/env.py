@@ -175,15 +175,14 @@ def cmd_list():
 
 # ---- show ----
 
-def cmd_show(name: str):
+def env_info(name: str) -> dict[str, str]:
+    """cmd_show's facts (live status probe, OpenRouter budget), label → text.
+    The web watch page renders the same dict into its header."""
     env = _require_env(name)
     snap = db.get_snap_by_id(env["snap_id"])
-    snap_str = f"{snap['scenario']}:{snap['version']}" if snap else env["snap_id"]
     status = _live_status(env)
-    started_str = _started_at(env, status)
     now = datetime.now(timezone.utc)
     intervals = audit.env_runtime_intervals(since_by_name={name: env["created_at"]})
-    runtime_str = _total_runtime(intervals, name, status, now)
 
     used_str = "—"
     limit_str = f"${float(env.get('budget_usd') or 0):.2f}"
@@ -197,25 +196,28 @@ def cmd_show(name: str):
         except Exception as e:
             used_str = f"query failed: {e}"
 
-    body = (
-        f"  Snap:         {snap_str}\n"
-        f"  Host:         {env['host'] or 'localhost'}\n"
-        f"  Container:    {env.get('container_id') or '—'}\n"
-        f"  Status:       {status}\n"
-        f"  Started:      {started_str}\n"
-        f"  Runtime:      {runtime_str}\n"
-        f"  Created:      {env.get('created_at') or '—'}\n"
-        f"  Budget used:  {used_str} / {limit_str}\n"
-        f"  Enter:        {_enter_line(env, status)}\n"
-    )
+    info = {
+        "Snap": f"{snap['scenario']}:{snap['version']}" if snap else env["snap_id"],
+        "Host": env["host"] or "localhost",
+        "Container": env.get("container_id") or "—",
+        "Status": status,
+        "Started": _started_at(env, status),
+        "Runtime": _total_runtime(intervals, name, status, now),
+        "Created": env.get("created_at") or "—",
+        "Budget used": f"{used_str} / {limit_str}",
+        "Enter": _enter_line(env, status),
+    }
     if snap:
-        agents = snap.get("agents") or []
         flags = snap.get("feature_flags") or {}
-        body += (
-            f"\n  Agents:       {', '.join(agents) or '—'}\n"
-            f"  Flags:        {' '.join(f'{k}={v}' for k, v in flags.items()) or '—'}\n"
-            f"  Model:        {snap.get('model') or '—'}\n"
-        )
+        info |= {"Agents": ", ".join(snap.get("agents") or []) or "—",
+                 "Flags": " ".join(f"{k}={v}" for k, v in flags.items()) or "—",
+                 "Model": snap.get("model") or "—"}
+    return info
+
+
+def cmd_show(name: str):
+    body = "".join(("\n" if k == "Agents" else "") + f"  {k + ':':<14}{v}\n"
+                   for k, v in env_info(name).items())
     console.print(Panel(body, title=name, expand=False))
 
 

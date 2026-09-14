@@ -36,9 +36,13 @@ REPO = Path(__file__).resolve().parent
 ZK = [sys.executable, "-u", str(REPO / "zookeeper.py")]   # the gate swaps this for a fixture
 SPECIAL = {                      # the only verb names written in this file
     "env watch": "/watch/",      # dedicated page
+    "env show": "/watch/",       # its facts fill the watch page header (GET /info/<env>)
     "env chat": "/chat/",        # chat box on the watch page
     "scen env shell": None,      # terminal only: it hands the tty to `docker run -it`
 }
+# On the watch page (header buttons and facts), the left column, or the New world wizard: no console form, still runnable.
+BUTTONS = {"env start", "env stop", "env kick", "env sleep", "env kill", "env post", "env exec", "env logs",
+           "env roll-sessions", "snap take", "env enter", "budget show", "budget topup", "world build"}
 DATALISTS = {"name": "dl-envs", "env_name": "dl-envs", "snap_ref": "dl-snaps", "scen_name": "dl-scens"}  # the menu's pickers
 TEXT, HTML, JSON, NDJSON = ("text/plain; charset=utf-8", "text/html; charset=utf-8",
                             "application/json", "application/x-ndjson")
@@ -50,6 +54,46 @@ def page(title, body, **attrs):
     return (f"<!doctype html><html><head><meta charset=utf-8><title>{esc(title)}</title>"
             f"<link rel=stylesheet href=/web.css></head><body{a}>{body}<script src=/web.js></script></body></html>")
 
+
+HELP = """
+<div class=helpdoc><a href="/">← console</a><h1>How agentspace fits together</h1>
+
+<h2>The four nouns</h2>
+<dl>
+<dt>Scenario (scen)</dt><dd>The source of a world: a folder under <code>scenarios/</code> with the rules, roles, prompts and files. Authored by you; never runs by itself.</dd>
+<dt>World</dt><dd>A scenario built into a ready-to-run image with a chosen roster of agents (count, models, personas). The <b>New world</b> button builds one. A world is stored as a snap (version 1.0) whose agents have never taken a turn.</dd>
+<dt>Snap</dt><dd>A frozen copy of a container's entire disk at one moment: corpus, transcripts, logs, board, everything. Stored locally and pushed to ghcr.io. Snaps are the permanent record; results and findings ride on them as attachments. <b>Take snap</b> on a running env makes a new version (1.0 → 1.1 → 1.1.1 …).</dd>
+<dt>Env</dt><dd>A live copy started from a snap: one docker container with its own OpenRouter key and budget. Envs are where agents actually run and spend, and they are temporary. Fork a snap to get one.</dd>
+</dl>
+<p>Lineage: <code>scenario → world snap (1.0) → env → take snap (1.1) → env → …</code></p>
+
+<h2>Env states and the buttons that move between them</h2>
+<table>
+<tr><th>state</th><th>container</th><th>gateway</th><th>agents taking turns?</th><th>get here by</th><th>leave by</th></tr>
+<tr><td class=active>● active</td><td>up</td><td>up</td><td>yes, once woken (or the game master is running)</td><td>Wake; a fresh fork</td><td>Sleep, Stop, Kill</td></tr>
+<tr><td class=dormant>● dormant</td><td>up</td><td>down</td><td>no, and no spend; logs still readable, replay works</td><td>Sleep</td><td>Wake, Stop, Kill</td></tr>
+<tr><td class=stopped>● stopped</td><td>off</td><td>down</td><td>no; the disk is intact but nothing can run inside</td><td>Stop</td><td>Start, Kill</td></tr>
+<tr><td class=missing>● missing</td><td>removed</td><td>—</td><td>—; only its snaps remain</td><td>Kill</td><td>—</td></tr>
+</table>
+<ul>
+<li><b>Start is not Wake.</b> Start powers the container back on and brings the gateway up. Nothing happens until you press <b>Wake</b>: in a world with a game master that starts the GM, which then wakes its agents; otherwise it wakes every agent directly.</li>
+<li><b>Sleep vs Stop.</b> Both halt turns and spending. Sleep keeps the container up (cheap to resume, logs stream, replay works). Stop powers it off (resume with Start, then Wake).</li>
+<li><b>Kill</b> deletes the container and its disk. Snaps are unaffected, so take a snap first if you want the run back.</li>
+<li>The console's left column shows the last <i>recorded</i> status; the watch page header probes the container and shows the live one.</li>
+</ul>
+
+<h2>The watch page</h2>
+<p>Open an env from the left column. The header carries the live status, facts, and the action buttons (Start, Wake, Sleep, Stop, Post, Exec, Logs, Roll sessions, Take snap, Kill). The side column shows the env's shared budget with Top up, and the output of any button you press.</p>
+<p>The tabs are <b>views</b> of the run's logs: <b>feed</b> (everything a spectator wants, one line each), <b>board</b> (the public chat), <b>announcements</b> (the world's posts only), <b>budget</b> (one line per turn), <b>raw</b> (the audit stream as JSON), any views the scenario declares (e.g. a game-master log with spoilers), and per agent its <b>session</b> transcript with <b>thoughts</b> / <b>says</b> / <b>messages</b> / <b>scratchpad</b> facets. Click an agent card to jump to its session; on an agent view a chat box lets you message that agent as the operator.</p>
+<p><b>Live or replay.</b> The select beside the tabs streams the view live (default) or replays the run so far from its first event, paced by the original timestamps at 1× to 30×. Replay needs the container up (dormant is fine).</p>
+
+<h2>Budgets</h2>
+<p>Every env gets its own OpenRouter key with a credit limit set at fork time; the budget box shows used / limit and <b>Top up</b> raises the limit. Sleeping or stopping an env stops the spend.</p>
+
+<h2>The console</h2>
+<p>Left: envs and snaps. Middle: the remaining verbs as forms (snap management, scenario image builds, <code>env list</code> for the full table); the env, budget and world-build verbs live on the watch page and the New world wizard instead. Every verb is also a terminal command, <code>python3 zookeeper.py &lt;group&gt; &lt;verb&gt; …</code>, and a menu item in <code>python3 zookeeper.py</code>.</p>
+</div>
+"""
 
 OUT = ('<div class=outhead><span id=outlabel>output</span><span id=elapsed></span>'
        '<button id=stop>Stop</button></div><pre id=out></pre>')
@@ -247,20 +291,20 @@ def console_page():
           f'<datalist id=dl-scens>{opt(s["name"] for s in registry.list_scens())}</datalist>')
     verbs, group = [], None
     for path, cmd in LEAVES.items():
+        key = " ".join(path)
+        if key in BUTTONS or SPECIAL.get(key):   # lives on the watch page, which every env in the left column links to
+            continue
         if path[:-1] != group:
             group = path[:-1]
             verbs.append(f"<h3>{esc(' '.join(group))}</h3>")
-        key = " ".join(path)
-        if key not in SPECIAL:
-            body = form_html(path, cmd)
-        elif SPECIAL[key] is None:
+        if key in SPECIAL:
             args = " ".join(f"<{p.name}>" for p in cmd.params if isinstance(p, click.Argument))
             body = f"<p class=note>terminal only: <code>python3 zookeeper.py {esc(key)} {esc(args)}</code></p>"
         else:
-            body = f"<p class=note>on the watch page: <code>{esc(SPECIAL[key])}&lt;env&gt;</code> — open an env from the list</p>"
+            body = form_html(path, cmd)
         verbs.append(f"<details><summary><b>{esc(key)}</b> <span class=doc>{esc(cmd.get_short_help_str(120))}</span></summary>{body}</details>")
     body = (f'<div class=shell><aside id=nav><a class=brand href="/"><b>agentspace</b><small>operator console</small></a>'
-            f'<a class=primary href=/new>New world</a><h3>envs</h3><div id=envs>{envs or "<span class=dim>none</span>"}</div>'
+            f'<a class=primary href=/new>New world</a><a class=helplink href=/help>What are worlds, snaps, envs, and the env states?</a><h3>envs</h3><div id=envs>{envs or "<span class=dim>none</span>"}</div>'
             f'<h3>snaps</h3><div id=snaps>{snap_html or "<span class=dim>none</span>"}</div></aside>'
             f'<main><section id=verbs>{"".join(verbs)}</section><section id=outbox><div id=runs></div>{OUT}</section></main></div>{dl}')
     return page("agentspace", body)
@@ -482,6 +526,11 @@ class Handler(BaseHTTPRequestHandler):
             except click.ClickException as err:
                 data = {"error": err.format_message()}
             return self.reply(200, json.dumps(data), JSON)
+        if m == "GET" and len(seg) == 2 and seg[0] == "info":   # env show's facts, as JSON (docker probe + OpenRouter: after paint)
+            try:
+                return self.reply(200, json.dumps(env_mod.env_info(seg[1])), JSON)
+            except click.ClickException as err:
+                return self.reply(404, err.format_message())
         if m == "GET" and len(seg) == 2 and seg[0] == "budget":   # budget show's numbers, as JSON
             env = db.get_env(seg[1])
             if env is None:
@@ -492,6 +541,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.stream_view(seg[1], seg[2], q)
         if m == "POST" and len(seg) == 3 and seg[0] == "chat":
             return self.chat(seg[1], seg[2], body)
+        if m == "GET" and seg == ["help"]:
+            return self.reply(200, page("help — agentspace", HELP), HTML)
         if m == "GET" and seg == ["new"]:
             return self.reply(200, wizard1(), HTML)
         if seg[:1] == ["new"] and len(seg) in (2, 3):
