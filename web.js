@@ -9,7 +9,11 @@ let toastTimer;
 function toast(text) { $('toast').textContent = text; $('toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').hidden = true, 6000); }
 async function request(url, options = {}) {
   const r = await fetch(url, options);
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    const error = new Error(await r.text());
+    error.status = r.status;
+    throw error;
+  }
   return r;
 }
 const post = (url, body) => request(url, {method:'POST', headers:H, body});
@@ -43,6 +47,9 @@ function filterCatalog() {
   const q = $('filter').value.trim().toLowerCase();
   let visible = 0;
   document.querySelectorAll('[data-search]').forEach(n => { n.hidden = !n.dataset.search.toLowerCase().includes(q); if (!n.hidden) visible++; });
+  document.querySelectorAll('[data-search-group]').forEach(group => {
+    group.hidden = !group.querySelector('[data-search]:not([hidden])');
+  });
   $('no-matches').hidden = visible > 0 || !q;
 }
 if ($('filter')) {
@@ -77,7 +84,7 @@ function followOperation(info, liveRequest, onEnd) {
   operationController = new AbortController(); activeOperation = info;
   revealOutput(); $('outlabel').textContent = info.label; $('out').replaceChildren(); $('result-link').replaceChildren(); $('stop').disabled = false;
   $('elapsed').textContent = 'Starting…';
-  let exit = null, rootId = null, failed = false;
+  let exit = null, rootId = null, failed = false, expired = false;
   const started = Date.now(); clearInterval(operationTimer);
   operationTimer = setInterval(() => $('elapsed').textContent = Math.round((Date.now()-started)/1000)+'s', 1000);
   if (!liveRequest) saveOperation(info);
@@ -93,12 +100,20 @@ function followOperation(info, liveRequest, onEnd) {
     }
     append($('out'), output);
   }, options).catch(e => {
+    if (g !== operationGeneration) return;
     failed = true;
-    if (g === operationGeneration) append($('out'), [node('div', e.name === 'AbortError' ? 'Stopped following output.' : 'Connection error: '+e.message)]);
+    expired = !liveRequest && e.status === 404;
+    if (expired) {
+      saveOperation(null);
+      activeOperation = null;
+    } else append($('out'), [node('div', e.name === 'AbortError' ? 'Stopped following output.' : 'Connection error: '+e.message)]);
   }).finally(() => {
     if (g !== operationGeneration) return;
     clearInterval(operationTimer); $('stop').disabled = true; refreshRuns();
-    if (!failed && exit === 0) {
+    if (expired) {
+      $('elapsed').textContent = 'Unavailable';
+      showResult('This operation’s output is no longer available. The server may have restarted.');
+    } else if (!failed && exit === 0) {
       saveOperation(null);
       if (rootId) {
         showResult('Your world root is ready.', '/fork/'+enc(rootId), 'Launch an environment →');
@@ -132,7 +147,7 @@ async function refreshRuns() {
       const b=node('button',r.label+' · '+(r.done ? (r.exit === 0 ? 'completed' : 'failed (exit '+r.exit+')') : 'running'));
       b.onclick=() => followOperation({id:r.id,label:r.label}); return b;
     }));
-    if (!runs.length) $('runs').append(node('p','No operations in this preview yet.','muted'));
+    if (!runs.length) $('runs').append(node('p','No operations yet.','muted'));
   } catch(e) { $('runs').textContent = e.message; }
 }
 
@@ -342,7 +357,7 @@ if($('pane')) {
     }catch(e){pane.replaceChildren(node('div','Could not load views: '+e.message,'muted err'));$('live').textContent='Disconnected';}
   }
   $('speed').onchange=()=>selectView(current);
-  $('reconnect').onclick=loadViews;
+  $('reconnect').onclick=()=>{loadViews();refreshEnvironment();};
   $('log-filter').oninput=()=>pane.querySelectorAll('.ev').forEach(n=>n.hidden=!n.textContent.toLowerCase().includes($('log-filter').value.toLowerCase()));
   $('jump-latest').onclick=()=>pane.scrollTop=pane.scrollHeight;
   pane.onscroll=()=>$('paused').hidden=atBottom(pane);
@@ -389,7 +404,14 @@ if($('pane')) {
     };
   }
   loadViews();refreshEnvironment();
-  setInterval(()=>{if(!document.hidden)refreshEnvironment();},30000);
+  // Refresh on return to the page, coalescing focus and visibility events.
+  let focusRefreshTimer;
+  const refreshOnFocus=()=>{
+    clearTimeout(focusRefreshTimer);
+    if(!document.hidden)focusRefreshTimer=setTimeout(()=>refreshEnvironment(),100);
+  };
+  window.addEventListener('focus',refreshOnFocus);
+  document.addEventListener('visibilitychange',refreshOnFocus);
 }
 // Resume only this tab's operation. No shared localStorage with other previews.
 try {const saved=JSON.parse(sessionStorage.getItem('agentspace:7790:operation')||'null');if(saved && saved.id)followOperation(saved);}catch{}

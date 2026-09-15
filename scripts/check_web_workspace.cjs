@@ -23,6 +23,28 @@ const base=process.env.AGENTSPACE_PREVIEW_URL || 'http://127.0.0.1:7790';
    }
    return route.fallback();
  });
+ // A vanished run must not reopen its output panel on every navigation.
+ const operationKey='agentspace:7790:operation';
+ let expiredRequests=0;
+ await page.route('**/runs/fixture-expired',r=>{
+   expiredRequests++;
+   return r.fulfill({status:404,body:'no such run'});
+ });
+ await page.goto(base+'/');
+ await page.evaluate(key=>sessionStorage.setItem(key,JSON.stringify({id:'fixture-expired',label:'Previous operation'})),operationKey);
+ await page.reload();
+ await page.getByText('This operation’s output is no longer available. The server may have restarted.',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(key=>sessionStorage.getItem(key),operationKey),null);
+ await page.goto(base+'/help');
+ assert.equal(await page.locator('#activity').isHidden(),true);
+ assert.equal(expiredRequests,1);
+ // A transient server error should preserve the ability to resume the run.
+ await page.route('**/runs/fixture-retry',r=>r.fulfill({status:503,body:'Temporarily unavailable'}));
+ await page.evaluate(key=>sessionStorage.setItem(key,JSON.stringify({id:'fixture-retry',label:'Retryable operation'})),operationKey);
+ await page.reload();
+ await page.getByText('Output disconnected. The operation may still be running.',{exact:true}).waitFor();
+ assert.equal(JSON.parse(await page.evaluate(key=>sessionStorage.getItem(key),operationKey)).id,'fixture-retry');
+ await page.evaluate(key=>sessionStorage.removeItem(key),operationKey);
  await page.goto(base+'/worlds');
  const forkHref=await page.locator('a[href^="/fork/"]').first().getAttribute('href');
  const sid=forkHref.split('/').pop();
@@ -33,8 +55,9 @@ const base=process.env.AGENTSPACE_PREVIEW_URL || 'http://127.0.0.1:7790';
  await page.goto(base+'/environments');
  const envHref=await page.locator('a[href^="/watch/"]').first().getAttribute('href');
  const env=decodeURIComponent(envHref.split('/').pop());
- await page.route('**/info/*',r=>r.fulfill({json:{Status:'dormant',Runtime:'12m',Started:'2026-09-14'}}));
- await page.route('**/budget/*',r=>r.fulfill({json:{used:.4,limit:2}}));
+ const probes={info:0,budget:0};
+ await page.route('**/info/*',r=>{probes.info++;return r.fulfill({json:{Status:'dormant',Runtime:'12m',Started:'2026-09-14'}});});
+ await page.route('**/budget/*',r=>{probes.budget++;return r.fulfill({json:{used:.4,limit:2}});});
  let agent;
  await page.route('**/views/*',r=>r.fulfill({json:{views:[['feed',[]],['board',[]],['budget',[]],['GM (spoilers)',[]],[agent||'a12345',[(agent||'a12345')+':thoughts',(agent||'a12345')+':scratchpad']]]}}));
  await page.route('**/stream/**',r=>r.fulfill({contentType:'application/x-ndjson',body:JSON.stringify({ts:'2026-09-14T12:00:00Z',kind:'message',who:agent||'world',text:'Fixture observation: a public message.'})+'\n'}));
@@ -64,6 +87,23 @@ const base=process.env.AGENTSPACE_PREVIEW_URL || 'http://127.0.0.1:7790';
  await page.waitForURL(base+envHref);
  assert.equal(writes[1].fields.budget_usd,'3.25');
  assert.equal(writes[1].fields.kick,'off');
+ await page.waitForFunction(()=>document.querySelector('#status-check').textContent.includes('checked'));
+ await page.clock.install();
+ const initialProbes={...probes};
+ await page.clock.fastForward(120000);
+ await page.waitForTimeout(200);
+ assert.deepEqual(probes,initialProbes,'An idle watch page does not poll status or budget');
+ const focusResponses=Promise.all([
+   page.waitForResponse(r=>new URL(r.url()).pathname==='/info/'+encodeURIComponent(env)),
+   page.waitForResponse(r=>new URL(r.url()).pathname==='/budget/'+encodeURIComponent(env))
+ ]);
+ await page.evaluate(()=>{
+   window.dispatchEvent(new Event('focus'));
+   document.dispatchEvent(new Event('visibilitychange'));
+ });
+ await page.clock.runFor(250);
+ await focusResponses;
+ assert.deepEqual(probes,{info:initialProbes.info+1,budget:initialProbes.budget+1},'Focus and visibility events cause one refresh together');
  agent=await page.locator('[data-agent]').first().getAttribute('data-agent');
  await page.getByRole('button',{name:'Reconnect',exact:true}).click();
  await page.locator('#pane .ev').waitFor();
@@ -135,7 +175,7 @@ const base=process.env.AGENTSPACE_PREVIEW_URL || 'http://127.0.0.1:7790';
    if(path==='/'||path===envHref)await page.screenshot({path:'.preview-artifacts/'+(path==='/'?'mobile-overview':'mobile-observatory')+'.png',fullPage:true});
  }
  assert.deepEqual(errors,[]);
- console.log('PASS: scenario search and GitHub links; parameter/roster → exact build result → fork → observatory; visible agent cards, view/facet tabs, replay and chat; resizable columns; side output; snapshot notes; terminal-only controls; 13 mobile routes; no browser errors.');
+ console.log('PASS: expired operations cleared, transient errors resumable; watch refreshes on focus without polling; scenario search and GitHub links; parameter/roster → exact build result → fork → observatory; visible agent cards, view/facet tabs, replay and chat; resizable columns; side output; snapshot notes; terminal-only controls; 13 mobile routes; no browser errors.');
  console.log('All '+writes.length+' writes were intercepted; no real experiment was modified.');
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

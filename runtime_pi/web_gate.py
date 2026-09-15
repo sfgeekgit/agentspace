@@ -26,6 +26,7 @@ sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]
 from click.testing import CliRunner               # noqa: E402
 import web, zookeeper                             # noqa: E402
 from agentspace import db                         # noqa: E402
+from unittest.mock import patch                  # noqa: E402
 
 FAIL = []
 H = {"X-Agentspace": "1"}
@@ -192,6 +193,20 @@ for verb in ("env/exec", "env/enter", "scen/env/shell"):
     check(f"GET form {verb} is unavailable", http("GET", "/form/"+verb)[0] == 404)
     check(f"{verb} did not spawn a child", len(web.RUNS) == before)
 check("overview has no command wall", 'data-path="snap fork"' not in http("GET", "/")[1])
+scens, _ = web.registry.scan_scens()
+problems = [
+    {"name": "bad_toml", "reason": "Invalid <manifest>", "can_disable": False},
+    {"name": "bad_roles", "reason": "Missing role files", "can_disable": True},
+]
+with patch.object(web.registry, "scan_scens", return_value=(scens, problems)):
+    for path in ("/", "/scenarios"):
+        st, body = http("GET", path)
+        check(f"{path} shows broken scenario names and escaped reasons",
+              st == 200 and "bad_toml" in body and "bad_roles" in body
+              and "Invalid &lt;manifest&gt;" in body and "Missing role files" in body)
+        check(f"{path} offers Disable only for a parseable manifest",
+              body.count('data-action="scen deactivate"') == 1
+              and '&quot;scen_name&quot;: &quot;bad_roles&quot;' in body)
 check("scenario links to expected GitHub location", "https://github.com/sfgeekgit/agentspace/tree/main/scenarios/support_desk" in http("GET", "/scenarios/support_desk")[1])
 check("unknown scenario is 404", http("GET", "/scenarios/no_such_scenario")[0] == 404)
 check("unknown snapshot is 404", http("GET", "/snapshots/no_such_snapshot")[0] == 404)
