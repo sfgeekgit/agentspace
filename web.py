@@ -5,7 +5,7 @@ Verbs run as `zookeeper.py` child processes whose output streams to the page
 (a run outlives its browser tab); watching and chat call the library directly.
 Verb forms are generated from the click tree, so a new click command appears
 here with nothing else done. Stdlib only. Binds 127.0.0.1:7788 — reach it with
-`ssh -L 7788:127.0.0.1:7788 control-01`; anyone on the port can run any verb.
+`ssh -L 7788:127.0.0.1:7788 control-01`; browser actions use the CLI bridge; terminal-only verbs are excluded.
 Runs as the `agentspace-web` systemd service (deploy/agentspace-web.service).
 """
 import collections
@@ -28,6 +28,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import click
 
+import web_views as ui
+
 import zookeeper                                   # loads secrets; the click tree is zookeeper.cli
 from agentspace import audit, budget as budget_mod, builder, db, env as env_mod, logwatch, registry, runtimes, versioning
 
@@ -38,11 +40,10 @@ SPECIAL = {                      # the only verb names written in this file
     "env watch": "/watch/",      # dedicated page
     "env show": "/watch/",       # its facts fill the watch page header (GET /info/<env>)
     "env chat": "/chat/",        # chat box on the watch page
+    "env exec": None,           # terminal only: no browser execution endpoint
+    "env enter": None,          # terminal connection instructions are shown inline
     "scen env shell": None,      # terminal only: it hands the tty to `docker run -it`
 }
-# On the watch page (header buttons and facts), the left column, or the New world wizard: no console form, still runnable.
-BUTTONS = {"env start", "env stop", "env kick", "env sleep", "env kill", "env post", "env exec", "env logs",
-           "env roll-sessions", "snap take", "env enter", "budget show", "budget topup", "world build"}
 DATALISTS = {"name": "dl-envs", "env_name": "dl-envs", "snap_ref": "dl-snaps", "scen_name": "dl-scens"}  # the menu's pickers
 TEXT, HTML, JSON, NDJSON = ("text/plain; charset=utf-8", "text/html; charset=utf-8",
                             "application/json", "application/x-ndjson")
@@ -50,53 +51,9 @@ esc = html.escape
 
 
 def page(title, body, **attrs):
-    a = "".join(f' data-{k}="{esc(v)}"' for k, v in attrs.items())
-    return (f"<!doctype html><html><head><meta charset=utf-8><title>{esc(title)}</title>"
-            f"<link rel=stylesheet href=/web.css></head><body{a}>{body}<script src=/web.js></script></body></html>")
+    return ui.page(title, ui.frame(body, "scenarios", "Create a world"), **attrs)
 
 
-HELP = """
-<div class=helpdoc><a href="/">← console</a><h1>How agentspace fits together</h1>
-
-<h2>The four nouns</h2>
-<dl>
-<dt>Scenario (scen)</dt><dd>The source of a world: a folder under <code>scenarios/</code> with the rules, roles, prompts and files. Authored by you; never runs by itself.</dd>
-<dt>World</dt><dd>A scenario built into a ready-to-run image with a chosen roster of agents (count, models, personas). The <b>New world</b> button builds one. A world is stored as a snap (version 1.0) whose agents have never taken a turn.</dd>
-<dt>Snap</dt><dd>A frozen copy of a container's entire disk at one moment: corpus, transcripts, logs, board, everything. Stored locally and pushed to ghcr.io. Snaps are the permanent record; results and findings ride on them as attachments. <b>Take snap</b> on a running env makes a new version (1.0 → 1.1 → 1.1.1 …).</dd>
-<dt>Env</dt><dd>A live copy started from a snap: one docker container with its own OpenRouter key and budget. Envs are where agents actually run and spend, and they are temporary. Fork a snap to get one.</dd>
-</dl>
-<p>Lineage: <code>scenario → world snap (1.0) → env → take snap (1.1) → env → …</code></p>
-
-<h2>Env states and the buttons that move between them</h2>
-<table>
-<tr><th>state</th><th>container</th><th>gateway</th><th>agents taking turns?</th><th>get here by</th><th>leave by</th></tr>
-<tr><td class=active>● active</td><td>up</td><td>up</td><td>yes, once woken (or the game master is running)</td><td>Wake; a fresh fork</td><td>Sleep, Stop, Kill</td></tr>
-<tr><td class=dormant>● dormant</td><td>up</td><td>down</td><td>no, and no spend; logs still readable, replay works</td><td>Sleep</td><td>Wake, Stop, Kill</td></tr>
-<tr><td class=stopped>● stopped</td><td>off</td><td>down</td><td>no; the disk is intact but nothing can run inside</td><td>Stop</td><td>Start, Kill</td></tr>
-<tr><td class=missing>● missing</td><td>removed</td><td>—</td><td>—; only its snaps remain</td><td>Kill</td><td>—</td></tr>
-</table>
-<ul>
-<li><b>Start is not Wake.</b> Start powers the container back on and brings the gateway up. Nothing happens until you press <b>Wake</b>: in a world with a game master that starts the GM, which then wakes its agents; otherwise it wakes every agent directly.</li>
-<li><b>Sleep vs Stop.</b> Both halt turns and spending. Sleep keeps the container up (cheap to resume, logs stream, replay works). Stop powers it off (resume with Start, then Wake).</li>
-<li><b>Kill</b> deletes the container and its disk. Snaps are unaffected, so take a snap first if you want the run back.</li>
-<li>The console's left column shows the last <i>recorded</i> status; the watch page header probes the container and shows the live one.</li>
-</ul>
-
-<h2>The watch page</h2>
-<p>Open an env from the left column. The header carries the live status, facts, and the action buttons (Start, Wake, Sleep, Stop, Post, Exec, Logs, Roll sessions, Take snap, Kill). The side column shows the env's shared budget with Top up, and the output of any button you press.</p>
-<p>The tabs are <b>views</b> of the run's logs: <b>feed</b> (everything a spectator wants, one line each), <b>board</b> (the public chat), <b>announcements</b> (the world's posts only), <b>budget</b> (one line per turn), <b>raw</b> (the audit stream as JSON), any views the scenario declares (e.g. a game-master log with spoilers), and per agent its <b>session</b> transcript with <b>thoughts</b> / <b>says</b> / <b>messages</b> / <b>scratchpad</b> facets. Click an agent card to jump to its session; on an agent view a chat box lets you message that agent as the operator.</p>
-<p><b>Live or replay.</b> The select beside the tabs streams the view live (default) or replays the run so far from its first event, paced by the original timestamps at 1× to 30×. Replay needs the container up (dormant is fine).</p>
-
-<h2>Budgets</h2>
-<p>Every env gets its own OpenRouter key with a credit limit set at fork time; the budget box shows used / limit and <b>Top up</b> raises the limit. Sleeping or stopping an env stops the spend.</p>
-
-<h2>The console</h2>
-<p>Left: envs and snaps. Middle: the remaining verbs as forms (snap management, scenario image builds, <code>env list</code> for the full table); the env, budget and world-build verbs live on the watch page and the New world wizard instead. Every verb is also a terminal command, <code>python3 zookeeper.py &lt;group&gt; &lt;verb&gt; …</code>, and a menu item in <code>python3 zookeeper.py</code>.</p>
-</div>
-"""
-
-OUT = ('<div class=outhead><span id=outlabel>output</span><span id=elapsed></span>'
-       '<button id=stop>Stop</button></div><pre id=out></pre>')
 
 
 # ---- click tree → forms → argv ----
@@ -279,78 +236,15 @@ def _tree(name, host, refresh):
 # ---- pages ----
 
 def console_page():
-    envs = "".join(f'<a href="/watch/{esc(x["name"])}" class="{esc((x["status"] or "").split(" ")[0])}">'
-                   f'{esc(x["name"])}<small>{esc(x["status"] or "?")}</small></a>' for x in db.list_envs())
-    snaps = db.list_snaps()
-    snaps.sort(key=lambda s: (not versioning.is_world_root(s["version"]), s["scenario"]))   # world roots first
-    refs = [f"{s['scenario']}:{s['version']}" for s in snaps]
-    snap_html = "".join(f'<div><b>{esc(r)}</b> {esc(s.get("creation_message") or "")}</div>' for r, s in zip(refs, snaps))
-    opt = lambda vals: "".join(f'<option value="{esc(v)}">' for v in vals)
-    dl = (f'<datalist id=dl-envs>{opt(x["name"] for x in db.list_envs())}</datalist>'
-          f'<datalist id=dl-snaps>{opt(refs)}</datalist>'
-          f'<datalist id=dl-scens>{opt(s["name"] for s in registry.list_scens())}</datalist>')
-    verbs, group = [], None
-    for path, cmd in LEAVES.items():
-        key = " ".join(path)
-        if key in BUTTONS or SPECIAL.get(key):   # lives on the watch page, which every env in the left column links to
-            continue
-        if path[:-1] != group:
-            group = path[:-1]
-            verbs.append(f"<h3>{esc(' '.join(group))}</h3>")
-        if key in SPECIAL:
-            args = " ".join(f"<{p.name}>" for p in cmd.params if isinstance(p, click.Argument))
-            body = f"<p class=note>terminal only: <code>python3 zookeeper.py {esc(key)} {esc(args)}</code></p>"
-        else:
-            body = form_html(path, cmd)
-        verbs.append(f"<details><summary><b>{esc(key)}</b> <span class=doc>{esc(cmd.get_short_help_str(120))}</span></summary>{body}</details>")
-    body = (f'<div class=shell><aside id=nav><a class=brand href="/"><b>agentspace</b><small>operator console</small></a>'
-            f'<a class=primary href=/new>New world</a><a class=helplink href=/help>What are worlds, snaps, envs, and the env states?</a><h3>envs</h3><div id=envs>{envs or "<span class=dim>none</span>"}</div>'
-            f'<h3>snaps</h3><div id=snaps>{snap_html or "<span class=dim>none</span>"}</div></aside>'
-            f'<main><section id=verbs>{"".join(verbs)}</section><section id=outbox><div id=runs></div>{OUT}</section></main></div>{dl}')
-    return page("agentspace", body)
+    return ui.overview()
 
 
 def watch_page(name):
-    """Header and agent cards from the db rows (no docker); views, stream and budget fill in from JS."""
-    env = db.get_env(name)
-    if env is None:
-        return None
-    snap = db.get_snap_by_id(env["snap_id"]) or {}
-    roster = {a["id"]: a for a in snap.get("roster") or []}    # roots built before the roster label: ids only
-    cards = "".join(
-        f'<div class=card data-name="{esc(a)}"><b>{esc(a)}</b>'
-        + (f'<span class=role>{esc(r["role"])}</span>' if r.get("role") else "")
-        + (f'<i>{esc(r["persona"])}</i>' if r.get("persona") else "")
-        + (f'<small>{esc(r["model"])}</small>' if r.get("model") else "") + "</div>"
-        for a in snap.get("agents") or [] for r in [roster.get(a, {})])
-    status = env["status"] or "?"
-    facts = [("snap", f'{snap["scenario"]}:{snap["version"]}' if snap else env["snap_id"][:8]), ("scen", snap.get("scen")),
-             ("runtime", snap.get("runtime")), ("host", env["host"] or "localhost"), ("agents", len(snap.get("agents") or [])),
-             ("created", (env.get("created_at") or "")[:16])]
-    meta = "".join(f"<span>{k} <b>{esc(str(v))}</b></span>" for k, v in facts if v)
-    speeds = "".join(f"<option value={n}>replay {n}×</option>" for n in (1, 2, 5, 10, 30))
-    body = (f'<header><a href="/">← console</a><div class=hrow><h1>{esc(name)}</h1><span class="dot {esc(status.split(" ")[0])}">● {esc(status)}</span>'
-            f'<span id=actions></span></div><div class=meta>{meta}</div></header>'
-            f'<div class=split><aside id=agents><h3>Agents</h3>{cards or "<p class=dim>none recorded</p>"}</aside><div class=col>'
-            f'<div class=tabs><ul id=views><li class=dim>loading views…</li></ul><span id=paused hidden>paused — scroll to the bottom to follow</span>'
-            f'<select id=speed title="replay the run so far, paced by its own timestamps"><option value="">live</option>{speeds}</select></div>'
-            f'<div id=pane></div><div id=live hidden><span class=pulse></span>streaming live</div>'
-            f'<form id=chat hidden><span id=chatwho></span><input name=text autocomplete=off placeholder="message the agent (Enter to send)">'
-            f'<button>Send</button></form><div id=chatlog></div></div>'
-            f'<aside id=side><h3>Shared budget</h3><div id=budget><b>…</b><div class=bar><div></div></div><small>loading</small></div>'
-            f'<div id=outbox hidden>{OUT}</div></aside></div>')
-    return page(f"watch — {name}", body, env=name)
+    return ui.watch(name)
 
 
 def wizard1():
-    """Step 1: scenario — problems first (with the menu's inline Disable), then the active scens."""
-    scens, problems = registry.scan_scens()
-    probs = "".join(f'<p class=warn>⚠ scenario skipped: {esc(p["name"])} — {esc(p["reason"])}'
-                    + (f' <button data-disable="{esc(p["name"])}">Disable</button>' if p["can_disable"] else "") + "</p>"
-                    for p in problems)
-    items = "".join(f'<a class=card href="/new/{esc(s["name"])}"><b>{esc(s["name"])}</b> — {esc(s["description"])}</a>'
-                    for s in scens) or "<p>No scenarios available (add one under scenarios/&lt;name&gt;/)</p>"
-    return page("New world", f'<div class=wiz><a href="/">← console</a><h1>New world</h1><h2>1 · Scenario</h2>{probs}{items}</div>')
+    return ui.scenarios()
 
 
 def _param_control(spec, v):
@@ -376,11 +270,11 @@ def wizard2(scen, values=None, error=""):
                    for spec in scen["params_schema"])
     nopts = "".join(f'<option{" selected" if str(i) == values.get("n") else ""}>{i}</option>'
                     for i in range(scen["min_agents"], scen["max_agents"] + 1))
-    body = (f'<div class=wiz><a href="/new">← scenarios</a><h1>New world — {esc(scen["name"])}</h1>'
+    body = (f'<div class=wiz><a href="/scenarios/{esc(scen["name"])}">← scenario</a><div class=eyebrow>CREATE A WORLD / 1 OF 2</div><h1>Set the scene.</h1>'
             f'<p class=dim>{esc(scen["description"])}</p>{f"<p class=err>{esc(error)}</p>" if error else ""}'
-            f'<form id=step2 method=get action="/new/{esc(scen["name"])}/roster"><h2>2 · Parameters</h2>{rows or "<p class=dim>(none)</p>"}'
-            f'<h2>3 · Agents</h2><label><span>Number of agents</span><select name=n>{nopts}</select></label>'
-            f'<button class=primary>Next</button></form></div>')
+            f'<form id=step2 method=get action="/new/{esc(scen["name"])}/roster"><h2>Scenario settings</h2>{rows or "<p class=dim>(none)</p>"}'
+            f'<h2>Agent count</h2><label><span>Number of agents</span><select name=n>{nopts}</select></label>'
+            f'<button class=primary>Configure agents →</button></form></div>')
     return page(f"New world — {scen['name']}", body)
 
 
@@ -409,31 +303,24 @@ def wizard3(scen, fields):
     popts = "".join(f'<option value="{esc(p["short_name"])}"{" selected" if p["short_name"] == zookeeper.DEFAULT_PERSONA else ""}>'
                     f'{esc(p["short_name"])} — {esc(p["summary"] or "(no persona text)")}</option>' for p in personas)
     rows = "".join(f'<tr><td>agent {i + 1}/{n} <code>{esc(ids[i])}</code></td>{f"<td>{esc(roles[i] or "")}</td>" if show_roles else ""}'
-                   f'<td><input name="model_{i}" list=models value="{esc(rt.DEFAULT_MODEL)}" required></td>'
-                   f'<td><select name="persona_{i}">{popts}</select></td></tr>' for i in range(n))
+                   f'<td><input name="model_{i}" aria-label="Model for agent {i + 1}" list=models value="{esc(rt.DEFAULT_MODEL)}" required></td>'
+                   f'<td><select name="persona_{i}" aria-label="Persona for agent {i + 1}">{popts}</select></td></tr>' for i in range(n))
     ptexts = "".join(f'<details><summary>{esc(p["short_name"])}</summary><pre>{esc(p["text"].strip() or "(no persona text)")}</pre></details>'
                      for p in personas)
     modules = "".join(f'<label class=chk><input type=checkbox name=module value="{esc(m["name"])}">{esc(m["name"])}</label>'
                       for m in registry.list_modules()) or "<p class=dim>Modules: none available yet</p>"
-    body = (f'<div class=wiz><a href="/new/{esc(scen["name"])}">← parameters</a><h1>New world — {esc(scen["name"])}</h1>'
+    body = (f'<div class=wiz><a href="/new/{esc(scen["name"])}">← parameters</a><div class=eyebrow>CREATE A WORLD / 2 OF 2</div><h1>Make it your world.</h1><p class=muted>Scenario: {esc(scen["name"])}</p>'
             f'<form id=step3 data-runtime="{esc(scen["runtime"])}" data-build="/new/{esc(scen["name"])}/build">'
-            f'<h2>4 · Roster</h2><table id=roster><thead><tr><th>agent</th>{"<th>role</th>" if show_roles else ""}'
+            f'<h2>Choose your cast</h2><p class=muted>Models power each agent; personas shape its personality. Roles come from the scenario.</p><table id=roster><thead><tr><th>agent</th>{"<th>role</th>" if show_roles else ""}'
             f'<th>model</th><th>persona</th></tr></thead><tbody>{rows}</tbody></table><datalist id=models>{models}</datalist>'
             f'<p><a href="#" id=copyrow>copy row 1 to all rows</a></p><div class=personas>{ptexts}</div>'
-            f'<h2>5 · Modules</h2>{modules}<h2>6 · World name</h2>'
+            f'<h2>Optional modules</h2>{modules}<h2>Name your world</h2>'
             f'<label><span>name (blank = scen name)</span><input name=world_name pattern="[a-z0-9_]*" placeholder="{esc(scen["name"])}"></label>'
             f'<input type=hidden name=params value="{esc(json.dumps(params))}"><input type=hidden name=n value="{n}">'
             f'<input type=hidden name=seed value="{seed}">'
             f'<p id=summary>World Root <b id=wname>{esc(scen["name"])}</b> ← scen {esc(scen["name"])} (runtime {esc(scen["runtime"])}, seed {seed})</p>'
-            f'<button class=primary>Build</button></form>{OUT}'
-            f'<h2>Then: run it and watch</h2><ol class=next>'
-            f'<li>Build makes a <b>world snap</b> (the name above, version 1.0 or the next free one) and shows it in the console\'s snap list. Nothing runs yet.</li>'
-            f'<li>On the <a href="/">console</a>, run <b>snap fork</b>: snap_ref = that snap, new_env_name = a name for this run, --budget = the dollar cap. '
-            f'This mints the env\'s key, starts its container, and (for a world snap) kicks the agents, so the run begins at once.</li>'
-            f'<li>Open the new env from the console\'s left column: the <b>watch page</b>. The <b>feed</b> view shows every turn as it happens; '
-            f'the agent cards open each agent\'s transcript, and the <b>budget</b> box shows spend.</li>'
-            f'<li>If nothing is happening, press <b>Wake</b> (a world with a game master starts its GM; otherwise every agent is woken). '
-            f'<b>Sleep</b> pauses the run and its spend; <b>Take snap</b> keeps the result. See <a href="/help">help</a> for the states.</li></ol></div>')
+            f'<button class=primary>Build world root →</button></form><div id=build-next hidden></div>'
+            f'<p class=quiet-note>Building creates a local starting point. Next, launch an environment with a budget and open its live view.</p></div>')
     return page(f"New world — {scen['name']}", body)
 
 
@@ -445,7 +332,8 @@ def build_run(scen, fields) -> str:
                "roster": [{"model": vals[f"model_{i}"], "persona": vals[f"persona_{i}"]} for i in range(n)],
                "modules": fields.get("module", []), "params": json.loads(vals["params"]), "seed": int(vals["seed"])}
     return start_run([sys.executable, "-u", "-c", "import json,sys,zookeeper; from agentspace import builder; "
-                      "builder.cmd_build(**json.load(sys.stdin))"], stdin=json.dumps(payload), label=f"world build {scen['name']}")
+                      "s=builder.cmd_build(**json.load(sys.stdin)); "
+                      "print('UI_WORLD_ROOT:'+s['snap_id'])"], stdin=json.dumps(payload), label=f"world build {scen['name']}")
 
 
 # ---- the handler ----
@@ -492,6 +380,28 @@ class Handler(BaseHTTPRequestHandler):
         m = self.command
         if m == "GET" and not seg:
             return self.reply(200, console_page(), HTML)
+        if m == "GET" and seg == ["scenarios"]:
+            return self.reply(200, ui.scenarios(), HTML)
+        if m == "GET" and len(seg) == 2 and seg[0] == "scenarios":
+            try:
+                return self.reply(200, ui.scenario_detail(seg[1]), HTML)
+            except registry.RegistryError as err:
+                return self.reply(404, str(err))
+        if m == "GET" and seg == ["worlds"]:
+            return self.reply(200, ui.worlds((q.get("view") or ["roots"])[0]), HTML)
+        if m == "GET" and seg == ["environments"]:
+            return self.reply(200, ui.environments(), HTML)
+        if m == "GET" and len(seg) == 2 and seg[0] in ("worlds", "snapshots", "fork"):
+            view = {"worlds": ui.world_detail, "snapshots": ui.snapshot_detail, "fork": ui.fork_page}[seg[0]]
+            rendered = view(seg[1])
+            return self.reply(200, rendered, HTML) if rendered else self.reply(404, "Snapshot not found")
+        if m == "GET" and seg == ["tools"]:
+            return self.reply(200, ui.tools_page(LEAVES, SPECIAL, form_html), HTML)
+        if m == "GET" and seg[:1] == ["form"]:
+            path = tuple(seg[1:])
+            if path not in LEAVES or " ".join(path) in SPECIAL:
+                return self.reply(404, "No browser form for this operation")
+            return self.reply(200, form_html(path, LEAVES[path]), HTML)
         if m == "GET" and seg in (["web.css"], ["web.js"]):
             return self.reply(200, (REPO / seg[0]).read_text(), "text/css" if seg[0].endswith("css") else "text/javascript")
         if m == "GET" and seg == ["runs"]:
@@ -550,7 +460,7 @@ class Handler(BaseHTTPRequestHandler):
         if m == "POST" and len(seg) == 3 and seg[0] == "chat":
             return self.chat(seg[1], seg[2], body)
         if m == "GET" and seg == ["help"]:
-            return self.reply(200, page("help — agentspace", HELP), HTML)
+            return self.reply(200, ui.help_page(), HTML)
         if m == "GET" and seg == ["new"]:
             return self.reply(200, wizard1(), HTML)
         if seg[:1] == ["new"] and len(seg) in (2, 3):

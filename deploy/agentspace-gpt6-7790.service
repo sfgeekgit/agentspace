@@ -1,0 +1,12 @@
+[Unit]
+Description=Agentspace GPT-6 workspace preview on 7790
+
+[Service]
+WorkingDirectory=/home/cc/agentspace-worktrees/gpt-6-7790
+Environment=AGENTSPACE_WEB_PORT=7790
+ExecStart=/usr/bin/python3 /home/cc/agentspace-worktrees/gpt-6-7790/web.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

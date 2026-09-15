@@ -22,7 +22,7 @@ import urllib.request
 tmp = tempfile.mkdtemp(prefix="webgate-")
 os.environ["AGENTSPACE_STATE_DIR"] = tmp           # before agentspace.db is imported
 signal.signal(signal.SIGINT, signal.SIG_DFL)      # Stop is SIGINT; a background shell job inherits it ignored
-sys.path.insert(0, "/opt/agentspace-ctl")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 from click.testing import CliRunner               # noqa: E402
 import web, zookeeper                             # noqa: E402
 from agentspace import db                         # noqa: E402
@@ -84,10 +84,10 @@ PORT = srv.server_address[1]
 BASE = f"http://127.0.0.1:{PORT}"
 
 # 3. console: a form per leaf
-st, body = http("GET", "/")
+st, body = http("GET", "/tools")
 leaves = {" ".join(p): c for p, c in web.leaf_commands(zookeeper.cli)}
 missing = [k for k in leaves if k not in web.SPECIAL and f'data-path="{k}"' not in body]
-check("console renders a form per non-SPECIAL leaf", st == 200 and not missing, str(missing))
+check("advanced tools render a form per non-SPECIAL leaf", st == 200 and not missing, str(missing))
 check("scen env shell listed as terminal-only", "scen env shell" in body and 'data-path="scen env shell"' not in body)
 
 
@@ -121,12 +121,12 @@ except ValueError:
     check("argv: missing required argument raises", True)
 
 # 5–6. a normal run round trip; the header check
-st, body = http("POST", "/run/env/show", "name=gate_env")
+st, body = http("POST", "/run/snap/list", "")
 rid = json.loads(body).get("id") if st == 200 else None
-check("POST /run/env/show → {id}", st == 200 and bool(rid), f"{st} {body[:80]}")
+check("POST /run/snap/list → {id}", st == 200 and bool(rid), f"{st} {body[:80]}")
 st, out = http("GET", f"/runs/{rid}")
 check("GET /runs/<id> ends with [exit N]", st == 200 and re.search(r"\[exit -?\d+\]\s*$", out), out[-120:])
-check("POST without the header → 403", http("POST", "/run/env/show", "name=gate_env", headers={})[0] == 403)
+check("POST without the header → 403", http("POST", "/run/snap/list", "", headers={})[0] == 403)
 check("GET /runs lists it done", any(r["id"] == rid and r["done"] for r in json.loads(http("GET", "/runs")[1])))
 
 # 7. run lifetimes, with a silent fixture child
@@ -154,7 +154,7 @@ check("GET /stream/gate_env/feed → one {error} line", st == 200 and len(lines)
 
 # 9. wizard
 st, body = http("GET", "/new")
-check("GET /new lists pd", st == 200 and "/new/pd" in body)
+check("GET /new lists pd", st == 200 and "/scenarios/pd" in body)
 st, body = http("GET", "/new/pd/roster?n=2&rounds=5")
 check("roster: two rows and a models datalist", st == 200 and body.count("<tr>") == 3 and "id=models" in body, f"{st} rows={body.count('<tr>') - 1}")
 check("roster: n=99 → 400", http("GET", "/new/pd/roster?n=99")[0] == 400)
@@ -184,6 +184,44 @@ r1, r2 = http("GET", "/models?runtime=pi"), http("GET", "/models?runtime=pi")
 check("models: cached per runtime, fetched once", r1[1] == r2[1] == '["x/y"]' and len(calls) == 1, f"{r1} {r2} calls={len(calls)}")
 check("models: unknown runtime → 404", http("GET", "/models?runtime=nope")[0] == 404)
 pi.list_all_models = orig_models
+
+# Workspace hierarchy and terminal-only boundary.
+for verb in ("env/exec", "env/enter", "scen/env/shell"):
+    before = len(web.RUNS)
+    check(f"POST {verb} is terminal-only", http("POST", "/run/"+verb, "name=gate_env&cmd=echo+unexpected")[0] == 404)
+    check(f"GET form {verb} is unavailable", http("GET", "/form/"+verb)[0] == 404)
+    check(f"{verb} did not spawn a child", len(web.RUNS) == before)
+check("overview has no command wall", 'data-path="snap fork"' not in http("GET", "/")[1])
+check("scenario links to expected GitHub location", "https://github.com/sfgeekgit/agentspace/tree/main/scenarios/support_desk" in http("GET", "/scenarios/support_desk")[1])
+check("unknown scenario is 404", http("GET", "/scenarios/no_such_scenario")[0] == 404)
+check("unknown snapshot is 404", http("GET", "/snapshots/no_such_snapshot")[0] == 404)
+for path in ("/worlds", "/worlds/deadbeef", "/snapshots/deadbeef", "/fork/deadbeef", "/environments", "/help"):
+    check(f"workspace {path} renders", http("GET", path)[0] == 200)
+check("root launch defaults to waking", 'value="on" selected' in http("GET", "/fork/deadbeef")[1])
+base = db.get_snap_by_id("deadbeef")
+child = {**base, "snap_id":"child", "version":"1.1", "parent_snap_id":"deadbeef", "parent_version":"1.0"}
+other_root = {**base, "snap_id":"another_root", "version":"2.0"}
+db.upsert_snap(child); db.upsert_snap(other_root)
+check("snapshot resolves to correct root", web.ui.root_for(child,db.list_snaps())["snap_id"] == "deadbeef")
+check("family does not include a different root", "gate:2.0" not in http("GET", "/worlds/deadbeef")[1])
+check("saved-state launch defaults to waiting", 'value="off" selected' in http("GET", "/fork/child")[1])
+legacy={**base,"creation_message":"world root: 2 agents, scen=pd, per-agent sandboxes"}
+check("legacy source inference carries its evidence", web.ui.source(legacy) == ("pd","creation note"))
+legacy["scen"]="support_desk"
+check("explicit provenance takes precedence", web.ui.source(legacy) == ("support_desk","recorded"))
+check("browser template escapes snapshot text", "&lt;script&gt;" in web.ui.snapshot_row({**base,"creation_message":"<script>bad</script>"}))
+# Build completion must return its own id, never guess the most recently built root.
+original_start = web.start_run
+captured = {}
+def fake_start(argv, **kwargs):
+    captured.update(argv=argv, **kwargs)
+    return "fixture-build"
+web.start_run = fake_start
+fields={"n":["2"],"params":["{\"rounds\":5}"],"seed":["123"],"world_name":["fixture_world"],"model_0":["model/a"],"model_1":["model/b"],"persona_0":["blank"],"persona_1":["minimal"]}
+check("wizard build dispatches", web.build_run(web.registry.load_scen("pd"), fields)=="fixture-build")
+check("build result carries the exact root id", "UI_WORLD_ROOT:" in captured["argv"][-1])
+check("build preserves per-agent roster", json.loads(captured["stdin"])["roster"] == [{"model":"model/a","persona":"blank"},{"model":"model/b","persona":"minimal"}])
+web.start_run = original_start
 
 # 13. the front-end checker
 check("scripts/check_frontends.py exits 0",

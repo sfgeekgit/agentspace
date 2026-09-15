@@ -12,3 +12,6 @@ db.sqlite
 
 CLAUDE.md
 .claude/
+
+.preview-tools/
+.preview-artifacts/
