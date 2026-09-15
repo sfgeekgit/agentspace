@@ -1,4 +1,5 @@
 """Human-facing workspace views; operations remain in web.py's CLI bridge."""
+import contextvars
 import html
 import json
 import re
@@ -8,6 +9,15 @@ from urllib.parse import quote
 from agentspace import db, registry, versioning
 
 esc = lambda x: html.escape(str(x if x is not None else ""))
+PUBLIC = contextvars.ContextVar("public", default=False)   # this request came through the public demo host (web.py sets it from Caddy's header)
+DENIED = lambda verb, fields=None: None                     # web.py installs its demo policy here: why the demo may not run a verb, or None
+DEMO_MAX_BUDGET = None                                      # web.py sets it; the launch page shows the cap
+WATCH_VERBS = ("env start", "env kick", "env sleep", "env stop", "env post", "env logs", "env roll-sessions", "snap take", "env kill")
+DEMO_NOTICE = ('<div class="notice demo-notice"><span><b>This is a shared demo of agentspace.</b> Build a world, launch it, and watch it run. '
+               'Some controls are disabled unless you have the operator password, because they reach this server\u2019s own files and registry. '
+               'Want all of it, with your own keys and no limits? <b>Fork the source at '
+               '<a href="https://github.com/sfgeekgit/agentspace" target="_blank" rel="noopener noreferrer">github.com/sfgeekgit/agentspace</a> '
+               'and run it on your own server.</b> Every control is yours there.</span></div>')
 u = lambda x: quote(str(x), safe="")
 
 ICONS = {
@@ -29,6 +39,8 @@ def icon(name):
 
 
 def page(title, body, **attrs):
+    if PUBLIC.get():   # the watch page builds its buttons in JS; tell it which verbs the demo refuses
+        attrs = {**attrs, 'demo': '1', 'denied': ','.join(v for v in WATCH_VERBS if DENIED(v))}
     attrs = ''.join(f' data-{k}="{esc(v)}"' for k, v in attrs.items())
     return f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(title)} · Agentspace</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/web.css"></head><body{attrs}>{body}<script src="/web.js"></script></body></html>'
 
@@ -40,7 +52,7 @@ def frame(body, active="overview", title="Workspace"):
     return f'''<a class="skip" href="#content">Skip to content</a><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">a<span>✳</span></span>agentspace<span class="brand-period">.</span></a>
     <div class="workspace-label">YOUR WORKSPACE</div><nav aria-label="Main navigation">{nav}</nav>
     <div class="sidebar-bottom"><a class="nav-link {"selected" if active == "tools" else ""}" href="/tools">{icon('tools')}Advanced tools</a><a class="nav-link {"selected" if active == "help" else ""}" href="/help">{icon('help')}Getting started</a></div></aside>
-    <div class="workspace"><header class="topbar"><span>{esc(title)}</span><div class="topbar-right"><a href="/help">Quick guide ↗</a></div></header><main id="content">{body}</main><footer>Agentspace <span>Explore. Run. Observe. Repeat.</span></footer></div>
+    <div class="workspace"><header class="topbar"><span>{esc(title)}</span><div class="topbar-right"><a href="/help">Quick guide ↗</a></div></header><main id="content">{DEMO_NOTICE if PUBLIC.get() else ""}{body}</main><footer>Agentspace <span>Explore. Run. Observe. Repeat.</span></footer></div>
     <dialog id="action-dialog" aria-labelledby="dialog-title"><div class="dialog-head"><div><span class="eyebrow">WORKSPACE ACTION</span><h2 id="dialog-title"></h2></div><button type="button" class="icon-button" data-close aria-label="Close dialog">×</button></div><p id="dialog-note" class="muted"></p><div id="dialog-fields"></div></dialog>
     <section id="activity" class="activity" hidden aria-label="Action output"><div class="activity-head"><span id="outlabel">Activity</span><span id="elapsed"></span><button id="stop" class="small">Interrupt</button><button class="icon-button" id="close-output" aria-label="Minimize output">×</button></div><pre id="out" tabindex="0" role="log" aria-label="Operation output"></pre><div id="result-link" aria-live="polite"></div></section><button id="activity-toggle" hidden>View activity</button><div id="toast" role="status" hidden></div>'''
 
@@ -54,6 +66,8 @@ def link(href, text, cls='button', ico=None):
 
 
 def action(verb, text, fields=None, cls='button secondary', note=''):
+    if why := DENIED(verb):
+        return f'<button class="{cls}" disabled title="{esc(why)}">{esc(text)} <span class="tag">{esc(why)}</span></button>'
     return f'<button class="{cls}" data-action="{esc(verb)}" data-fields="{esc(json.dumps(fields or {}))}" data-note="{esc(note)}">{esc(text)}</button>'
 
 
@@ -273,8 +287,13 @@ def fork_page(sid):
     s=db.get_snap_by_id(sid)
     if not s:return None
     root=versioning.is_world_root(s['version'])
+    demo=PUBLIC.get()
+    budget_max=f' max="{DEMO_MAX_BUDGET:g}"' if demo else ''
+    budget_note=f'All agents share this cap. Demo launches are capped at ${DEMO_MAX_BUDGET:g}.' if demo else 'All agents share this cap. You can top up later.'
+    off=' disabled' if demo else ''
+    off_tag=f' <span class="tag">{esc(DENIED("snap attach") or "")}</span>' if demo else ''
     body=crumb([('Worlds','/worlds'),(ref(s),snap_url(s)),('Launch environment','')])+header('LAUNCH / ENVIRONMENT','Give this world a life of its own.','Create an independent environment from this saved starting point.')
-    body+=f'''<div class="form-layout"><form class="panel padded form-card" data-path="snap fork" id="launch-form"><h2>Launch settings</h2><input type="hidden" name="snap_ref" value="{esc(ref(s))}"><label>Environment name<input name="new_env_name" required pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]*" placeholder="{esc(s['scenario'])}_run" autocomplete="off"><small>A unique name for this run.</small></label><label>Shared budget (USD)<input type="number" name="budget_usd" min="0.01" step="0.01" value="2.00" required><small>All agents share this cap. You can top up later.</small></label><label>When the environment is ready<select name="kick"><option value="on" {"selected" if root else ""}>Wake agents and begin the run</option><option value="off" {"selected" if not root else ""}>Wait for me to wake the agents</option></select></label><details><summary>Advanced launch settings</summary><label>Host<input name="host" value="localhost"></label><label>Override model<input name="model" placeholder="Keep the snapshot’s model"></label><label>Persona file overrides<textarea name="souls" placeholder="agent_id=path/to/file.md (one per line)"></textarea></label><label>Existing OpenRouter key<input type="password" name="existing_key" autocomplete="off"><small>Leave blank to provision a fresh key for this environment.</small></label></details><p class="notice">Launching provisions a budgeted environment. Agents can spend credits as soon as they are woken.</p><button class="button" type="submit">Launch environment {icon('arrow')}</button></form><aside class="launch-summary"><div class="eyebrow">YOUR STARTING POINT</div><h2>{esc(ref(s))}</h2><span class="tag">{'Never-run world root' if root else 'Saved snapshot'}</span><p>{esc(s.get('creation_message'))}</p><dl><dt>Agents</dt><dd>{len(s.get('agents') or [])}</dd><dt>Runtime</dt><dd>{esc(s.get('runtime'))}</dd><dt>State</dt><dd>{'Fresh start' if root else 'Continues from saved state'}</dd></dl><hr><p>The source snapshot stays unchanged. When this environment is ready, you’ll go straight to its live view.</p></aside></div>'''
+    body+=f'''<div class="form-layout"><form class="panel padded form-card" data-path="snap fork" id="launch-form"><h2>Launch settings</h2><input type="hidden" name="snap_ref" value="{esc(ref(s))}"><label>Environment name<input name="new_env_name" required pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]*" placeholder="{esc(s['scenario'])}_run" autocomplete="off"><small>A unique name for this run.</small></label><label>Shared budget (USD)<input type="number" name="budget_usd" min="0.01" step="0.01" value="2.00" required{budget_max}><small>{budget_note}</small></label><label>When the environment is ready<select name="kick"><option value="on" {"selected" if root else ""}>Wake agents and begin the run</option><option value="off" {"selected" if not root else ""}>Wait for me to wake the agents</option></select></label><details><summary>Advanced launch settings</summary><label>Host{off_tag}<input name="host" value="localhost"{off}></label><label>Override model<input name="model" placeholder="Keep the snapshot’s model"></label><label>Persona file overrides{off_tag}<textarea name="souls" placeholder="agent_id=path/to/file.md (one per line)"{off}></textarea></label><label>Existing OpenRouter key<input type="password" name="existing_key" autocomplete="off"><small>Leave blank to provision a fresh key for this environment.</small></label></details><p class="notice">Launching provisions a budgeted environment. Agents can spend credits as soon as they are woken.</p><button class="button" type="submit">Launch environment {icon('arrow')}</button></form><aside class="launch-summary"><div class="eyebrow">YOUR STARTING POINT</div><h2>{esc(ref(s))}</h2><span class="tag">{'Never-run world root' if root else 'Saved snapshot'}</span><p>{esc(s.get('creation_message'))}</p><dl><dt>Agents</dt><dd>{len(s.get('agents') or [])}</dd><dt>Runtime</dt><dd>{esc(s.get('runtime'))}</dd><dt>State</dt><dd>{'Fresh start' if root else 'Continues from saved state'}</dd></dl><hr><p>The source snapshot stays unchanged. When this environment is ready, you’ll go straight to its live view.</p></aside></div>'''
     return page('Launch environment',frame(body,'environments','Launch environment'))
 
 
@@ -356,7 +375,9 @@ def tools_page(leaves,special,form_html):
                 args=' '.join('<'+p.name+'>' for p in cmd.params if getattr(p,'param_type_name','')=='argument')
                 body+=f'<details data-search="{esc(key)}"><summary>{esc(key)} <span class="tag">Terminal only</span></summary><p>Use your terminal for this operation.</p><code class="copy-line">python3 zookeeper.py {esc(key)} {esc(args)}</code></details>'
             else:
-                body+=f'<details data-search="{esc(key+" "+cmd.get_short_help_str())}"><summary>{esc(key)}<span>{esc(cmd.get_short_help_str(110))}</span></summary>{form_html(path,cmd)}</details>'
+                why=DENIED(key)   # the demo shows every form; refused ones are disabled and say why
+                form=f'<fieldset disabled class="demo-off">{form_html(path,cmd)}</fieldset>' if why else form_html(path,cmd)
+                body+=f'<details data-search="{esc(key+" "+cmd.get_short_help_str())}"><summary>{esc(key)}{f"<span class=tag>{esc(why)}</span>" if why else ""}<span>{esc(cmd.get_short_help_str(110))}</span></summary>{form}</details>'
         body+='</section>'
     body+='</div><section class="section"><h2>Recent operations</h2><div id="runs"></div></section>'
     refs=[ref(s) for s in db.list_snaps()]

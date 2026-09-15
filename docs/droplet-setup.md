@@ -153,6 +153,7 @@ openclaw tui
 
 See the project repo for:
 - Dockerfile (env image)
-- Python control CLI (`fork_env`, `list_envs`, etc.)
-- Agent configs and SOUL.md files
-- Scenario definitions
+- Python control CLI and menu (`zookeeper.py`; `agentspace_cli.md`)
+- The web UI service (`deploy/agentspace-web.service`) and, for a public demo,
+  the Caddy block and demo policy in `web_ui.md`
+- Scenario definitions, personas, modules (`HOW_TO_MAKE_WORLDS_START_HERE.md`)

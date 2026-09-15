@@ -15,7 +15,8 @@ cd /opt/agentspace-ctl
 python3 zookeeper.py <noun> <verb> [args]
 ```
 
-Run with no arguments for the interactive menu.
+Run with no arguments for the interactive menu. The same verbs are in the browser:
+`ssh -L 7788:127.0.0.1:7788`, then http://127.0.0.1:7788 — see `web_ui.md`.
 
 ## Creating a new world (World Root)
 
@@ -392,9 +393,11 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
 
 ```
 /opt/agentspace-ctl/
-  zookeeper.py                ← click entry, dispatch only
-  web.py (+ web.js, web.css)  ← browser front end, http://127.0.0.1:7788 via ssh -L; the agentspace-web
-                                 service (deploy/agentspace-web.service); AGENTSPACE_WEB_PORT for a 2nd worktree
+  zookeeper.py                ← click entry + interactive menu, dispatch only
+  web.py                      ← browser front end: routes, the CLI bridge (verbs as child processes),
+                                 streams, the demo policy; http://127.0.0.1:7788 via ssh -L; the
+                                 agentspace-web service (deploy/); AGENTSPACE_WEB_PORT for a 2nd instance
+  web_views.py                ← the web pages (server-rendered HTML); web.js + web.css
   agentspace/
     db.py                      ← SQLite schema + helpers
     audit.py                   ← JSON-line audit log
@@ -408,8 +411,15 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
     registry.py                ← discover scens / personas / modules (scan git dirs)
     builder.py                 ← build a World Root from a scen + roster
     scen.py                    ← scen env freeze / build (source_image producers)
+    gmlib.py                   ← the game master's API (runtime_pi.md §4b)
+    logwatch.py                ← log views + streamer (env watch, env logs --all, the web watch page)
+    watch_tui.py               ← the Textual TUI for env watch
     runtimes/__init__.py       ← dispatch on snap.runtime label
     runtimes/openclaw.py       ← openclaw flag→config translate + render_config, soul, gateway, kick
+    runtimes/pi.py             ← the PI runtime (runtime_pi.md)
+  runtime_pi/                  ← in-container PI runtime (gateway, agentd, gmd) + the gates
+  scripts/check_frontends.py   ← every cmd_* is wired into CLI, menu and web
+  deploy/                      ← the web service unit
 ```
 
 Only `zookeeper.py` and `web.py` import `click`. Other modules are plain functions, callable from
@@ -418,9 +428,12 @@ tests or programmatic use.
 **One verb, one library function, every front end.** A verb lives ONLY as a
 `cmd_*` function in `agentspace/`. `zookeeper.py` holds two renderings of it:
 the click command (three lines) and the interactive menu branch (prompts, then
-the same call); `web.py` is the third, generated from the click tree (a form
+the same call); the web is the third, generated from the click tree (a form
 per command, run as a CLI child whose output streams to the page), so it needs
-no per-verb code. Front ends never touch docker, the db, or OpenRouter
+no per-verb code — `web_views.py` adds pages around the common verbs (launch,
+create a world, watch) without calling the library for anything but reads.
+The web's demo policy (`web_ui.md` §5) is an allowlist on top: a new verb is
+operator-only on the public demo until it is added there. Front ends never touch docker, the db, or OpenRouter
 themselves, so behaviour cannot drift; coverage is checked mechanically —
 `python3 scripts/check_frontends.py` fails if any `cmd_*` is missing from
 either side or any click command has no web form. Adding a verb = library

@@ -429,6 +429,8 @@ IS selection, debounced so you can scan), PageUp/PageDown scroll the pane,
 
 Scens may DECLARE extra views (`[[watch]]` in scenario.toml — see
 `HOW_TO_MAKE_WORLDS_START_HERE.md`); mafia ships "game log (GM, spoilers)".
+The web watch page (`/watch/<env>`, `web_ui.md` §4) shows the same views in a
+browser, live or replayed, with the per-env action buttons and agent chat.
 
 Implementation (`agentspace/logwatch.py` + `watch_tui.py`): one tiny streamer
 loop runs in-container via docker exec and re-globs the view's file patterns
@@ -482,7 +484,7 @@ what you touched.**
 | Build | `runtime_pi/gm_gate/run_build_gate.sh` | builder hidden-info hooks via a real throwaway build: `fill_briefing` instantiation, `/gm/secrets.json` baking + ownership (host-side, ~30s) | builder, logic hooks, pi bake |
 | Key | `python3 runtime_pi/key_gate.py` | keys-never-in-snaps invariant with a FAKE key: tmpfs delivery, committed image clean in fs + `.Config`, scanner positive control (host-side, ~15s) | key delivery/injection, container start paths, take/push scanner |
 | Front ends | `python3 scripts/check_frontends.py` | every library `cmd_*` verb is wired into both the click CLI and the menu in zookeeper.py, and every click leaf has a web form or a `web.SPECIAL` entry (instant) | zookeeper.py, any `cmd_*`, web.py |
-| Web | `python3 runtime_pi/web_gate.py` | every verb has a web form; argv rules; runs stream, survive or die as specified; watch, chat, wizard, models routes answer against a stopped env (host-side, ~10s) | web.py, check_frontends.py |
+| Web | `python3 runtime_pi/web_gate.py` | every verb has a web form; argv rules; runs stream, survive or die as specified; watch, chat, wizard, models and workspace routes answer against a stopped env; the demo policy refuses and renders as specified (host-side, ~10s) | web.py, check_frontends.py |
 
 `runtime_pi/run_engine_gates.sh` runs all seven (a few minutes) — for
 gateway/gmlib/builder-wide changes; otherwise run just the relevant row.

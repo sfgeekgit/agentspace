@@ -267,6 +267,7 @@ if($('pane')) {
     $('log-panel').setAttribute('aria-labelledby','view-'+enc(current));
     cards.forEach(c=>{const selected=c.dataset.agent===agent;c.classList.toggle('selected',selected);c.setAttribute('aria-pressed',selected?'true':'false');});
   }
+  const denied=new Set((document.body.dataset.denied||'').split(',').filter(Boolean));   // the demo policy, computed by the server
   function renderActions() {
     const up=['active','dormant'].includes(state),known=['active','dormant','stopped','missing'].includes(state);
     const defs=[['env start','Start',state==='stopped'],['env kick','Wake',up],['env sleep','Sleep',state==='active'],
@@ -274,7 +275,7 @@ if($('pane')) {
       ['snap take','Take snap',state!=='missing'],['env kill','Remove',true]];
     $('actions').replaceChildren(...defs.map(([verb,label,allowed])=>{
       const b=node('button',label,'button small '+(verb==='env kill'?'danger':'secondary'));
-      b.disabled=known&&!allowed;b.title=b.disabled?'Unavailable while '+state:(labels[verb]||label);
+      const off=denied.has(verb);b.disabled=(known&&!allowed)||off;b.title=off?'needs the operator password':b.disabled?'Unavailable while '+state:(labels[verb]||label);
       const note=verb==='snap take'?'Capture and publish this environment’s state. A clean pause between turns is a good moment to save.':
         verb==='env kill'?'Permanently deletes this container and its disk, and disables its API key. Saved snapshots remain.':'';
       b.onclick=()=>openAction(verb,{[verb==='snap take'?'env_name':'name']:env},note);return b;

@@ -24,6 +24,15 @@ python3 zookeeper.py snap take env7 -m "round 1 done"    # snapshot a moment
 # the web UI runs as a service (deploy/): ssh -L 7788:127.0.0.1:7788, then http://127.0.0.1:7788/
 ```
 
+## Web UI
+
+The same verbs in a browser: scenarios, world roots and their snapshot trees, a create-a-world
+wizard, a launch page, and a watch page that streams every log view live or replays a run.
+Verbs run through the CLI as child processes, so the CLI, the menu and the web cannot drift.
+It binds loopback and is reached over an ssh tunnel; it can also be put behind Caddy as a
+password-protected public demo, where a demo policy keeps anything that touches the server's
+files, registry or deletions operator-only. See [`docs/web_ui.md`](docs/web_ui.md).
+
 
 
 Each environment is a Docker container — a complete, frozen world. You can

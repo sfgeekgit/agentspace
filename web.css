@@ -123,3 +123,8 @@ body[data-env] #result-link a{color:var(--green)}body[data-env] #activity-toggle
   color: var(--ink);
   font-weight: 700;
 }
+
+/* demo host: notice on every page, refused controls shown but disabled */
+.demo-notice{margin:0 0 22px}.demo-notice a{color:inherit;text-decoration:underline}
+fieldset.demo-off{border:0;margin:0;padding:0;min-width:0;opacity:.55}
+button:disabled .tag{opacity:1}

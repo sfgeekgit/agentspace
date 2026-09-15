@@ -10,6 +10,9 @@ WorkingDirectory=/opt/agentspace-ctl
 ExecStart=/usr/bin/python3 /opt/agentspace-ctl/web.py
 Restart=always
 RestartSec=2
+# The public demo (Caddy → this port) can bring many viewers; a flood degrades the app, not the host.
+MemoryMax=900M
+TasksMax=400
 
 [Install]
 WantedBy=multi-user.target

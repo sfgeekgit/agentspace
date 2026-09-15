@@ -6,6 +6,8 @@ Verbs run as `zookeeper.py` child processes whose output streams to the page
 Verb forms are generated from the click tree, so a new click command appears
 here with nothing else done. Stdlib only. Binds 127.0.0.1:7788 — reach it with
 `ssh -L 7788:127.0.0.1:7788 control-01`; browser actions use the CLI bridge; terminal-only verbs are excluded.
+The public demo host (Caddy, agentworldmaker.com) reaches this same process with the
+X-Agentspace-Public header set, which switches the bridge to the demo policy below.
 Runs as the `agentspace-web` systemd service (deploy/agentspace-web.service).
 """
 import collections
@@ -44,6 +46,48 @@ SPECIAL = {                      # the only verb names written in this file
     "env enter": None,          # terminal connection instructions are shown inline
     "scen env shell": None,      # terminal only: it hands the tty to `docker run -it`
 }
+# ---- demo policy ----
+# Caddy stamps every request from the public demo host with this header (overwriting any client
+# copy); requests over the operator's ssh tunnel never carry it. One function answers "may the demo
+# do this?" for the POST handlers (which refuse) and for the pages (which gray the control out).
+DEMO_HEADER = "X-Agentspace-Public"
+DEMO_VERBS = {"world build", "snap fork", "snap take", "snap note", "snap show", "snap tree", "snap list",
+              "env start", "env stop", "env sleep", "env kick", "env post", "env chat", "env logs",
+              "env list", "env show", "budget show", "scen list"}
+DEMO_DROP = {"attach", "souls", "host", "allow_key_leak"}   # server paths, other hosts, safety off
+DEMO_MAX_BUDGET = 2.0                                        # dollars per launch
+DEMO_MAX_ENVS = 15                                           # live containers (all of them) before launches are refused
+NEEDS_OPERATOR = "needs the operator password"
+
+
+def demo_denied(verb, fields=None):
+    """Why the demo may not run `verb` with these form fields (parse_qs lists), or None."""
+    if not ui.PUBLIC.get():
+        return None
+    if verb not in DEMO_VERBS:
+        return NEEDS_OPERATOR
+    f = {k: (v or [""])[0].strip() for k, v in (fields or {}).items()}
+    if any(f.get(k) and not (k == "host" and f[k] == "localhost") for k in DEMO_DROP):
+        return f"server paths and hosts: {NEEDS_OPERATOR}"
+    if verb == "snap fork":
+        try:
+            budget = float(f.get("budget_usd") or "nan")
+        except ValueError:
+            budget = float("nan")
+        if not budget <= DEMO_MAX_BUDGET:                # blank too: the CLI default is not capped
+            return f"demo launches need a budget of ${DEMO_MAX_BUDGET:.0f} or less"
+        if sum(e["status"] in ("active", "dormant") for e in db.list_envs()) >= DEMO_MAX_ENVS:
+            return "the demo box is full: sleep or stop an environment first"
+        ref = f.get("snap_ref", "")
+        snap = (db.get_snap_by_ref(*ref.split(":", 1)) if ":" in ref
+                else next(iter(db.get_snap_by_id_prefix(ref)), None) if ref else None)
+        if ((snap or {}).get("feature_flags") or {}).get("fs_isolation") == "sandbox":
+            return f"sandbox-mode snapshots: {NEEDS_OPERATOR}"
+    return None
+
+
+ui.DENIED, ui.DEMO_MAX_BUDGET = demo_denied, DEMO_MAX_BUDGET
+
 DATALISTS = {"name": "dl-envs", "env_name": "dl-envs", "snap_ref": "dl-snaps", "scen_name": "dl-scens"}  # the menu's pickers
 TEXT, HTML, JSON, NDJSON = ("text/plain; charset=utf-8", "text/html; charset=utf-8",
                             "application/json", "application/x-ndjson")
@@ -363,6 +407,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _dispatch(self, body):
         self.streaming = None
+        ui.PUBLIC.set(self.headers.get(DEMO_HEADER) == "1")
         url = urlsplit(self.path)
         seg = [unquote(s) for s in url.path.strip("/").split("/")] if url.path.strip("/") else []
         try:
@@ -416,6 +461,8 @@ class Handler(BaseHTTPRequestHandler):
             path = tuple(seg[1:])
             if path not in LEAVES or " ".join(path) in SPECIAL:
                 return self.reply(404, "no such verb")
+            if why := demo_denied(" ".join(path), f):
+                return self.reply(403, why)
             try:
                 argv = argv_for(path, LEAVES[path], f)
             except ValueError as err:
@@ -458,6 +505,8 @@ class Handler(BaseHTTPRequestHandler):
         if m == "GET" and len(seg) == 3 and seg[0] == "stream":
             return self.stream_view(seg[1], seg[2], q)
         if m == "POST" and len(seg) == 3 and seg[0] == "chat":
+            if why := demo_denied("env chat"):
+                return self.reply(403, why)
             return self.chat(seg[1], seg[2], body)
         if m == "GET" and seg == ["help"]:
             return self.reply(200, ui.help_page(), HTML)
@@ -474,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
                 if m == "GET" and seg[2] == "roster":
                     return self.reply(200, wizard3(scen, q), HTML)
                 if m == "POST" and seg[2] == "build":
+                    if why := demo_denied("world build", f):
+                        return self.reply(403, why)
                     return self.reply(200, json.dumps({"id": build_run(scen, f)}), JSON)
             except ValueError as err:
                 return self.reply(400, str(err))

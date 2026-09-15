@@ -64,14 +64,12 @@ anything not written to a file should be assumed forgettable.
 ```
 /opt/agentspace-ctl/              ← git clone of github.com/sfgeekgit/agentspace
   Dockerfile                      ← base runtime: OS + Node + OpenClaw
-  agentspace.py                   ← control CLI
-  setup/
-    droplet-setup.sh              ← provision a fresh droplet from scratch
-  agents/
-    templates/
-      openclaw.json.template      ← base agent config structure
-      SOUL.md.default
-      budget_skill.py             ← check_budget() helper module
+  zookeeper.py                    ← control CLI + interactive menu
+  web.py, web_views.py, web.js, web.css   ← browser front end (web_ui.md)
+  agentspace/                     ← the library every front end calls (agentspace_cli.md, "Package layout")
+  runtime_pi/                     ← the PI runtime that runs inside env containers (runtime_pi.md)
+  deploy/                         ← systemd unit for the web service
+  scripts/                        ← front-end coverage check, scenario build helper
   scenarios/
     <scenario-name>/
       scenario.toml               ← manifest (required): active, description, min/max_agents, module_blacklist
@@ -344,7 +342,7 @@ The control droplet's SQLite is rebuildable from OpenRouter (list keys) + Docker
 ## Out of Scope for MVP
 
 - Agent-level details (number of agents per env, exact inter-agent comms protocol, scenario design, experimental design).
-- Web UI / dashboards.
+- Multi-user accounts in the web UI (the web UI itself exists: `web_ui.md`; its public demo is a shared password plus a server-side allowlist, not per-user access).
 - Multi-user / team support.
 - Local GPU / open-source model integration.
 - Cross-host orchestration beyond "control SSHs into host and runs `docker`."

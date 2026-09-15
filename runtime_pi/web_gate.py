@@ -238,6 +238,37 @@ check("build result carries the exact root id", "UI_WORLD_ROOT:" in captured["ar
 check("build preserves per-agent roster", json.loads(captured["stdin"])["roster"] == [{"model":"model/a","persona":"blank"},{"model":"model/b","persona":"minimal"}])
 web.start_run = original_start
 
+# Demo policy: Caddy's header switches the bridge to an allowlist; a refusal spawns nothing.
+P = {**H, "X-Agentspace-Public": "1"}
+before = len(web.RUNS)
+for verb, data in (("env/kill", "name=gate_env"), ("snap/attach", "snap_ref=gate:1.0&files=/etc/passwd"),
+                   ("budget/topup", "env_name=gate_env&amount_usd=1"), ("scen/deactivate", "scen_name=pd"),
+                   ("snap/fork", "snap_ref=gate:1.0&new_env_name=d1&budget_usd=1&souls=a=/etc/passwd"),
+                   ("snap/fork", "snap_ref=gate:1.0&new_env_name=d1&budget_usd=1&host=other-box"),
+                   ("snap/fork", "snap_ref=gate:1.0&new_env_name=d1&budget_usd=50"),
+                   ("snap/fork", "snap_ref=gate:1.0&new_env_name=d1")):
+    st, out = http("POST", "/run/" + verb, data, headers=P)
+    check(f"demo: {verb} [{data.split('&')[-1]}] refused", st == 403, f"{st} {out[:60]}")
+check("demo: refusals spawned nothing", len(web.RUNS) == before)
+st, out = http("POST", "/run/snap/list", "", headers=P)
+check("demo: an allowed verb runs", st == 200 and bool(json.loads(out).get("id")), f"{st} {out[:60]}")
+st, out = http("POST", "/run/snap/fork", "snap_ref=gate:1.0&new_env_name=d1&budget_usd=2&host=localhost&kick=off", headers=P)
+check("demo: a capped fork on localhost is allowed", st == 200, f"{st} {out[:60]}")
+check("demo: chat reaches the handler (blank → 400, not 403)", http("POST", "/chat/gate_env/a11111", "  ", headers=P)[0] == 400)
+body = http("GET", "/tools", headers=P)[1]
+check("demo: tools shows every form, refused ones disabled",
+      '<fieldset disabled class="demo-off"><form data-path="env kill">' in body
+      and 'data-path="snap list"' in body and '<fieldset disabled class="demo-off"><form data-path="snap list">' not in body)
+body = http("GET", "/", headers=P)[1]
+check("demo: notice with the GitHub link", "shared demo" in body and 'href="https://github.com/sfgeekgit/agentspace"' in body)
+body = http("GET", "/watch/gate_env", headers=P)[1]
+check("demo: watch page names the refused buttons", 'data-demo="1"' in body and "env kill" in re.search(r'data-denied="([^"]*)"', body).group(1))
+check("demo: snapshot page disables publish", 'disabled title="needs the operator password">Publish' in http("GET", "/snapshots/deadbeef", headers=P)[1])
+body = http("GET", "/fork/deadbeef", headers=P)[1]
+check("demo: launch page caps the budget and disables host and souls", 'max="2"' in body and 'name="host" value="localhost" disabled' in body)
+check("tunnel: no header → nothing disabled, no notice",
+      "demo-off" not in http("GET", "/tools")[1] and "shared demo" not in http("GET", "/")[1] and "data-demo" not in http("GET", "/watch/gate_env")[1])
+
 # 13. the front-end checker
 check("scripts/check_frontends.py exits 0",
       subprocess.run([sys.executable, str(web.REPO / "scripts/check_frontends.py")], capture_output=True).returncode == 0)

@@ -411,6 +411,10 @@ cd /opt/agentspace-ctl
 python3 zookeeper.py          # menu → "New world"
 ```
 
+The same wizard is in the web UI (`web_ui.md`): Scenarios → your scenario →
+"Build world root", then "Launch environment" on the finished root, then its
+watch page for the views listed under `[[watch]]` below.
+
 Wizard: scen (the manifest's `runtime` key decides the runtime — GM scens
 need PI) → agent count →
 per-agent model + persona → your params → world name → build. This produces
