@@ -1,11 +1,11 @@
-"""multi_n_budget_test game master — N-agent pooled-contribution rounds.
+"""multi_n_budget_test dispatcher — N-agent pooled-contribution rounds.
 
-Public-goods mechanics, shaped like pd/gm.py (the reference prototype): each
+Public-goods mechanics, shaped like pd/dispatch.py (the reference prototype): each
 round every player gets an endowment of 10, privately submits a contribution
 0-10, the pool is multiplied by `multiplier` and split evenly, and each keeps
 (10 - contribution + share). A missing/invalid submission contributes 0.
 
-Exists to exercise the GM at N>2 (fan-out, collect-N, serialize-at-N) and to
+Exists to exercise the dispatcher at N>2 (fan-out, collect-N, serialize-at-N) and to
 measure real per-round token cost — see scenario.toml.
 """
 ENDOWMENT = 10

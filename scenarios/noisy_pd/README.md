@@ -10,7 +10,7 @@ added: each submitted move is flipped with probability `noise_p`. The noise is
 announced (user decision 2026-07-05). Agents are told transmission is
 unreliable (roles/player.md) but never told when a flip happened.
 
-Diff vs `pd`: `noise_p` float param; gm.py flips post-collect with an RNG
+Diff vs `pd`: `noise_p` float param; dispatch/main.py flips post-collect with an RNG
 seeded by (persisted game seed, round) so a resumed round flips identically;
 the score log records `intended` vs `played` per round for auditing flips.
 

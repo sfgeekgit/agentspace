@@ -1,24 +1,24 @@
-"""gmlib — the shared, runtime-NEUTRAL game-master library scens build on.
+"""dispatchlib — the shared, runtime-NEUTRAL dispatcher library scens build on.
 
-A scen ships `gm/main.py` with `run(api, params)`; the runtime starts the GM as
-a dedicated `gm` user and calls that entry point. `api` is a GM (below). GM code
-owns ALL game/world logic; gmlib owns the reusable plumbing (roster, concurrent
+A scen ships `dispatch/main.py` with `run(api, params)`; the runtime starts the dispatcher as
+a dedicated `dispatch` user and calls that entry point. `api` is a dispatcher (below). dispatcher code
+owns ALL game/world logic; dispatchlib owns the reusable plumbing (roster, concurrent
 rounds, structured collection, announce/policy/remove/roll, state persistence).
 
 Runtime-neutral by design (plan decision 10): NOTHING here knows about the PI
-gateway or sockets. All transport lives behind an `adapter` (runtime_pi/gmd.py
+gateway or sockets. All transport lives behind an `adapter` (runtime_pi/dispatchd.py
 supplies the PI one). A future OC adapter slots in with zero changes here or in
 any scen.
 
 ╔══════════════════════════════════════════════════════════════════════════╗
-║ PERSIST-TO-DISK DISCIPLINE (plan decision 14) — the one rule every GM must ║
-║ follow. The GM is a live process, but a snapshot (`docker commit`) captures ║
+║ PERSIST-TO-DISK DISCIPLINE (plan decision 14) — the one rule every dispatcher must ║
+║ follow. The dispatcher is a live process, but a snapshot (`docker commit`) captures ║
 ║ only the FILESYSTEM. So game state (round, scores, phase) MUST live on disk ║
 ║ and be re-read on start: `run` is called afresh every time the world is     ║
 ║ (re)started, and a forked mid-game snap must resume where it left off.      ║
 ║ Use api.load_state()/save_state() and SAVE AFTER EVERY STEP. Make rounds    ║
 ║ resumable: a crash between wake and save replays that round, so agents may  ║
-║ be re-woken — design actions to tolerate it. The prototype PD gm.py is the  ║
+║ be re-woken — design actions to tolerate it. The prototype PD dispatch.py is the  ║
 ║ worked example; copy its shape.                                             ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
@@ -27,8 +27,8 @@ import os
 import threading
 
 
-class GM:
-    """Runtime-neutral GM API used by scen gm.py. Orchestration + state only;
+class Dispatcher:
+    """Runtime-neutral dispatcher API used by scen dispatch.py. Orchestration + state only;
     every network/OS action goes through `adapter` (the runtime's transport)."""
 
     def __init__(self, adapter, state_path):
@@ -83,7 +83,7 @@ class GM:
     def collect(self, agent, valid=None, default=None):
         """Pop the agent's submitted action for this round. Returns the trimmed
         string, or `default` if it never submitted / submitted something not in
-        `valid` (a set of allowed strings). The GM consumes STRUCTURED data —
+        `valid` (a set of allowed strings). The dispatcher consumes STRUCTURED data —
         never the agent's free-form chat."""
         raw = self._a.collect(agent)
         if raw is None:
@@ -95,7 +95,7 @@ class GM:
 
     def round(self, agents, payload, valid=None, default=None):
         """One serialized round: wake `agents` in parallel with `payload`, then
-        collect each submission. Returns {agent: action}. The staple GM helper —
+        collect each submission. Returns {agent: action}. The staple dispatcher helper —
         PD, votes, bids are all this."""
         self.wake_all(agents, payload)
         return {a: self.collect(a, valid, default) for a in agents}
@@ -103,7 +103,7 @@ class GM:
     # ---- world control ----
 
     def announce(self, text):
-        """Post to the public board as `world` (wakes nobody; pull-only)."""
+        """Post to the public board as `dispatch` (wakes nobody; pull-only)."""
         self._a.announce(text)
 
     def policy(self, allow=None, deny=None, **caps):
@@ -132,7 +132,7 @@ class GM:
 
 
 def run(adapter, scen_run, params, state_path):
-    """Entry the runtime launcher calls: wire the adapter + state into a GM and
-    hand it to the scen's run(api, params). GM code should treat run as
+    """Entry the runtime launcher calls: wire the adapter + state into a dispatcher and
+    hand it to the scen's run(api, params). dispatcher code should treat run as
     resumable — it may be called again after a restart (see the banner)."""
-    scen_run(GM(adapter, state_path), params)
+    scen_run(Dispatcher(adapter, state_path), params)

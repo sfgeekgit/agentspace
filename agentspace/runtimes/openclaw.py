@@ -24,7 +24,7 @@ BASE_IMAGE = "agentspace:base"
 # Present in any image carrying this runtime (npm -g install dir); the
 # builder's hard compatibility check for source images.
 RUNTIME_MARKER = "/usr/lib/node_modules/openclaw"
-SUPPORTS_GM = False                   # OC bake has no GM adapter; gm.py scens refuse to load
+SUPPORTS_DISPATCH = False                   # OC bake has no dispatcher adapter; dispatch.py scens refuse to load
 # Canonical container config stamped onto every committed world root — see the
 # same constant (and the ENTRYPOINT-vs-CMD gotcha) in pi.py.
 COMMIT_CHANGES = ("USER root", "WORKDIR /data",
@@ -202,15 +202,15 @@ def _peers_md(self_id: str, all_ids: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, params=None,
-         gm_secrets=None, watch=None, runtime_flags=None):
+def bake(host, container, *, agents, seeds, world_md, kick_text, dispatch_dir=None, params=None,
+         dispatch_secrets=None, watch=None, runtime_flags=None):
     """Assemble the OC world inside the build container: render openclaw.json,
     stage /data (config, world.md, kick, per-agent seed workspaces incl. the
     OC-specific PEERS.md), one `docker cp`. (Moved from builder._stage_world —
     the staging LAYOUT is runtime knowledge.)
 
-    gm_dir/params/gm_secrets/watch/runtime_flags are accepted for a uniform
-    builder call but ignored: the GM, `env watch` and the world.json prompt
+    dispatch_dir/params/dispatch_secrets/watch/runtime_flags are accepted for a uniform
+    builder call but ignored: the dispatcher, `env watch` and the world.json prompt
     flags are PI-runtime features (no OC adapter)."""
     config_text = render_config([{"id": a["id"], "model": a["model"]} for a in agents])
     ids = [a["id"] for a in agents]
@@ -433,13 +433,13 @@ def stop_gateway(host: str, container: str):
     )
 
 
-# GM lifecycle: OC has no GM adapter, so these are the uniform-interface no-ops
+# dispatcher lifecycle: OC has no dispatcher adapter, so these are the uniform-interface no-ops
 # that let env/snap treat every runtime alike (no per-call getattr probing).
-def world_has_gm(host, container) -> bool:
+def world_has_dispatch(host, container) -> bool:
     return False
 
 
-def stop_gm(host, container):
+def stop_dispatch(host, container):
     pass
 
 

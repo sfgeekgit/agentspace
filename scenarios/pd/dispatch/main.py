@@ -1,11 +1,11 @@
-"""pd game master — refereed repeated Prisoner's Dilemma (neutral X/Y labels).
+"""pd dispatcher — refereed repeated Prisoner's Dilemma (neutral X/Y labels).
 
-The reference GM prototype: keep new game scens shaped like this. Entry point is
-run(api, params); `api` is a gmlib.GM, `params` are the build-time values
-(here: rounds). The GM privately collects both moves each round, reveals them
+The reference dispatcher prototype: keep new game scens shaped like this. Entry point is
+run(api, params); `api` is a dispatchlib.Dispatcher, `params` are the build-time values
+(here: rounds). The dispatcher privately collects both moves each round, reveals them
 simultaneously, keeps the TRUE score, and announces per round.
 
-RESUME DISCIPLINE (gmlib banner): all game state lives in api's on-disk state
+RESUME DISCIPLINE (dispatchlib banner): all game state lives in api's on-disk state
 and is saved after EVERY round. run() is re-entered from scratch on any
 restart, so it reads state and continues — a mid-game snap fork resumes exactly.
 A crash between waking players and saving replays that round (players are
@@ -28,7 +28,7 @@ def run(api, params):
     state = api.load_state(default={
         "round": 0,                              # rounds completed
         "scores": {p: 0 for p in players},
-        "log": [],                               # the GM's truthful per-round record
+        "log": [],                               # the dispatcher's truthful per-round record
     })
 
     while state["round"] < rounds:

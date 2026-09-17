@@ -1,6 +1,6 @@
 # multi_n_budget_test — N-agent pooled-contribution game (public-goods
 # mechanics), refereed. Named for what it exists to TEST (plan step 5):
-# GM fan-out / collect-N / serialize-at-N, and real per-round token cost at
+# dispatcher fan-out / collect-N / serialize-at-N, and real per-round token cost at
 # N agents — the budget datapoint before Mafia's 10.
 #
 # Each round every agent gets 10 points and privately contributes 0-10 to a
@@ -9,7 +9,7 @@
 
 active = true
 runtime = "pi"
-description = "N-agent pooled-contribution game (public goods) — tests GM at N>2 + per-round cost."
+description = "N-agent pooled-contribution game (public goods) — tests dispatcher at N>2 + per-round cost."
 min_agents = 3
 max_agents = 12
 module_blacklist = []

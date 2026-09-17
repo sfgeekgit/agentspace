@@ -3,7 +3,7 @@
 #
 # Agents privately estimate K adjustment options each round and vote; the
 # winning option multiplies the reservoir level. Physics, aggregation, trust,
-# and elections are byte-for-byte vendored CI Lib code (gm/CILIB_PIN) so live
+# and elections are byte-for-byte vendored CI Lib code (dispatch/CILIB_PIN) so live
 # runs are bit-exact-comparable with the offline 500-seed robot sweeps.
 # Agent-facing text is deliberately neutral: no game/experiment framing.
 #
@@ -19,7 +19,7 @@ description = "Shared-reservoir commons game on vendored CI Lib physics (bit-exa
 
 # source_image = the frozen scen env (2026-07-11): pi-world:base +
 # python3-pip + jax==0.10.2 jaxlib==0.10.2 numpy==2.5.1 (matches the host
-# cilib venv exactly, incl. Python 3.13.5 — see gm/CILIB_PIN). Tag
+# cilib venv exactly, incl. Python 3.13.5 — see dispatch/CILIB_PIN). Tag
 # env-commons_vote-1 on ghcr. Shared by any future CIL scen: pin the same
 # digest. cilib itself is deliberately NOT in the env (HARD rule).
 
@@ -53,9 +53,9 @@ type = "str"
 label = "Governance mechanism: pdd (direct), prd (representatives), pld (delegative)"
 default = "pdd"
 
-# GM spoiler log: true option utilities + per-agent votes each round.
+# dispatcher spoiler log: true option utilities + per-agent votes each round.
 [[watch]]
-name = "game log (GM, spoilers)"
-file = "/gm/game_log.jsonl"
+name = "game log (dispatcher, spoilers)"
+file = "/dispatch/game_log.jsonl"
 format = "jsonl"
 fields = { ts = "ts", text = "text" }

@@ -1,13 +1,13 @@
-"""noisy_pd game master — refereed PD with REAL transmission noise.
+"""noisy_pd dispatcher — refereed PD with REAL transmission noise.
 
-Copy of pd/gm.py (decision 8) plus noise: each submitted move is flipped with
+Copy of pd/dispatch.py (decision 8) plus noise: each submitted move is flipped with
 probability noise_p, and the FLIPPED move is what gets scored and announced —
 the noise is real, not just perceived (user decision 2026-07-05). The log
 records intended vs played so the observer can audit every flip.
 
 Flips are drawn from an RNG seeded by (game seed, round): the seed is created
 once and persisted in state, so a crash/resume replaying a round flips
-identically (see the gmlib resume banner).
+identically (see the dispatchlib resume banner).
 """
 import random
 

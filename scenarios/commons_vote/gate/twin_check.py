@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """commons_vote scen gate, host half (run.sh runs it after the container):
 replays the gate's scripted game in the UNTOUCHED cilib repo — same seed,
-same jit structure as gm/main.py — and asserts the container's final
+same jit structure as dispatch/main.py — and asserts the container's final
 GraphState matches BIT-EXACTLY. This mechanically checks the whole
 comparability chain: vendored copy uncorrupted, container jax == host jax,
-GM mapped votes to actions correctly (including both default cases).
+dispatcher mapped votes to actions correctly (including both default cases).
 
 Usage: /home/cc/cilib/.venv/bin/python twin_check.py <physics.pkl>
 """
@@ -23,7 +23,7 @@ from experiments.basin_stability.state import create_initial_state
 
 SEED, ROUNDS, K, N = 424242, 6, 4, 3
 # 0-based actions per round for (a1, a2, a3) — MUST mirror gate/moves/*.moves
-# after the GM's default rule (round 3: a2's "9" invalid, a3 silent -> both 0).
+# after the dispatcher's default rule (round 3: a2's "9" invalid, a3 silent -> both 0).
 ACTIONS = [(0, 1, 2), (1, 1, 1), (2, 0, 0), (3, 3, 3), (0, 0, 1), (1, 2, 2)]
 
 cont = pickle.loads(open(sys.argv[1], "rb").read())

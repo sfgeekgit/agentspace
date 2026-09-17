@@ -9,7 +9,7 @@ current level and your own estimates of each option's effect, and you will
 be asked to vote for one option. The winning option is applied and the
 outcome announced. You may message other agents between rounds.
 
-The coordinator runs the rounds. Its messages arrive from `gm`, and its
-announcements appear on the board from `world`. When it asks you for a vote,
+The coordinator runs the rounds. Its messages arrive from `dispatch`, and its
+announcements appear on the board under the same name. When it asks you for a vote,
 hand it in from bash with `submit "<action>"` in the format its message
 states. It reads only what you submit, never your chat.

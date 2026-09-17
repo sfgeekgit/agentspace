@@ -26,7 +26,7 @@ BASE_IMAGE = "pi-world:base"          # agentspace:base + node + Pi (EXACT pin; 
 # Present in any image carrying this runtime (Pi's npm dir); the builder's hard
 # compatibility check for source images.
 RUNTIME_MARKER = "/pi"
-SUPPORTS_GM = True                    # gmd/gmlib adapter exists (GM scens are PI-only today)
+SUPPORTS_DISPATCH = True                    # dispatchd/dispatchlib adapter exists (dispatcher scens are PI-only today)
 # Canonical container config stamped onto every committed world root
 # (docker commit --change): normalizes away whatever USER/ENTRYPOINT/CMD/
 # WORKDIR a source image carries — and the builder's own assembly hardening —
@@ -48,10 +48,10 @@ DEFAULT_KICK = ""
 
 # Source of the runtime files baked into every world image.
 RUNTIME_SRC = Path(__file__).resolve().parents[2] / "runtime_pi"
-# gmd.py is the GM launcher/adapter; gmlib.py (the runtime-neutral GM library)
-# is copied from agentspace/ so the in-container scen `import gmlib` resolves.
-RUNTIME_FILES = ("pi_gateway.py", "pi_gateway_client.py", "agentd.py", "gmd.py")
-GMLIB_SRC = Path(__file__).resolve().parents[1] / "gmlib.py"  # agentspace/gmlib.py
+# dispatchd.py is the dispatcher launcher/adapter; dispatchlib.py (the runtime-neutral dispatcher library)
+# is copied from agentspace/ so the in-container scen `import dispatchlib` resolves.
+RUNTIME_FILES = ("pi_gateway.py", "pi_gateway_client.py", "agentd.py", "dispatchd.py")
+DISPATCHLIB_SRC = Path(__file__).resolve().parents[1] / "dispatchlib.py"  # agentspace/dispatchlib.py
 # Agent-facing CLI shims (real files, single source of truth — the toy-world
 # setup script copies the same ones); land in /usr/local/bin, mode 0755.
 SHIMS = ("gateway", "check_budget", "submit")
@@ -96,39 +96,39 @@ def list_all_models() -> list[str]:
 
 # ---- world-root bake (called by builder inside the temp build container) ----
 
-def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, params=None,
-         gm_secrets=None, watch=None, runtime_flags=None):
+def bake(host, container, *, agents, seeds, world_md, kick_text, dispatch_dir=None, params=None,
+         dispatch_secrets=None, watch=None, runtime_flags=None):
     """Assemble the PI world inside the build container.
 
     agents: [{"id", "model"}, ...];  seeds: {agent_id: {filename: text}}.
-    gm_dir: the scen's gm/ directory (ships main.py) if it has a game master,
-    else None. Baked to /gm/code — gm-owned, unreadable by agents (closes the
+    dispatch_dir: the scen's dispatch/ directory (ships main.py) if it has a dispatcher,
+    else None. Baked to /dispatch/code — dispatch-owned, unreadable by agents (closes the
     old agent-readable /world/gm.py leak).
-    params: validated build-time params, baked into world.json for the GM.
-    gm_secrets: optional dict from logic.gm_secrets (e.g. the role answer key)
-    baked to /gm/secrets.json — gm-owned, unreadable by agents.
+    params: validated build-time params, baked into world.json for the dispatcher.
+    dispatch_secrets: optional dict from logic.dispatch_secrets (e.g. the role answer key)
+    baked to /dispatch/secrets.json — dispatch-owned, unreadable by agents.
     Stages /runtime_pi + /world + per-agent homes locally, one `docker cp`,
     then a single in-container script for users/ownership (the parts that
     must run as root against the container's /etc/passwd).
     """
     # RESET (dirty sources are legal — world-authoring design §5.1/2a): the
     # source may be a used world; runtime-owned state is reset here, the rest
-    # CARRIES. Old u_*/gm users are deleted (the gateway's roster IS
-    # /etc/passwd — leftover users would be listed by `who`, woken by a GM,
+    # CARRIES. Old u_*/dispatch (pre-rename: gm) users are deleted (the gateway's roster IS
+    # /etc/passwd — leftover users would be listed by `who`, woken by a dispatcher,
     # and billed), orphaned homes go root-owned (userdel frees uids that
     # useradd recycles lowest-first; without the chown one NEW agent would
     # silently own one OLD home) and lose their on_wake; /data/gateway,
-    # /world and /gm are wiped (docker cp overlays but never deletes — a
-    # stale /gm/state.json would make a new GM world RESUME the old game).
+    # /world and /dispatch (or old /gm) are wiped (docker cp overlays but never deletes — a
+    # stale /dispatch/state.json would make a new dispatcher world RESUME the old game).
     # Old homes otherwise carry, 0700 root-owned: archaeology preserved,
     # operator-gated. No-op on a pristine base.
     docker_host.run(host, "exec", container, "sh", "-c",
         'set -e; '
-        'for U in $(cut -d: -f1 /etc/passwd | grep -E "^u_|^gm$" || true); do '
+        'for U in $(cut -d: -f1 /etc/passwd | grep -E "^u_|^dispatch$|^gm$" || true); do '
         '  userdel "$U"; '
         'done; '
         'if [ -d /agents ]; then chown -R root:root /agents; rm -f /agents/*/on_wake; fi; '
-        'rm -rf /data/gateway /world /gm')
+        'rm -rf /data/gateway /world /dispatch /gm')
 
     stage = Path(tempfile.mkdtemp(prefix="pi-bake-"))
     try:
@@ -137,7 +137,7 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, pa
         rt.mkdir()
         for f in RUNTIME_FILES:
             shutil.copyfile(RUNTIME_SRC / f, rt / f)
-        shutil.copyfile(GMLIB_SRC, rt / "gmlib.py")  # scen `import gmlib` resolves here
+        shutil.copyfile(DISPATCHLIB_SRC, rt / "dispatchlib.py")  # scen `import dispatchlib` resolves here
 
         world = stage / "world"
         world.mkdir()
@@ -149,8 +149,8 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, pa
             "require_scratchpad": True,
             "messaging_norms": True,
             "max_tokens": 16384,  # per-turn output ceiling — roomy safety rail, not a leash
-            "has_gm": gm_dir is not None,   # drives the run-the-world verb (env kick)
-            "params": params or {},         # build-time values gmd/gm code read
+            "has_dispatch": dispatch_dir is not None,   # drives the run-the-world verb (env kick)
+            "params": params or {},         # build-time values dispatchd/dispatch code read
             "watch": watch or [],           # scen-declared `env watch` views (logwatch.py)
         }
         # Scen overrides last: the defaults above are this runtime's physics, and
@@ -158,14 +158,14 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, pa
         cfg.update(runtime_flags or {})
         (world / "world.json").write_text(json.dumps(cfg, indent=2) + "\n")
         (world / "kick.txt").write_text(kick_text or "")
-        if gm_dir is not None:
-            # The whole gm/ package (main.py + helpers + vendored code) →
-            # /gm/code; ownership/mode set by the root script below.
-            shutil.copytree(gm_dir, stage / "gm" / "code")
-        if gm_secrets is not None:
-            gm_home = stage / "gm"
-            gm_home.mkdir(exist_ok=True)
-            (gm_home / "secrets.json").write_text(json.dumps(gm_secrets, indent=2) + "\n")
+        if dispatch_dir is not None:
+            # The whole dispatch/ package (main.py + helpers + vendored code) →
+            # /dispatch/code; ownership/mode set by the root script below.
+            shutil.copytree(dispatch_dir, stage / "dispatch" / "code")
+        if dispatch_secrets is not None:
+            dispatch_home = stage / "dispatch"
+            dispatch_home.mkdir(exist_ok=True)
+            (dispatch_home / "secrets.json").write_text(json.dumps(dispatch_secrets, indent=2) + "\n")
 
         # CLI shims → staged /usr/local/bin (real files, not escaped strings).
         bindir = stage / "usr" / "local" / "bin"
@@ -201,12 +201,12 @@ def bake(host, container, *, agents, seeds, world_md, kick_text, gm_dir=None, pa
         '  chmod 0700 "/agents/$A"; '
         'done'
     )
-    if gm_dir is not None:
-        # Dedicated non-root GM user; /gm (0700) is its private, snapshot-durable
-        # state home (agents cannot read it). The gateway recognizes uid → `gm`.
+    if dispatch_dir is not None:
+        # Dedicated non-root dispatcher user; /dispatch (0700) is its private, snapshot-durable
+        # state home (agents cannot read it). The gateway recognizes uid → `dispatch`.
         script += (
-            '; useradd --no-user-group -M -d /gm gm; '
-            'mkdir -p /gm; chown -R gm /gm; chmod 0700 /gm'  # -R: covers code + secrets
+            '; useradd --no-user-group -M -d /dispatch dispatch; '
+            'mkdir -p /dispatch; chown -R dispatch /dispatch; chmod 0700 /dispatch'  # -R: covers code + secrets
         )
     docker_host.run(host, "exec", container, "sh", "-c", script)
 
@@ -271,39 +271,53 @@ def agent_state(host, container) -> str:
     return "active" if ("GW" in toks and "KICKED" in toks) else "dormant"
 
 
-# ---- GM lifecycle (step 4) ----
+# ---- dispatcher lifecycle (step 4) ----
 #
-# The GM is a persistent, disk-resumable driver, NOT an agent (plan decision
+# The dispatcher is a persistent, disk-resumable driver, NOT an agent (plan decision
 # 13). The runtime owns its start/stop, tied to the world's active/dormant
-# state; the GM itself never touches wake mechanics. Only worlds whose scen
-# ships a gm.py have one.
+# state; the dispatcher itself never touches wake mechanics. Only worlds whose scen
+# ships a dispatch/ package have one.
 
-GM_USER = "gm"
+DISPATCH_USER = "dispatch"
+# Snaps built before 2026-09-16 carry the old layout: user `gm`, home `/gm`,
+# daemon `gmd.py`. Every host-side call goes through _layout() so they keep
+# working unchanged.
+_LAYOUTS = (("dispatch", "/dispatch", "dispatchd.py"), ("gm", "/gm", "gmd.py"))
 
 
-def world_has_gm(host, container) -> bool:
-    return docker_host.run(host, "exec", container, "test", "-f", "/gm/code/main.py",
+def _layout(host, container):
+    """(user, home, daemon) of this world's driver, or None if it has none."""
+    for lay in _LAYOUTS:
+        if docker_host.run(host, "exec", container, "test", "-f", f"{lay[1]}/code/main.py",
+                           check=False).returncode == 0:
+            return lay
+    return None
+
+
+def world_has_dispatch(host, container) -> bool:
+    return _layout(host, container) is not None
+
+
+def dispatch_running(host, container) -> bool:
+    return docker_host.run(host, "exec", container, "pgrep", "-f", "dispatchd.py|gmd.py",
                            check=False).returncode == 0
 
 
-def gm_running(host, container) -> bool:
-    return docker_host.run(host, "exec", container, "pgrep", "-f", "gmd.py",
-                           check=False).returncode == 0
-
-
-def start_gm(host, container):
-    """Start (or RESUME) the GM as the dedicated gm user. gmd re-reads on-disk
-    state, so the same call resumes a forked/restarted mid-game world (decisions
-    13–14). Caller checks gm_running() first; needs the gateway already up."""
+def start_dispatch(host, container):
+    """Start (or RESUME) the dispatcher as its dedicated user. dispatchd re-reads
+    on-disk state, so the same call resumes a forked/restarted mid-game world
+    (decisions 13–14). Caller checks dispatch_running() first; needs the
+    gateway already up."""
+    user, home, daemon = _layout(host, container)
     docker_host.run(
-        host, "exec", "-d", "-u", GM_USER,
-        "-e", "HOME=/gm", "-e", f"GATEWAY_SOCKET={SOCKET_PATH}",
-        container, "sh", "-c", "exec python3 /runtime_pi/gmd.py >> /gm/gmd.out 2>&1")
+        host, "exec", "-d", "-u", user,
+        "-e", f"HOME={home}", "-e", f"GATEWAY_SOCKET={SOCKET_PATH}",
+        container, "sh", "-c", f"exec python3 /runtime_pi/{daemon} >> {home}/dispatchd.out 2>&1")
 
 
-def stop_gm(host, container):
+def stop_dispatch(host, container):
     docker_host.run(host, "exec", container, "sh", "-c",
-                    "pkill -f gmd.py || true", check=False)
+                    "pkill -f 'dispatchd.py|gmd.py' || true", check=False)
 
 
 # ---- kick / wake / operator messaging ----

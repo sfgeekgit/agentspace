@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Eager-seam equivalence proof for the commons_vote design.
 
-Run from the cilib repo with its venv (the pinned commit in gm/CILIB_PIN):
+Run from the cilib repo with its venv (the pinned commit in dispatch/CILIB_PIN):
 
     cd /home/cc/cilib && .venv/bin/python \
         /opt/agentspace-ctl/scenarios/commons_vote/gate/offline_twin_equivalence.py
@@ -9,7 +9,7 @@ Run from the cilib repo with its venv (the pinned commit in gm/CILIB_PIN):
 LOAD-BEARING FINDING (2026-07-11): plain-eager transform application is NOT
 bit-exact with lax.scan — XLA compiles them differently, low-bit float noise
 flips argmax decisions (vote winners, trust argmax), and trajectories fork.
-`jax.jit`-wrapped application IS bit-exact with scan. Therefore gm/main.py
+`jax.jit`-wrapped application IS bit-exact with scan. Therefore dispatch/main.py
 MUST apply the physics through the jitted blocks proven here (`GmPhysics`
 mirrors the required structure), and the scen gate's offline twin must use
 the same structure. This wraps the vendored functions; it modifies nothing.
@@ -18,11 +18,11 @@ Checks:
   1. SHIPPED pipeline: per-round jit(step) == Environment.run (lax.scan),
      all three mechanisms, with metrics. Connects any jitted per-round run
      to the 500-seed sweep's physics, bit-exactly.
-  2. GM-SHAPED pipeline (voting + q_learning removed, actions forced):
-     the GM's two-jit-block round == the same round composed under
-     lax.scan. Proves the GM's split structure (proposal gen | LLM writes
+  2. dispatcher-SHAPED pipeline (voting + q_learning removed, actions forced):
+     the dispatcher's two-jit-block round == the same round composed under
+     lax.scan. Proves the dispatcher's split structure (proposal gen | LLM writes
      last_action | physics) introduces no compilation-boundary drift.
-  3. Pickle round-trip + resume (the /gm/state.pkl contract).
+  3. Pickle round-trip + resume (the /dispatch/state.pkl contract).
   4. Eager per-round wall time (info).
 
 Re-run whenever the cilib pin is bumped.
@@ -90,7 +90,7 @@ def init(mechanism, metrics=None):
 
 
 class GmPhysics:
-    """The jit structure gm/main.py must replicate: one jitted proposal-gen
+    """The jit structure dispatch/main.py must replicate: one jitted proposal-gen
     block, one jitted physics block (everything after the LLM votes), with
     the last_action write between them. Voting and q_learning are omitted —
     LLM agents replace both."""
@@ -113,7 +113,7 @@ class GmPhysics:
 
 
 def offline_twin_scan(state, mechanism, forced, rounds):
-    """The GM-shape round as ONE composed pipeline under lax.scan — the
+    """The dispatcher-shape round as ONE composed pipeline under lax.scan — the
     compilation structure the shipped sweep uses."""
     def forced_voting(s):
         return s.update_node_attrs("last_action", forced[s.global_attrs["step"]])
@@ -135,7 +135,7 @@ for mech in ("pdd", "prd", "pld"):
     ok, diff = states_equal(state, scan_final)
     check(f"shipped jit==scan [{mech}]", ok, diff)
 
-# --- 2. GM shape: two-jit-block rounds == composed scan twin
+# --- 2. dispatcher shape: two-jit-block rounds == composed scan twin
 rng = np.random.RandomState(0)
 forced = jnp.array(rng.randint(0, K, size=(T, N)))
 for mech in ("pdd", "prd", "pld"):
@@ -144,9 +144,9 @@ for mech in ("pdd", "prd", "pld"):
     for t in range(T):
         state = phys.round(state, forced[t])
     ok, diff = states_equal(state, offline_twin_scan(init(mech), mech, forced, T))
-    check(f"gm-shape jit==scan-twin [{mech}]", ok, diff)
+    check(f"dispatch-shape jit==scan-twin [{mech}]", ok, diff)
 
-# --- 3. pickle round-trip + resume (the /gm/state.pkl contract)
+# --- 3. pickle round-trip + resume (the /dispatch/state.pkl contract)
 phys = GmPhysics("pdd")
 
 def advance(state, start, rounds):
@@ -169,7 +169,7 @@ first = time.perf_counter() - t0
 t0 = time.perf_counter()
 state = advance(state, 1, T - 1)
 rest = (time.perf_counter() - t0) / (T - 1)
-print(f"INFO gm round: first {first*1000:.0f}ms (compile), then {rest*1000:.1f}ms/round")
+print(f"INFO dispatch round: first {first*1000:.0f}ms (compile), then {rest*1000:.1f}ms/round")
 
 print("ALL GREEN" if not FAIL else f"FAILURES: {FAIL}")
 sys.exit(1 if FAIL else 0)

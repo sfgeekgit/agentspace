@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Mafia scen gate ($MODE = hard|soft; launched by run.sh via the engine's
-shared setup_world.sh harness). Zero tokens: real gateway + gmd + mafia gm.py
+shared setup_world.sh harness). Zero tokens: real gateway + dispatchd + mafia dispatch.py
 + scripted dummies playing the game-logic contract end to end.
 
 The scripted game (see moves/): day 1 everyone posts, a4 is voted out
@@ -25,10 +25,10 @@ def check(name, cond, extra=""):
         FAIL.append(name)
 
 
-def run_gm(timeout=180):
+def run_dispatch(timeout=180):
     p = subprocess.Popen(
-        ["python3", "/runtime_pi/gmd.py"], user="gm",
-        env={"HOME": "/gm", "GATEWAY_SOCKET": "/run/gateway/gateway.sock",
+        ["python3", "/runtime_pi/dispatchd.py"], user="dispatch",
+        env={"HOME": "/dispatch", "GATEWAY_SOCKET": "/run/gateway/gateway.sock",
              "PATH": "/usr/local/bin:/usr/bin:/bin"})
     return p.wait(timeout=timeout)
 
@@ -38,11 +38,11 @@ def su(user, cmd):
                           capture_output=True, text=True)
 
 
-rc = run_gm()
-check("gmd exits clean (game complete)", rc == 0, f"rc={rc}")
-state = json.load(open("/gm/state.json"))
+rc = run_dispatch()
+check("dispatchd exits clean (game complete)", rc == 0, f"rc={rc}")
+state = json.load(open("/dispatch/state.json"))
 pub = [json.loads(l) for l in open("/data/gateway/public.jsonl")]
-world = [e["text"] for e in pub if e["from"] == "world"]
+world = [e["text"] for e in pub if e["from"] == "dispatch"]
 audit = [json.loads(l) for l in open("/data/gateway/audit.jsonl")]
 
 # ── The game itself (identical in both modes) ────────────────────────────────
@@ -65,7 +65,7 @@ check("detective got the investigation result", "a1 is MAFIA" in inbox)
 check("removed.json = the three eliminated",
       set(json.load(open("/data/gateway/removed.json"))) == {"a1", "a4", "a5"})
 check("agents cannot read the answer key",
-      su("u_a6", "cat /gm/secrets.json").returncode != 0)
+      su("u_a6", "cat /dispatch/secrets.json").returncode != 0)
 
 # ── Enforcement-mode split: the mafia's night post ───────────────────────────
 sneak_posted = any(e["text"] == "night-sneak" for e in pub)
@@ -74,17 +74,17 @@ denials = [e for e in audit if e.get("event") == "post_denied"
 if MODE == "hard":
     check("night post DENIED by live physics", not sneak_posted and
           any(d.get("frm") == "a1" for d in denials), str(denials))
-    npol = [e for e in audit if e.get("event") == "gm_policy"]
-    check("live policy switched per phase (>=4 gm_policy events)",
+    npol = [e for e in audit if e.get("event") == "dispatch_policy"]
+    check("live policy switched per phase (>=4 dispatch_policy events)",
           len(npol) >= 4, str(len(npol)))
 else:
     check("night post went through (no physics)", sneak_posted and not denials,
           f"posted={sneak_posted} denials={denials}")
-    check("GM refereed the violation from metadata",
+    check("dispatcher refereed the violation from metadata",
           any("norm violations" in t and "a1 posted publicly at night" in t
               for t in world), str([t for t in world if "norm" in t]))
 
-gtexts = [json.loads(l)["text"] for l in open("/gm/game_log.jsonl")]
+gtexts = [json.loads(l)["text"] for l in open("/dispatch/game_log.jsonl")]
 check("game log: roles + params recorded at start",
       gtexts and gtexts[0].startswith("Roles:"), str(gtexts[:1]))
 check("game log: hidden night beats (votes / investigation / protection)",

@@ -2,7 +2,7 @@
 
 Uses the two hidden-information build hooks (plan step 6):
 - fill_briefing: mafia templates get their partners' names filled in.
-- gm_secrets: the role answer key, baked to /gm/secrets.json for the GM.
+- dispatch_secrets: the role answer key, baked to /dispatch/secrets.json for the dispatcher.
 Agent-visible wording lives in roles/*.md, not here.
 """
 
@@ -32,5 +32,5 @@ def fill_briefing(briefing, agent_id, ids_roles, params, rng):
         "{partners}", ", ".join(partners) if partners else "none — you work alone")
 
 
-def gm_secrets(ids_roles, params, rng):
+def dispatch_secrets(ids_roles, params, rng):
     return {"roles": ids_roles}

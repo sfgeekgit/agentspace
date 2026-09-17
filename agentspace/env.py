@@ -268,7 +268,7 @@ def cmd_stop(name: str):
     host = env["host"] or "localhost"
 
     rt = _rt(env)
-    rt.stop_gm(host, name)  # stop-all stops the GM too (decision 13; no-op if none)
+    rt.stop_dispatch(host, name)  # stop-all stops the dispatcher too (decision 13; no-op if none)
     console.print(f"[dim]stopping gateway …[/dim]")
     rt.stop_gateway(host, name)
 
@@ -298,18 +298,18 @@ def cmd_kick(name: str, message: str | None = None):
         rt.start_gateway(host, name)
         rt.wait_for_gateway(host, name)
 
-    # "Run the world": in a GM world, that means start (or resume) the GM — it is
+    # "Run the world": in a dispatcher world, that means start (or resume) the dispatcher — it is
     # the sole driver and wakes its own agents, so we do NOT also blast per-agent
-    # wakes (that would race the GM's setup). Non-GM worlds wake agents directly.
+    # wakes (that would race the dispatcher's setup). Non-dispatcher worlds wake agents directly.
     # (Per-agent debug pokes still go through env chat / the gateway wake op.)
-    if rt.world_has_gm(host, name):
-        if rt.gm_running(host, name):
-            console.print(f"[green]✓[/green] env {name}: GM already running.")
+    if rt.world_has_dispatch(host, name):
+        if rt.dispatch_running(host, name):
+            console.print(f"[green]✓[/green] env {name}: dispatcher already running.")
         else:
-            console.print("[dim]starting game master …[/dim]")
-            rt.start_gm(host, name)
-            console.print(f"[green]✓[/green] env {name} is active — GM driving the world.")
-        audit.log("env.kick", name, args={"gm": True})
+            console.print("[dim]starting dispatcher …[/dim]")
+            rt.start_dispatch(host, name)
+            console.print(f"[green]✓[/green] env {name} is active — dispatcher driving the world.")
+        audit.log("env.kick", name, args={"dispatch": True})
         db.set_env_status(name, "active")
         return
 
@@ -334,7 +334,7 @@ def cmd_sleep(name: str):
             f"env {name!r} is not running (nothing to sleep). Use 'env start' first."
         )
     rt = _rt(env)
-    rt.stop_gm(host, name)  # sleep-all sleeps the GM too (decision 13; no-op if none)
+    rt.stop_dispatch(host, name)  # sleep-all sleeps the dispatcher too (decision 13; no-op if none)
     console.print(f"[dim]stopping gateway (container stays up) …[/dim]")
     rt.stop_gateway(host, name)
     db.set_env_status(name, "dormant")

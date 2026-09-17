@@ -178,11 +178,11 @@ def build_world_root(
     roles = _assign_roles(logic, n, params, rng)
     # Optional scen hooks for hidden-information games (Mafia): briefings may
     # be templates instantiated per agent (partners' names filled in), and the
-    # GM may need the role answer key at run time (baked to /gm/secrets.json,
-    # unreadable by agents — same trust boundary as GM state).
+    # dispatcher may need the role answer key at run time (baked to /dispatch/secrets.json,
+    # unreadable by agents — same trust boundary as dispatcher state).
     ids_roles = dict(zip(ids, roles))
-    gm_secrets = (logic.gm_secrets(ids_roles, params, rng)
-                  if logic is not None and hasattr(logic, "gm_secrets") else None)
+    dispatch_secrets = (logic.dispatch_secrets(ids_roles, params, rng)
+                  if logic is not None and hasattr(logic, "dispatch_secrets") else None)
     agents: list[dict[str, Any]] = []
     for agent_id, slot, role in zip(ids, roster, roles):
         persona = registry.load_persona(slot["persona"])   # raises if missing
@@ -291,9 +291,9 @@ def build_world_root(
             seeds=seeds,
             world_md=world_md,
             kick_text=kick_text if kick_text.endswith("\n") else kick_text + "\n",
-            gm_dir=(scen["dir"] / "gm") if scen["has_gm"] else None,
+            dispatch_dir=(scen["dir"] / "dispatch") if scen["has_dispatch"] else None,
             params=params,
-            gm_secrets=gm_secrets,
+            dispatch_secrets=dispatch_secrets,
             watch=scen["watch"],
             runtime_flags=scen["runtime_flags"],
         )

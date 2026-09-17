@@ -19,7 +19,7 @@ person would.
 
 ## Contacting the desk
 
-The general manager (`gm`) will tell you when to get in touch. Open with your
+The general manager, `dispatch`, will tell you when to get in touch. Open with your
 first message:
 
     submit "<your message>"

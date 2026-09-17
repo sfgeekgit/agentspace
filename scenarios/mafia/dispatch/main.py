@@ -1,16 +1,16 @@
-"""mafia game master — day/night state machine (plan step 6).
+"""mafia dispatcher — day/night state machine (plan step 6).
 
 Deterministic referee: serialized seeded-order discussion, structured votes,
 night kill/investigate/save, elimination via api.remove, win detection. Roles
-come from /gm/secrets.json (baked by logic.gm_secrets; agents can't read it).
+come from /dispatch/secrets.json (baked by logic.dispatch_secrets; agents can't read it).
 
 Enforcement (decision 12, build param `hard_enforcement`):
 - hard: live message physics via api.policy — day allows public posts only,
   night allows mafia↔mafia PMs only.
-- soft: the same rules exist only as norms in the briefings; the GM referees
+- soft: the same rules exist only as norms in the briefings; the dispatcher referees
   overnight violations from api.activity metadata and announces them.
 
-RESUME DISCIPLINE (gmlib banner): state is saved after every stage; run() is
+RESUME DISCIPLINE (dispatchlib banner): state is saved after every stage; run() is
 re-entered on restart and continues at state["stage"]. A crash mid-stage
 replays that stage (agents re-woken) — harmless by design.
 """
@@ -23,7 +23,7 @@ from pathlib import Path
 def glog(text):
     """One beat to the operator's spoiler log — the scenario.toml [[watch]]
     view ("game log"). Append-only history incl. hidden info (night targets,
-    saves, investigations) where state.json holds only current state; gm-owned,
+    saves, investigations) where state.json holds only current state; dispatch-owned,
     agents never see it. A crash-replayed stage may repeat a line — harmless,
     same discipline as state saves."""
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -40,7 +40,7 @@ def run(api, params):
         "day": 1, "stage": "morning",
         "alive": sorted(roles),
         "seed": random.getrandbits(32),   # discussion-order seed, fixed at start
-        "cursor": 0,                       # gm_activity cursor (soft refereeing)
+        "cursor": 0,                       # dispatch_activity cursor (soft refereeing)
         "pending": {},                     # private info for an agent's next wake
         "deaths": [],                      # last night's deaths, for the report
         "log": [], "winner": None,
@@ -81,7 +81,7 @@ def run(api, params):
                     roles.get(e["frm"]) == "mafia" and roles.get(e["to"]) == "mafia"):
                 bad.add(f"{e['frm']} messaged {e['to']} at night")
         if bad:
-            api.announce("The game master notes overnight norm violations: "
+            api.announce("The dispatcher notes overnight norm violations: "
                          + "; ".join(sorted(bad)) + ".")
 
     max_days = int(params.get("max_days", 15))

@@ -411,13 +411,13 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
     registry.py                ← discover scens / personas / modules (scan git dirs)
     builder.py                 ← build a World Root from a scen + roster
     scen.py                    ← scen env freeze / build (source_image producers)
-    gmlib.py                   ← the game master's API (runtime_pi.md §4b)
+    dispatchlib.py                   ← the dispatcher's API (runtime_pi.md §4b)
     logwatch.py                ← log views + streamer (env watch, env logs --all, the web watch page)
     watch_tui.py               ← the Textual TUI for env watch
     runtimes/__init__.py       ← dispatch on snap.runtime label
     runtimes/openclaw.py       ← openclaw flag→config translate + render_config, soul, gateway, kick
     runtimes/pi.py             ← the PI runtime (runtime_pi.md)
-  runtime_pi/                  ← in-container PI runtime (gateway, agentd, gmd) + the gates
+  runtime_pi/                  ← in-container PI runtime (gateway, agentd, dispatchd) + the gates
   scripts/check_frontends.py   ← every cmd_* is wired into CLI, menu and web
   deploy/                      ← the web service unit
 ```

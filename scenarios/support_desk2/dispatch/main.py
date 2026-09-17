@@ -1,12 +1,12 @@
 """support_desk2 general manager — the shift loop.
 
-One round = one GM tick. Tickets open on a seeded arrival schedule; reps with
+One round = one dispatcher tick. Tickets open on a seeded arrival schedule; reps with
 something to do get the queue and their claims/resolves are collected from
 `submit`; each resolved ticket's customer is asked once whether it was fixed.
 Rep<->customer chat runs between ticks on its own (PMs wake the recipient).
-Every word the GM says is a fixed template. No economy.
+Every word the dispatcher says is a fixed template. No economy.
 
-RESUME DISCIPLINE (gmlib banner): state is saved after every step, run() is
+RESUME DISCIPLINE (dispatchlib banner): state is saved after every step, run() is
 re-entered on every world start and continues from state["round"]; every step
 tolerates replay (opened tickets are skipped, resolved ones are not re-resolved,
 confirmation is asked only while unrecorded).

@@ -60,7 +60,7 @@ def _optional_parts(scen_dir: Path) -> dict[str, Any]:
         "has_world": (scen_dir / "world.md").is_file(),
         "has_logic": (scen_dir / "logic.py").is_file(),
         "has_kick": (scen_dir / "kick.txt").is_file(),
-        "has_gm": (scen_dir / "gm" / "main.py").is_file(),   # scen ships a game master (PI)
+        "has_dispatch": (scen_dir / "dispatch" / "main.py").is_file(),   # scen ships a dispatcher (PI)
         "roles_dir": (scen_dir / "roles") if (scen_dir / "roles").is_dir() else None,
         "data_dir": (scen_dir / "data") if (scen_dir / "data").is_dir() else None,
     }
@@ -97,8 +97,8 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
 
     # A scen declares its runtime (REQUIRED); the wizard derives it from here
     # instead of asking. This is dispatch, not runtime knowledge: the check that
-    # the name is known and supports the scen's capabilities (a gm.py needs a
-    # runtime with a GM adapter) lives with the runtime modules themselves.
+    # the name is known and supports the scen's capabilities (a dispatch.py needs a
+    # runtime with a dispatcher adapter) lives with the runtime modules themselves.
     runtime = data.get("runtime")
     if not isinstance(runtime, str) or not runtime:
         raise RegistryError(f'scen {name!r}: manifest must declare runtime = "<name>"')
@@ -107,9 +107,9 @@ def _normalize_scen(name: str, scen_dir: Path, data: dict[str, Any]) -> dict[str
         rt = runtimes.get(runtime)
     except ValueError as e:
         raise RegistryError(f"scen {name!r}: {e}")
-    if parts["has_gm"] and not getattr(rt, "SUPPORTS_GM", False):
+    if parts["has_dispatch"] and not getattr(rt, "SUPPORTS_DISPATCH", False):
         raise RegistryError(
-            f"scen {name!r} ships a GM (gm/main.py) but runtime {runtime!r} has no GM support"
+            f"scen {name!r} ships a dispatcher (dispatch/main.py) but runtime {runtime!r} has no dispatcher support"
         )
 
     # OPTIONAL pinned source image (world-authoring design §5.1): any compatible

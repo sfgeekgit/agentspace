@@ -44,14 +44,14 @@ def fetch_log(env, log_arg):
     if log_arg:
         return Path(log_arg)
     tmp = Path(tempfile.mkstemp(suffix=".jsonl")[1])
-    r = subprocess.run(["docker", "cp", f"{env}:/gm/game_log.jsonl", str(tmp)],
+    r = subprocess.run(["docker", "cp", f"{env}:/dispatch/game_log.jsonl", str(tmp)],
                        capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"cannot read game log from container {env}: {r.stderr.strip()}")
     return tmp
 
 
-# support_desk2 log grammar (scenarios/support_desk2/gm/main.py glog()).
+# support_desk2 log grammar (scenarios/support_desk2/dispatch/main.py glog()).
 DESK_WORLD = re.compile(r"world created: (\d+) reps, (\d+) customers, "
                         r"arrival_gap (\d+), max_rounds (\d+)")
 DESK_ROUND = re.compile(r"round (\d+): opened (\S+); claimed (\S+); lost (\S+); "

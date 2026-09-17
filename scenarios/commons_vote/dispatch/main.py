@@ -1,19 +1,19 @@
-"""commons_vote GM — vendored CI Lib basin_stability physics, LLM voters.
+"""commons_vote dispatcher — vendored CI Lib basin_stability physics, LLM voters.
 
-Round shape (pd gm is the style template): jitted proposal generation →
+Round shape (pd dispatch is the style template): jitted proposal generation →
 per-agent PRIVATE vote prompts (each agent sees only its own noisy signals)
 → collect → jitted vendored physics. The pipeline's voting and q_learning
 transforms are the only pieces not applied — the LLM votes replace both.
 
 BIT-EXACTNESS CONTRACT (this scen's whole point):
 - cilib/ and experiments/ here are byte-for-byte pinned copies
-  (gate/vendor.sh, gm/CILIB_PIN). Never edit them.
+  (gate/vendor.sh, dispatch/CILIB_PIN). Never edit them.
 - Physics runs ONLY through the two jit blocks in make_physics() — plain
   eager application is NOT bit-exact with the offline lax.scan sweeps
   (float noise flips argmaxes and forks trajectories; proven in
   gate/offline_twin_equivalence.py, which mirrors this exact structure).
 
-RESUME DISCIPLINE (gmlib banner): the GraphState pickles to ~/physics.pkl
+RESUME DISCIPLINE (dispatchlib banner): the GraphState pickles to ~/physics.pkl
 after every round, BEFORE announcing; the pickle is stable because the env
 is digest-pinned. run() re-entered on restart resumes at the saved round; a
 crash mid-round replays that round deterministically (rng_key is in-state),
@@ -32,13 +32,13 @@ from cilib.core.category import sequential
 from experiments.basin_stability import transforms as tr
 from experiments.basin_stability.state import create_initial_state
 
-HOME = Path.home()            # /gm — wiped at bake, so a new world starts fresh
+HOME = Path.home()            # /dispatch — wiped at bake, so a new world starts fresh
 STATE = HOME / "physics.pkl"
 DEFAULT_VOTE = "1"            # recorded for a missing/invalid vote (stated in every prompt)
 
 
 def glog(text):
-    """GM record with true utilities and per-agent votes (env watch view)."""
+    """dispatcher record with true utilities and per-agent votes (env watch view)."""
     with (HOME / "game_log.jsonl").open("a") as f:
         f.write(json.dumps({"ts": time.time(), "text": text}) + "\n")
 
@@ -59,7 +59,7 @@ def make_physics(mechanism):
 
 
 def round_private(api, payloads, valid, default):
-    """gmlib round() with a PER-AGENT payload: drain stale submissions, wake
+    """dispatchlib round() with a PER-AGENT payload: drain stale submissions, wake
     everyone in parallel, then collect each structured vote."""
     for a in payloads:
         api.collect(a)  # drain-before-collect: drop anything submitted between rounds

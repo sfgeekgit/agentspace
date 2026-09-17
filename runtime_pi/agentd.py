@@ -109,8 +109,8 @@ MESSAGING_NORMS = """\
   for one person.
 """
 
-# No GM block here on purpose: how a world's GM presents itself ("game
-# master", "coordinator", nothing at all) is scen framing, so a GM scen teaches
+# No dispatcher block here on purpose: how a world's dispatcher presents itself ("dispatcher",
+# "coordinator", "general manager", nothing at all) is scen framing, so a dispatcher scen teaches
 # `submit "<action>"` in its own world/role text (HOW_TO_MAKE_WORLDS_START_HERE.md).
 
 SCRATCH_REQUIRED = """\

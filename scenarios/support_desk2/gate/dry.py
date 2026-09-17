@@ -1,6 +1,6 @@
-"""Zero-token logic check: gm/main.py driven against a stub gmlib api.
+"""Zero-token logic check: dispatch/main.py driven against a stub dispatchlib api.
 
-Not a scen gate (no container, no scripted agents): it exercises the GM's own
+Not a scen gate (no container, no scripted agents): it exercises the dispatcher's own
 state machine — arrival schedule, ticket opening, who gets woken, multi-action
 parsing, claim tie-break, holder-only resolve, confirmation, termination,
 resume.  python3 gate/dry.py
@@ -8,7 +8,7 @@ resume.  python3 gate/dry.py
 import json, os, random, sys, tempfile
 from pathlib import Path
 
-GM = str(Path(__file__).resolve().parent.parent / "gm")
+dispatcher = str(Path(__file__).resolve().parent.parent / "dispatch")
 SEED = 12345
 
 
@@ -35,10 +35,10 @@ class Api:
     def policy(self, allow=None, deny=None, **k): self.pol = (allow, deny)
 
 
-def load_gm(home):
+def load_dispatch(home):
     os.environ["HOME"] = home
     sys.modules.pop("main", None)
-    if GM not in sys.path: sys.path.insert(0, GM)
+    if dispatcher not in sys.path: sys.path.insert(0, dispatcher)
     import main
     return main
 
@@ -52,11 +52,11 @@ def run(behaviour, params, n_reps=3, n_cust=6, restart_after=None):
     api = Api(home, roles, behaviour)
     api.limit = restart_after
     try:
-        load_gm(home).run(api, params)
+        load_dispatch(home).run(api, params)
     except RuntimeError as e:
         if "STOP" not in str(e): raise
         api = Api(home, roles, behaviour)
-        load_gm(home).run(api, params)
+        load_dispatch(home).run(api, params)
     return json.loads((Path(home) / "state.json").read_text()), api, home
 
 
@@ -131,7 +131,7 @@ assert st["done"] == "complete" and st["arrivals"] == exp
 assert sum(1 for v in st["tickets"].values() if v["resolved_round"]) == 6
 print(f"mid-run restart : complete in {st['round']} rounds, arrivals stable, resumed cleanly")
 
-api2 = Api(home, {"r0": "rep"}, idle); load_gm(home).run(api2, P)
+api2 = Api(home, {"r0": "rep"}, idle); load_dispatch(home).run(api2, P)
 assert api2.calls == [] and api2.announced == []
 print("restart when done: no replay, no second announce")
 

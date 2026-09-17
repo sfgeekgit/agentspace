@@ -1,8 +1,8 @@
-"""Zero-token logic check: gm/main.py driven against a stub gmlib api.
+"""Zero-token logic check: dispatch/main.py driven against a stub dispatchlib api.
 
 NOT a scen gate in the docs' sense (those drive the real stack via
-runtime_pi/gm_gate/setup_world.sh with scripted dummy agents). This is cheaper
-and narrower: it exercises the GM's own state machine — ticket flow, claim
+runtime_pi/dispatch_gate/setup_world.sh with scripted dummy agents). This is cheaper
+and narrower: it exercises the dispatcher's own state machine — ticket flow, claim
 tie-break, resume, termination — with no container and no tokens.
 
     python3 gate/dry.py
@@ -12,7 +12,7 @@ Worth keeping current: it is what makes the v0.2 economy safe to add.
 import json, os, sys, tempfile, shutil
 from pathlib import Path
 
-GM = "/opt/agentspace-ctl/scenarios/support_desk/gm"
+dispatcher = "/opt/agentspace-ctl/scenarios/support_desk/dispatch"
 
 class Api:
     def __init__(self, home, roles, behaviour):
@@ -47,17 +47,17 @@ def setup(n_reps=3, n_cust=3):
     (Path(home)/"secrets.json").write_text(json.dumps({"roles": roles, "seed": 12345}))
     return home, roles, reps, cust
 
-def load_gm(home):
+def load_dispatch(home):
     os.environ["HOME"] = home
     for m in ("main", "tickets"):
         sys.modules.pop(m, None)
-    sys.path.insert(0, GM)
+    sys.path.insert(0, dispatcher)
     import main
     return main
 
 def run(behaviour, params, n_reps=3, n_cust=3, restart_after=None):
     home, roles, reps, cust = setup(n_reps, n_cust)
-    main = load_gm(home)
+    main = load_dispatch(home)
     api = Api(home, roles, behaviour)
     if restart_after:
         api.limit = restart_after
@@ -65,7 +65,7 @@ def run(behaviour, params, n_reps=3, n_cust=3, restart_after=None):
         except RuntimeError as e:
             if "STOP" not in str(e): raise
         api2 = Api(home, roles, behaviour); api2.limit = None
-        main = load_gm(home); main.run(api2, params)
+        main = load_dispatch(home); main.run(api2, params)
         st = json.loads((Path(home)/"state.json").read_text())
         return st, api2, home
     main.run(api, params)
@@ -127,7 +127,7 @@ assert st["done"] == "complete", st["done"]
 assert sum(v["resolved"] for v in st["tickets"].values()) == 9
 print(f"mid-run restart : {st['done']} in {st['round']} blocks, resumed cleanly")
 
-main = load_gm(home)
+main = load_dispatch(home)
 api2 = Api(home, {"r0": "rep"}, idle); main.run(api2, P)
 assert api2.calls == [] and api2.announced == []
 print("restart when done: no replay, no second announce")

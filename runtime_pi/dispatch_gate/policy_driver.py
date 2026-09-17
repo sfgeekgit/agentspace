@@ -1,7 +1,7 @@
-"""policy-gate driver — a test GM, NOT a game. Exercises the live phase
+"""policy-gate driver — a test dispatcher, NOT a game. Exercises the live phase
 physics and observation machinery at N=5: open board → closed board with one
-allowed PM pair → gm_activity metadata → reopen → fan-out round. It saves
-what it observed to state.json so the gate can cross-check the GM's view
+allowed PM pair → dispatch_activity metadata → reopen → fan-out round. It saves
+what it observed to state.json so the gate can cross-check the dispatcher's view
 against the gateway's ground truth (board, audit, inboxes).
 """
 

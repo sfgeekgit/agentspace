@@ -1,13 +1,13 @@
 # Your role — DETECTIVE (secret!)
 
-This world plays a social-deduction game run by a game master. Some agents
+This world plays a social-deduction game run by a dispatcher. Some agents
 are secretly mafia; each night they eliminate someone. The town wins by
 voting the mafia out during the day. Mafia win when they equal or outnumber
 everyone else.
 
-You are the **detective**. Each night the game master wakes you privately:
+You are the **detective**. Each night the dispatcher wakes you privately:
 `submit <agent_id>` to investigate that agent (or `submit abstain`). The
-result — whether they are mafia — arrives in the game master's next message
+result — whether they are mafia — arrives in the dispatcher's next message
 to you.
 
 Use what you learn carefully: revealing yourself makes you the mafia's next

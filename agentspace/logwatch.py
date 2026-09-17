@@ -122,18 +122,21 @@ def _epoch(ts: str) -> float | None:
 
 # ---- parsers ----
 
+_ANNOUNCERS = {"dispatch", "world"}   # "world": snaps built before 2026-09-16
+
+
 def parse_board(path, line, world_only=False):
     e = _j(line)
-    if not e or (world_only and e.get("from") != "world"):
+    if not e or (world_only and e.get("from") not in _ANNOUNCERS):
         return None
-    kind = "announce" if e.get("from") == "world" else "post"
+    kind = "announce" if e.get("from") in _ANNOUNCERS else "post"
     return Event(e.get("ts", ""), e.get("from", "?"), kind, e.get("text", ""))
 
 
 # Spectator feed: everything a game observer wants, one line each, from the
 # audit stream. Content fields (text/action/payload) exist only in worlds
 # built after the write-side enrichment — fall back to metadata when absent.
-_AUDIT_SKIP = {"read_public", "gm_collect", "wake_end", "gateway_start"}
+_AUDIT_SKIP = {"read_public", "dispatch_collect", "gm_collect", "wake_end", "gateway_start"}
 
 
 def parse_audit_feed(path, line):
@@ -141,8 +144,8 @@ def parse_audit_feed(path, line):
     if not e or e.get("event") in _AUDIT_SKIP:
         return None
     ev, ts = e["event"], e.get("ts", "")
-    if ev == "gm_announce":
-        return Event(ts, "world", "announce", e.get("text", f"(announcement seq={e.get('seq')})"))
+    if ev in ("dispatch_announce", "gm_announce"):
+        return Event(ts, "dispatch", "announce", e.get("text", f"(announcement seq={e.get('seq')})"))
     if ev == "post_public":
         return Event(ts, e.get("frm", "?"), "post", e.get("text", "(posted — see public board)"))
     if ev == "send":
@@ -151,8 +154,8 @@ def parse_audit_feed(path, line):
     if ev == "submit":
         return Event(ts, e.get("frm", "?"), "move",
                      "submitted: " + str(e.get("action", f"({e.get('bytes', '?')} bytes)")))
-    if ev == "gm_wake":
-        return Event(ts, "GM", "wake", f"wakes {e.get('to', '?')}: {_trim(e.get('payload', ''))}")
+    if ev in ("dispatch_wake", "gm_wake"):
+        return Event(ts, "dispatch", "wake", f"wakes {e.get('to', '?')}: {_trim(e.get('payload', ''))}")
     if ev == "wake":
         causes = ",".join(c.get("type", "?") for c in e.get("causes", []))
         return Event(ts, e.get("agent", "?"), "wake", f"woke ({causes})")
@@ -434,7 +437,7 @@ _BODY_STYLE = {"thinking": "dim italic", "tool": "cyan", "user": "green",
 
 
 def _who_color(who: str) -> str:
-    return "bold yellow" if who in ("world", "GM") else _PALETTE[hash(who) % len(_PALETTE)]
+    return "bold yellow" if who in _ANNOUNCERS else _PALETTE[hash(who) % len(_PALETTE)]
 
 
 def render(ev: Event) -> str:

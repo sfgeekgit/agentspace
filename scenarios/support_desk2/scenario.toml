@@ -1,7 +1,7 @@
 # support_desk2 — a managed-hosting support desk on a shared ticket queue.
 #
 # Reps work a queue of tickets played by customer agents (one customer per
-# ticket, arriving on a seeded schedule). The GM ("general manager") opens
+# ticket, arriving on a seeded schedule). The dispatcher ("general manager") opens
 # tickets, sends reps the queue, records claims/resolves from submits, and
 # asks each customer whether its problem was fixed. No economy. Supersedes
 # support_desk.
@@ -39,6 +39,6 @@ max = 400
 
 [[watch]]
 name = "shift log"
-file = "/gm/game_log.jsonl"
+file = "/dispatch/game_log.jsonl"
 format = "jsonl"
 fields = { ts = "ts", text = "text" }

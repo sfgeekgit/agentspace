@@ -2,7 +2,7 @@
 
 This is the complete guide to authoring a **scen** for agentspace. It assumes
 you have read NOTHING else: read only this doc and you can build a complex
-scen, including one with a game master. (Maintainers: parts of this
+scen, including one with a dispatcher. (Maintainers: parts of this
 deliberately duplicate `runtime_pi.md` from the author's point of view — when
 you change behavior, update BOTH, plus code comments and any plan files.)
 
@@ -11,14 +11,14 @@ you change behavior, update BOTH, plus code comments and any plan files.)
 **"Scen" is short for scenario.** A scen is a self-contained directory
 (`scenarios/<name>/`) that defines a world: how many agents exist, what text
 each of them wakes up knowing (a shared world description, a private role
-briefing), and — optionally — a **game master** (GM) which is deterministic
+briefing), and — optionally — a **dispatcher** (`dispatch`) which is deterministic
 Python that shapes the world at build time (role assignment, secrets) and
-drives it at run time (a game master running rounds, votes, phases).
+drives it at run time (a dispatcher running rounds, votes, phases).
 From one scen the operator builds
 **world roots**: frozen snapshots, parameterized at build (e.g. number of
 rounds), which are then forked into live running worlds. A scen CAN: define
 secret and per-agent-instantiated roles, collect build parameters, ship a
-game master that wakes agents, collects structured moves, scores, announces,
+dispatcher that wakes agents, collects structured moves, scores, announces,
 changes live messaging policy, and eliminates agents; ship a data corpus. A
 scen CANNOT: give agents new tools, change how messaging/waking physically
 works (the runtime owns that), read or write anything outside its own
@@ -35,7 +35,7 @@ restate it):
   private (other agents literally cannot read it). Its tools (read / write /
   edit / bash) run as that user.
 - **Agents are reactive.** No background process. An agent is woken by an
-  event — a private message arriving, a GM wake, an operator poke — handles
+  event — a private message arriving, a dispatcher wake, an operator poke — handles
   one turn, and its process exits. Nothing happens for an agent between
   wakes.
 - **Every wake, the agent's context is**: a runtime-owned preamble (the
@@ -50,11 +50,11 @@ restate it):
   - `gateway post "<text>"` — append to the shared public board; wakes NOBODY
   - `gateway read-public --since <seq>` — pull the board
   - `check_budget` — the world's API spend
-  - `submit "<action>"` — (GM worlds only) hand the GM a structured action.
-    **The runtime does NOT teach this one.** How a GM presents itself
-    ("game master", "coordinator", nobody) is scen framing, so your
+  - `submit "<action>"` — (dispatcher worlds only) hand the dispatcher a structured action.
+    **The runtime does NOT teach this one.** How a dispatcher presents itself
+    ("dispatcher", "coordinator", nobody) is scen framing, so your
     `world.md` or role briefing must say that `submit` exists and that only
-    what is submitted counts — see "The game master" below.
+    what is submitted counts — see "The dispatcher" below.
 - **First wake**: if your scen ships `FIRST_WAKE.md`, it is delivered once as
   the birth message (rich onboarding), then archived. Later wakes carry only
   new mail.
@@ -109,7 +109,7 @@ env are all one command away for an agent.
 # scenario.toml
 active = true            # false → hidden from the New-World menu
 runtime = "pi"           # REQUIRED. The wizard derives the runtime from this
-                         # (GM scens need "pi"). No more runtime question.
+                         # (dispatcher scens need "pi"). No more runtime question.
 # source_image = "ghcr.io/…@sha256:…"   # OPTIONAL: pinned environment image
                          # (see "The scen's environment" below). Absent →
                          # the bare runtime base; text-only scens skip this.
@@ -129,7 +129,7 @@ module_blacklist = []    # module names this scen can't run with (none exist yet
 name = "rounds"          # The wizard prompts for each; the SAME scen builds a
 type = "int"             # different world root per value set. Types: int |
 label = "Number of rounds"  # float (min/max checked) | bool | str.
-default = 5              # Values reach your gm/main.py as `params`.
+default = 5              # Values reach your dispatch/main.py as `params`.
 min = 1
 max = 100
 ```
@@ -141,9 +141,9 @@ Optional files:
 | `world.md` | Shared world text every agent gets (as `WORLD.md`). Keep minimal. |
 | `roles/<role>.md` | One briefing per role → that agent's private `ROLE.md`. Self-describing; say what the agent CAN do. |
 | `logic.py` | Build-time hooks (next section). |
-| `gm/` | The game master package — run-time control code (the big section below). Entry point `gm/main.py` + any helpers/vendored code; baked to `/gm/code`, gm-owned 0700 — agents cannot read game logic. |
+| `dispatch/` | The dispatcher package — run-time control code (the big section below). Entry point `dispatch/main.py` + any helpers/vendored code; baked to `/dispatch/code`, dispatch-owned 0700 — agents cannot read game logic. |
 | `FIRST_WAKE.md` | One-time birth message (onboarding richer than the frozen files). |
-| `kick.txt` | Overrides the default kick message. Rarely needed; unused in GM worlds (the GM does the waking). |
+| `kick.txt` | Overrides the default kick message. Rarely needed; unused in dispatcher worlds (the dispatcher does the waking). |
 | `data/` | Corpus, baked to `/data/corpus` (gigabytes OK — travels with the image). |
 | `gate/` | Optional scripted self-test (see Testing). Most scens don't need one. |
 
@@ -190,10 +190,10 @@ the digest, in the order you'll actually use them:
   want a clean workshop container instead.
 
 **What carries from a dirty source (and what doesn't).** Building a world
-root RESETS everything runtime-owned: all `u_*`/`gm` Linux users are
-deleted (no ghost agents in `gateway who`; a GM can't wake-and-bill the old
+root RESETS everything runtime-owned: all `u_*`/`dispatch` Linux users are
+deleted (no ghost agents in `gateway who`; a dispatcher can't wake-and-bill the old
 cast), and `/data/gateway` (audit, public board, budget, spools,
-submissions, eliminations), `/world`, and `/gm` (GM code, state, secrets)
+submissions, eliminations), `/world`, and `/dispatch` (dispatcher code, state, secrets)
 are wiped. Everything else CARRIES — notably old agent home directories
 (left root-owned 0700: preserved but unreadable; deliberately open the
 permissions if the new cast is meant to dig) and `/data/corpus`.
@@ -202,7 +202,7 @@ permissions if the new cast is meant to dig) and `/data/corpus`.
 can READ package source — `ls site-packages` is one command away. jax
 whispers "simulation"; a library whose modules are named `mechanisms/` or
 `adversarial_welfare` shouts. Keep the global environment genuinely generic;
-ship anything prejudicial inside `gm/` (→ `/gm/code`, unreadable by
+ship anything prejudicial inside `dispatch/` (→ `/dispatch/code`, unreadable by
 agents). The freeze verb's scan catches credential-shaped and history-shaped
 things — the PREJUDICE judgment is always yours.
 
@@ -236,42 +236,42 @@ def fill_briefing(briefing, agent_id, ids_roles, params, rng):
     template's {partners} placeholder with the actual partner ids.
     `ids_roles` is {agent_id: role} for the whole world. Return final text."""
 
-def gm_secrets(ids_roles, params, rng):
-    """Return a JSON-able dict your GM needs at run time (typically the role
-    answer key). Baked to /gm/secrets.json — readable by the GM only."""
+def dispatch_secrets(ids_roles, params, rng):
+    """Return a JSON-able dict your dispatcher needs at run time (typically the role
+    answer key). Baked to /dispatch/secrets.json — readable by the dispatcher only."""
 ```
 
 Hidden information is first-class: each agent sees only its own `ROLE.md`;
 the full assignment is recorded in the operator's `audit.log` (and
-`/gm/secrets.json` if you use `gm_secrets`), never anywhere agents can reach.
+`/dispatch/secrets.json` if you use `dispatch_secrets`), never anywhere agents can reach.
 
-## The game master (`gm/`)
+## The dispatcher (`dispatch/`)
 
 A scen that must DRIVE the world — run rounds, collect moves, enforce
-phases, score, eliminate — ships a `gm/` package. ("GM" does not imply
-game: a shift coordinator or corpus-sort driver is a GM too.) It is
-deterministic Python, run as its own dedicated non-root user (`gm`), with a
-private home `/gm` that agents cannot read. The whole package — entry point
-`gm/main.py` plus any helpers or vendored code — is baked to `/gm/code`
-(gm-owned, 0700), so agents cannot read game logic either; siblings import
-plainly (`import my_helper`). Agents never see the GM except as messages
-from `gm` and board posts from `world`.
+phases, score, eliminate — ships a `dispatch/` package. ("dispatcher" does not imply
+game: a shift coordinator or corpus-sort driver is a dispatcher too.) It is
+deterministic Python, run as its own dedicated non-root user (`dispatch`), with a
+private home `/dispatch` that agents cannot read. The whole package — entry point
+`dispatch/main.py` plus any helpers or vendored code — is baked to `/dispatch/code`
+(dispatch-owned, 0700), so agents cannot read game logic either; siblings import
+plainly (`import my_helper`). Agents never see the dispatcher except as messages
+from `dispatch` and board posts under the same name.
 
-**Your scen introduces the GM to the agents.** The runtime preamble says
-nothing about it (a fixed "game master" paragraph was dropped 2026-09-07:
-it called every world a game). So a GM scen's `world.md` or role briefing
+**Your scen introduces the dispatcher to the agents.** The runtime preamble says
+nothing about it (a fixed "dispatcher" paragraph was dropped 2026-09-07:
+it called every world a game). So a dispatcher scen's `world.md` or role briefing
 must carry, in whatever voice fits the fiction, the one piece of physics
-agents need: messages from `gm` (and board posts from `world`) are the
+agents need: messages from `dispatch` (and its board posts) are the
 coordinator; when it asks for a choice, run `submit "<action>"` in bash in
 the format its message states; it reads only what is submitted, never chat.
 `scenarios/pd/world.md` has the plain version, `commons_vote/world.md` the
-"coordinator" version. Without it your agents will answer the GM in chat and
+"coordinator" version. Without it your agents will answer the dispatcher in chat and
 every round will collect the default.
 
-The entry point, `gm/main.py`:
+The entry point, `dispatch/main.py`:
 
 ```python
-import gmlib   # resolves in-container; you only ever use the `api` handed in
+import dispatchlib   # resolves in-container; you only ever use the `api` handed in
 
 def run(api, params):        # called on every world (re)start — must RESUME
     players = sorted(api.agents())
@@ -287,12 +287,12 @@ def run(api, params):        # called on every world (re)start — must RESUME
 ### Division of labor — read this three times
 
 **The gateway already does (never re-implement):**
-- Identity: it knows which agent (or the GM) is calling — unforgeable, so
+- Identity: it knows which agent (or the dispatcher) is calling — unforgeable, so
   submissions and messages cannot be spoofed.
 - Delivery and waking: PMs land in inboxes and wake recipients; your
   `api.wake` blocks until the woken agent's whole turn finishes — that
   blocking is what serializes a game.
-- Audit: every send, post, wake (with its cause), denial, and GM action is
+- Audit: every send, post, wake (with its cause), denial, and dispatcher action is
   logged. You never write your own traffic log.
 - Policy enforcement: once you set a phase policy, the gateway refuses
   violating messages itself, live, no restart.
@@ -302,7 +302,7 @@ def run(api, params):        # called on every world (re)start — must RESUME
   `collect` it.
 - Rate/size caps, budget accounting, per-turn cost logging.
 
-**Your GM code must do:**
+**Your dispatcher code must do:**
 - All world/game logic: phases, who is woken when and with what prompt text,
   scoring, win conditions, what gets announced.
 - State persistence: keep ALL state in `api.load_state()/save_state()` and
@@ -316,7 +316,7 @@ def run(api, params):        # called on every world (re)start — must RESUME
   always set one, and consider a safety cap (e.g. mafia's `max_days`) so a
   degenerate world still terminates.
 
-**Your GM code must NEVER do:**
+**Your dispatcher code must NEVER do:**
 - Read agent homes or transcripts (adjudicate ONLY via `collect` /
   `activity`).
 - Parse agents' free-form chat as game input — moves come from `submit`.
@@ -325,23 +325,23 @@ def run(api, params):        # called on every world (re)start — must RESUME
 - Wake agents outside what the logic requires (every wake is a logged,
   explainable event).
 
-### The gmlib API (`api.…`)
+### The dispatchlib API (`api.…`)
 
 | Call | What it does |
 |---|---|
 | `agents()` | Live roster (handles variable agent count). |
-| `wake(agent, payload)` | Deliver payload as a message from `gm`, BLOCK until that agent's turn ends. Returns False on turn timeout. |
+| `wake(agent, payload)` | Deliver payload as a message from `dispatch`, BLOCK until that agent's turn ends. Returns False on turn timeout. |
 | `wake_all(agents=None, payload="")` | Concurrent wakes, block until all finish. |
 | `round(agents, payload, valid=None, default=None)` | The staple: wake all concurrently, then collect each submission. Returns `{agent: action}`. |
 | `collect(agent, valid=None, default=None)` | Pop one agent's spooled `submit` (trimmed; `default` if absent/not in `valid`). |
-| `announce(text)` | Public-board post as `world`. Wakes nobody (pull-only board). |
+| `announce(text)` | Public-board post as `dispatch`. Wakes nobody (pull-only board). |
 | `policy(allow=, deny=, **caps)` | Set LIVE messaging policy: lists of `[from, to]` pairs, `*` wildcards; the pair `[sender, "public"]` gates board posting. `allow=None` = everything open. Takes effect on the next message. |
 | `remove(agent)` | Eliminate: no more wakes, no send rights. Persistent. |
 | `roll_session(agent)` | Archive the agent's transcript; next wake starts a fresh session with re-rendered files (controlled compaction at a phase boundary). |
 | `activity(since=0)` | Message METADATA (send/post: who→whom, seq, ts — never content) since a seq. Returns `(events, max_seq)`. For refereeing norms. |
 | `load_state(default=None)` / `save_state(obj)` | Your on-disk game state (atomic write). |
 
-Extra GM facts: `/gm/secrets.json` (from `gm_secrets`) is yours to read at
+Extra dispatcher facts: `/dispatch/secrets.json` (from `dispatch_secrets`) is yours to read at
 run time. Private information for one agent (a detective's investigation
 result) is delivered by prepending it to that agent's next wake payload.
 Agents may `submit` when you didn't ask — drain strays with `collect()`
@@ -361,22 +361,22 @@ world root):
 
 ### Lifecycle (automatic — you build none of it)
 
-`env kick` on a GM world starts (or RESUMES) the GM instead of blasting
-agent wakes; the GM is the sole waker. `env stop`/`sleep` stop it. A fork of
+`env kick` on a dispatcher world starts (or RESUMES) the dispatcher instead of blasting
+agent wakes; the dispatcher is the sole waker. `env stop`/`sleep` stop it. A fork of
 a mid-game snapshot resumes exactly where the state file says — that is why
 the persistence discipline exists, and it is what enables "what if" forks.
 
 ## Declaring watchable logs (`[[watch]]`)
 
 `env watch <env>` gives the operator a live log TUI with built-in views
-(spectator feed, public board, GM announcements, per-agent thoughts/says/
+(spectator feed, public board, dispatcher announcements, per-agent thoughts/says/
 messages/scratchpad). A scen may add its OWN views — declaratively, in
 `scenario.toml`:
 
 ```toml
 [[watch]]
-name = "game log (GM, spoilers)"   # sidebar label
-file = "/gm/game_log.jsonl"        # file pattern in the container (glob ok)
+name = "game log (dispatcher, spoilers)"   # sidebar label
+file = "/dispatch/game_log.jsonl"        # file pattern in the container (glob ok)
 format = "jsonl"                   # "jsonl" or "text" (text = plain tail)
 fields = { ts = "ts", who = "who", text = "text" }   # jsonl key mapping
 # optional: filter = { field = "kind", equals = "day_end" }
@@ -384,23 +384,23 @@ fields = { ts = "ts", who = "who", text = "text" }   # jsonl key mapping
 
 The RULE: declarative only — a watch entry names a file and how to read it;
 scen code NEVER runs on the operator's host. If you want a readable view,
-write a readable file. Your GM already persists state every step; appending
+write a readable file. Your dispatcher already persists state every step; appending
 one human-readable line per game beat to a jsonl is the same discipline —
-see `glog()` in `scenarios/mafia/gm/main.py` (it records the hidden beats: night
-targets, saves, investigations, role reveals — GM-home files are
+see `glog()` in `scenarios/mafia/dispatch/main.py` (it records the hidden beats: night
+targets, saves, investigations, role reveals — dispatcher-home files are
 agent-unreachable, so spoilers are safe there).
 
 ## Worked examples (in the repo, simplest first)
 
-- `scenarios/simple2agent` — no roles, no GM: just world text.
-- `scenarios/roles_demo` — roles without a GM (one coordinator, N members).
-- `scenarios/pd` — **the reference GM prototype**: refereed repeated
-  prisoner's dilemma. Copy its shape for any new GM scen.
+- `scenarios/simple2agent` — no roles, no dispatcher: just world text.
+- `scenarios/roles_demo` — roles without a dispatcher (one coordinator, N members).
+- `scenarios/pd` — **the reference dispatcher prototype**: refereed repeated
+  prisoner's dilemma. Copy its shape for any new dispatcher scen.
 - `scenarios/noisy_pd` — pd copied (variants COPY code, don't abstract) plus
   one twist; note the persisted RNG seed pattern.
-- `scenarios/multi_n_budget_test` — the GM at N>2; float/bool params.
+- `scenarios/multi_n_budget_test` — the dispatcher at N>2; float/bool params.
 - `scenarios/mafia` — the full surface: hidden templated roles,
-  `gm_secrets`, day/night state machine, live phase policy vs norms
+  `dispatch_secrets`, day/night state machine, live phase policy vs norms
   refereeing, elimination, private info delivery, safety cap, a scen gate,
   and a `[[watch]]` spoiler game log (`glog()`).
 
@@ -415,7 +415,7 @@ The same wizard is in the web UI (`web_ui.md`): Scenarios → your scenario →
 "Build world root", then "Launch environment" on the finished root, then its
 watch page for the views listed under `[[watch]]` below.
 
-Wizard: scen (the manifest's `runtime` key decides the runtime — GM scens
+Wizard: scen (the manifest's `runtime` key decides the runtime — dispatcher scens
 need PI) → agent count →
 per-agent model + persona → your params → world name → build. This produces
 a local **world root** (`<name>:1.0`, never run directly). Then:
@@ -426,7 +426,7 @@ python3 zookeeper.py snap fork <name>:1.0 myrun  # fork → live env (auto-kicks
 python3 zookeeper.py env watch myrun             # live log TUI (feed, board, agents…)
 python3 zookeeper.py env logs myrun --all -f     # raw tails (gateway audit + sessions)
 docker exec myrun sh -c 'cat /data/gateway/public.jsonl'   # the public board
-docker exec myrun cat /gm/state.json             # the GM's true state
+docker exec myrun cat /dispatch/state.json             # the dispatcher's true state
 python3 zookeeper.py budget show myrun           # spend
 python3 zookeeper.py snap take myrun -m "mid-game"  # snapshot any moment; fork it later
 python3 zookeeper.py env kill myrun              # done (snaps persist on ghcr)
@@ -439,13 +439,13 @@ record (seed, params, role answer key) → the operator-only `audit.log`.
 ## Testing your scen
 
 Cheap end-to-end check with zero tokens: a **scen gate** — scripted dummy
-agents play a predetermined game against your real GM inside a throwaway
-container. Most scens don't need one (GM code is write-once; one real run
+agents play a predetermined game against your real dispatcher inside a throwaway
+container. Most scens don't need one (dispatcher code is write-once; one real run
 proves it — see `noisy_pd`). If yours is complex enough to want one, copy
 `scenarios/mafia/gate/`: a `moves/<id>.moves` file per agent (one line of
 `post …` / `send <id> …` / `submit …` actions per wake), a `gate.py` of
 asserts, and a `run.sh` that calls the shared harness
-(`runtime_pi/gm_gate/setup_world.sh`). Engine machinery itself is covered by
+(`runtime_pi/dispatch_gate/setup_world.sh`). Engine machinery itself is covered by
 the engine gates (`runtime_pi/run_engine_gates.sh`) — never test that in a
 scen gate.
 
@@ -463,5 +463,5 @@ scen gate.
   safety valve; an all-abstain world must still end.
 - **Keep briefings free of messaging mechanics** (how to send/post/read the
   board is injected by the runtime); state only what the role may do and any
-  format the GM will ask for. The ONE exception is `submit`: the scen must
-  introduce it (see "The game master").
+  format the dispatcher will ask for. The ONE exception is `submit`: the scen must
+  introduce it (see "The dispatcher").

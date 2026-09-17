@@ -1,11 +1,11 @@
 # support_desk — a managed-hosting support desk on a shared ticket queue.
 #
 # v0.1: no economy. Reps work a shared queue of tickets played by customer
-# agents; the GM opens tickets, publishes the queue, and records claims and
+# agents; the dispatcher opens tickets, publishes the queue, and records claims and
 # resolutions from submits. The credit pool, withdraw mechanic and furlough
 # arrive in v0.2 — see docs/support_desk_spec.md.
 #
-# The queue is delivered in private GM wake payloads, never announced: the
+# The queue is delivered in private dispatcher wake payloads, never announced: the
 # gateway's read_public has no policy gate, so anything on the board is
 # readable by the customer agents too. The board is the rep team channel.
 
@@ -40,9 +40,9 @@ default = 30
 min = 1
 max = 200
 
-# GM spoiler log: ticket truth, per-block claims/resolutions.
+# dispatcher spoiler log: ticket truth, per-block claims/resolutions.
 [[watch]]
-name = "shift log (GM, spoilers)"
-file = "/gm/game_log.jsonl"
+name = "shift log (dispatcher, spoilers)"
+file = "/dispatch/game_log.jsonl"
 format = "jsonl"
 fields = { ts = "ts", text = "text" }

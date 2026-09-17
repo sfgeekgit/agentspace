@@ -10,12 +10,12 @@ S=0 (mutual-`X` = 3 each, mutual-`Y` = 1 each, sucker/temptation = 0/5).
 
 ## Refereed (PI runtime)
 
-`gm.py` is the referee (PI runtime, step 4): it privately collects both moves
-each round via `gm_collect`, reveals them simultaneously, keeps the true score,
+`dispatch/main.py` is the referee (PI runtime, step 4): it privately collects both moves
+each round via `dispatch_collect`, reveals them simultaneously, keeps the true score,
 and announces per round. Build-time param `rounds` sets the length. It is the
-**reference GM prototype** — new game scens should copy its shape, especially
+**reference dispatcher prototype** — new game scens should copy its shape, especially
 the persist-state-every-round discipline that makes a mid-game snap resumable
-(see `gm.py` and `agentspace/gmlib.py`).
+(see `dispatch/main.py` and `agentspace/dispatchlib.py`).
 
 Build it from the menu ("New world" → `pd` → set rounds), run it, and watch the
 gateway audit + public board for the refereed rounds.

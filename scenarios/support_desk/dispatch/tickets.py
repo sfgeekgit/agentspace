@@ -1,4 +1,4 @@
-"""Ticket seeds — the shift's raw material. Baked to /gm/code, agent-unreadable.
+"""Ticket seeds — the shift's raw material. Baked to /dispatch/code, agent-unreadable.
 
 One seed = a customer to play plus the truth behind their problem. `problem` is
 what the customer experiences and can describe; `cause` is what is actually

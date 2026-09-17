@@ -2,7 +2,7 @@
 
 You work on the support desk at Pixelvault.
 
-Customer tickets land in a shared queue. The general manager (`gm`) messages
+Customer tickets land in a shared queue. The general manager, `dispatch`, messages
 you the queue as tickets come in: ticket id, customer id, and the customer's
 opening message. Any rep can take any ticket.
 

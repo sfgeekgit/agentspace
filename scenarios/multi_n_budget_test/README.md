@@ -7,7 +7,7 @@ Classic public-goods mechanics (contribute 0-10 from a per-round endowment of
 10 → pool × multiplier → even split), but named for what it exists to TEST
 (plan step 5, 2026-07-03 plan §7):
 
-- **GM at N>2** — fan-out wake, collect-N, serialize-at-N. This is "Mafia
+- **dispatcher at N>2** — fan-out wake, collect-N, serialize-at-N. This is "Mafia
   minus deception, roles, elimination."
 - **Per-round token cost at N agents** — the real-spend datapoint before
   committing to Mafia's 10 agents × multiple passes (plan §10 watch item).

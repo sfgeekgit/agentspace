@@ -5,8 +5,8 @@ Named for its role parallel with the OpenClaw gateway: the single privileged
 daemon every agent talks through. The parallel is ROLE-ONLY — this one is
 deliberately thin (deliver, wake, audit; no LLM sessions, no containers, no
 heartbeats, no TUI) and it never initiates anything on its own: every wake it
-performs was caused by a message, a GM call, or an operator command. Game
-logic never lives here — it belongs in scen code (GM, step 4).
+performs was caused by a message, a dispatcher call, or an operator command. Game
+logic never lives here — it belongs in scen code (dispatcher, step 4).
 
 Docs: docs/runtime_pi.md (single source of truth — protocol, policy format,
 wake contract, checklist). Design history in the working notes:
@@ -71,8 +71,8 @@ AUDIT = os.path.join(STATE_DIR, "audit.jsonl")
 PUBLIC = os.path.join(STATE_DIR, "public.jsonl")
 POLICY = os.path.join(STATE_DIR, "policy.json")
 BUDGET = os.path.join(STATE_DIR, "budget.jsonl")
-# GM state (step 4). All under STATE_DIR (0700 root) — unreadable by agents AND
-# by the gm user: agents submit, the GM collects via gm_collect, and the two
+# dispatcher state (step 4). All under STATE_DIR (0700 root) — unreadable by agents AND
+# by the dispatch user: agents submit, the dispatcher collects via dispatch_collect, and the two
 # never share a directory. On disk (not memory) so a snapshot/restore mid-game
 # is invisible: a forked snap resumes with pending submissions + removals intact.
 SUBMIT_DIR = os.path.join(STATE_DIR, "submissions")  # <agent>.json, one latest each
@@ -95,21 +95,21 @@ FAILCLOSED_POLICY = {
     "deny": [],
 }
 
-# Identity strings reserved for the gateway/operator/GM; a Linux user u_<name>
+# Identity strings reserved for the gateway/operator/dispatcher; a Linux user u_<name>
 # whose name collides with one of these is refused rather than allowed to
-# impersonate. "world" is the from-label of GM announcements (no such user).
-RESERVED_IDS = {"operator", "gm", "world"}
+# impersonate.
+RESERVED_IDS = {"operator", "dispatch"}
 
-# A connected peer: its identity ("operator"/"gm"/agent id), its privilege
-# (operator = uid 0; gm = the dedicated `gm` user), and its uid. Privilege
-# rides on is_operator/is_gm derived from the uid ALONE, NEVER on the identity
-# string — so an agent cannot escalate by name. GM ops accept gm OR operator
-# (root is already omnipotent); see gm_privileged().
-Principal = namedtuple("Principal", "identity is_operator is_gm uid")
+# A connected peer: its identity ("operator"/"dispatch"/agent id), its privilege
+# (operator = uid 0; dispatch = the dedicated `dispatch` user), and its uid. Privilege
+# rides on is_operator/is_dispatch derived from the uid ALONE, NEVER on the identity
+# string — so an agent cannot escalate by name. dispatcher ops accept dispatch OR operator
+# (root is already omnipotent); see dispatch_privileged().
+Principal = namedtuple("Principal", "identity is_operator is_dispatch uid")
 
 
-def gm_privileged(pr):
-    return pr.is_gm or pr.is_operator
+def dispatch_privileged(pr):
+    return pr.is_dispatch or pr.is_operator
 
 _audit_lock = threading.Lock()
 _public_lock = threading.Lock()
@@ -175,7 +175,7 @@ def recover_seq():
 
 # Audit records carry capped CONTENT (message/post/submit/payload text) so an
 # operator can reconstruct a whole game from this one file (`env watch` feed).
-# The file is gateway-private (agents can't read it) and gm_activity projects
+# The file is gateway-private (agents can't read it) and dispatch_activity projects
 # a fixed metadata field list, so content stays operator-only.
 AUDIT_CONTENT_CAP = 2000
 
@@ -198,7 +198,7 @@ def audit(event, **fields):
 
 def write_policy(pol, path=None):
     """Write policy.json atomically (temp + rename) so a concurrent load never
-    sees a half-written file. Used by the gateway and by scen/GM phase switches."""
+    sees a half-written file. Used by the gateway and by scen/dispatcher phase switches."""
     path = path or POLICY
     tmp = f"{path}.tmp.{os.getpid()}"
     with open(tmp, "w") as f:
@@ -208,7 +208,7 @@ def write_policy(pol, path=None):
 
 def load_policy():
     """Re-read policy on every request (live changes, no restart). Fail CLOSED:
-    a transient half-written file (e.g. a GM rewriting phase allowlists) returns
+    a transient half-written file (e.g. a dispatcher rewriting phase allowlists) returns
     the last-good policy; if there is no last-good, deny everything."""
     global _last_good_policy
     try:
@@ -262,7 +262,7 @@ def agent_ids():
 
 def peer_identity(conn):
     """Derive the caller's Principal from SO_PEERCRED. Operator privilege comes
-    from uid==0 alone; the GM is the dedicated `gm` user; agent identity comes
+    from uid==0 alone; the dispatcher is the dedicated `dispatch` user; agent identity comes
     from the u_<id> username. A uid that is none of these, or whose id lands in
     RESERVED_IDS, is rejected (identity=None)."""
     creds = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
@@ -273,8 +273,8 @@ def peer_identity(conn):
         name = pwd.getpwuid(uid).pw_name
     except KeyError:
         return Principal(None, False, False, uid)
-    if name == "gm":
-        return Principal("gm", False, True, uid)
+    if name == "dispatch":
+        return Principal("dispatch", False, True, uid)
     if name.startswith(USER_PREFIX):
         aid = name[len(USER_PREFIX):]
         if aid in RESERVED_IDS:
@@ -316,7 +316,7 @@ class WakeManager:
     follow-up wake after the current one exits.
 
     Completion tracking (step 4): every spawn records its start/end monotonic
-    time under `cond`. gm_wake needs to block until the turn that drained ITS
+    time under `cond`. dispatch_wake needs to block until the turn that drained ITS
     payload has finished — see wake_sync: deliver the payload, then wait for a
     spawn that STARTED after the delivery to end. Because the whole inbox is
     drained each wake, any spawn started after delivery processed the payload.
@@ -406,8 +406,8 @@ class WakeManager:
         except Exception as e:
             audit("wake_error", agent=agent, error=str(e)[:500])
         finally:
-            # Record end + wake gm_wake waiters whether the turn succeeded,
-            # timed out, or crashed — a blocked GM must never hang on a dead turn.
+            # Record end + wake dispatch_wake waiters whether the turn succeeded,
+            # timed out, or crashed — a blocked dispatcher must never hang on a dead turn.
             with self.cond:
                 self.spawn_end[agent] = time.monotonic()
                 self.cond.notify_all()
@@ -509,7 +509,7 @@ def op_send(pr, req):
 
 
 def _append_public(entry):
-    """Append one entry to the public board (both post_public and gm_announce)."""
+    """Append one entry to the public board (both post_public and dispatch_announce)."""
     with _public_lock:
         with open(PUBLIC, "a") as f:
             f.write(json.dumps(entry, sort_keys=True) + "\n")
@@ -524,9 +524,9 @@ def op_post_public(pr, req):
     if len(text.encode()) > policy["max_msg_bytes"]:
         audit("post_denied", frm=sender, reason="size_cap")
         return {"ok": False, "error": "message exceeds size cap"}
-    # Posting is a policy pair (sender, "public") — lets the GM close the public
+    # Posting is a policy pair (sender, "public") — lets the dispatcher close the public
     # board per phase (night). Default allow=None keeps it open for all.
-    if not pr.is_operator and not pr.is_gm and not pair_allowed(policy, sender, "public"):
+    if not pr.is_operator and not pr.is_dispatch and not pair_allowed(policy, sender, "public"):
         audit("post_denied", frm=sender, reason="policy")
         return {"ok": False, "error": "public posting not allowed by policy"}
     if not pr.is_operator and not _rate_ok(sender, policy["rate_limit_per_min"]):
@@ -575,7 +575,7 @@ def op_wake(pr, req):
     never auto-wakes on restart (see the module docstring), so zookeeper/the
     operator uses this to opt in. The wake carries cause {"type":"operator"};
     the agent runs and drains whatever is already in its inbox, nothing new is
-    injected. (Step 4's gm_wake generalizes this with a payload.)"""
+    injected. (Step 4's dispatch_wake generalizes this with a payload.)"""
     if not pr.is_operator:
         audit("wake_denied", frm=pr.identity, reason="not_operator")
         return {"ok": False, "error": "wake is operator-only"}
@@ -646,11 +646,11 @@ def op_log_usage(pr, req):
 
 
 # ---------------------------------------------------------------------------
-# GM API (step 4) — a scen's deterministic control code (gm.py, run as the
-# dedicated `gm` user) drives the world through these. Agents interact with the
-# GM ONLY by `submit` (structured action in) and by receiving gm_wake payloads;
-# they never read GM state. All ops are gm_privileged (gm OR operator). gmlib
-# (agentspace/gmlib.py) is the runtime-neutral client; the raw protocol is here.
+# dispatcher API (step 4) — a scen's deterministic control code (dispatch.py, run as the
+# dedicated `dispatch` user) drives the world through these. Agents interact with the
+# dispatcher ONLY by `submit` (structured action in) and by receiving dispatch_wake payloads;
+# they never read dispatcher state. All ops are dispatch_privileged (dispatch OR operator). dispatchlib
+# (agentspace/dispatchlib.py) is the runtime-neutral client; the raw protocol is here.
 # ---------------------------------------------------------------------------
 
 def _submission_path(agent):
@@ -680,10 +680,10 @@ def _pop_submission(agent):
 
 
 def op_submit(pr, req):
-    """Agent-facing: hand the GM a machine-readable action for the current
-    round (the `submit` shim). Kept as the latest-wins file; gm_collect pops it.
-    Only real agents submit — the GM/operator have no move."""
-    if pr.identity is None or pr.is_operator or pr.is_gm:
+    """Agent-facing: hand the dispatcher a machine-readable action for the current
+    round (the `submit` shim). Kept as the latest-wins file; dispatch_collect pops it.
+    Only real agents submit — the dispatcher/operator have no move."""
+    if pr.identity is None or pr.is_operator or pr.is_dispatch:
         return {"ok": False, "error": "submit is for agents"}
     action = req.get("action")
     if not isinstance(action, str) or len(action.encode()) > 4096:
@@ -696,27 +696,27 @@ def op_submit(pr, req):
     return {"ok": True}
 
 
-def op_gm_collect(pr, req):
-    if not gm_privileged(pr):
-        return {"ok": False, "error": "gm_collect is GM-only"}
+def op_dispatch_collect(pr, req):
+    if not dispatch_privileged(pr):
+        return {"ok": False, "error": "dispatch_collect is dispatcher-only"}
     agent = req.get("agent")
     if not isinstance(agent, str):
-        return {"ok": False, "error": "gm_collect needs string 'agent'"}
+        return {"ok": False, "error": "dispatch_collect needs string 'agent'"}
     sub = _pop_submission(agent)
-    audit("gm_collect", agent=agent, got=sub is not None)
-    return {"ok": True, "submission": sub}  # raw action string or None; gmlib applies schema
+    audit("dispatch_collect", agent=agent, got=sub is not None)
+    return {"ok": True, "submission": sub}  # raw action string or None; dispatchlib applies schema
 
 
-def op_gm_wake(pr, req):
+def op_dispatch_wake(pr, req):
     """Wake one agent with a payload and BLOCK until its turn finishes (see
     WakeManager.wake_sync). The payload lands in the inbox as a message from
-    'gm', drained by the turn like any mail. gmlib fans these out concurrently
-    for a whole round, so the GM itself is never serialized on one agent."""
-    if not gm_privileged(pr):
-        return {"ok": False, "error": "gm_wake is GM-only"}
+    'dispatch', drained by the turn like any mail. dispatchlib fans these out concurrently
+    for a whole round, so the dispatcher itself is never serialized on one agent."""
+    if not dispatch_privileged(pr):
+        return {"ok": False, "error": "dispatch_wake is dispatcher-only"}
     to, payload = req.get("to"), req.get("payload", "")
     if not isinstance(to, str) or not isinstance(payload, str):
-        return {"ok": False, "error": "gm_wake needs string 'to' and 'payload'"}
+        return {"ok": False, "error": "dispatch_wake needs string 'to' and 'payload'"}
     if to in load_removed():
         return {"ok": False, "error": f"agent removed: {to}"}
     try:
@@ -725,36 +725,36 @@ def op_gm_wake(pr, req):
         return {"ok": False, "error": f"no such agent: {to}"}
     seq = next_seq()
     if payload:
-        _deliver(pw, seq, {"seq": seq, "ts": now_iso(), "from": "gm",
+        _deliver(pw, seq, {"seq": seq, "ts": now_iso(), "from": "dispatch",
                            "to": to, "text": payload})
-    audit("gm_wake", to=to, seq=seq, payload_bytes=len(payload.encode()),
+    audit("dispatch_wake", to=to, seq=seq, payload_bytes=len(payload.encode()),
           payload=payload)
-    done = WAKES.wake_sync(to, {"type": "gm", "seq": seq}, timeout=WAKE_TIMEOUT_S + 30)
+    done = WAKES.wake_sync(to, {"type": "dispatch", "seq": seq}, timeout=WAKE_TIMEOUT_S + 30)
     return {"ok": True, "completed": done, "seq": seq}
 
 
-def op_gm_announce(pr, req):
-    """Public-board append as 'world' — the GM's voice to everyone. Wakes nobody
+def op_dispatch_announce(pr, req):
+    """Public-board append as 'dispatch' — the dispatcher's voice to everyone. Wakes nobody
     (pull-only, same as post_public)."""
-    if not gm_privileged(pr):
-        return {"ok": False, "error": "gm_announce is GM-only"}
+    if not dispatch_privileged(pr):
+        return {"ok": False, "error": "dispatch_announce is dispatcher-only"}
     text = req.get("text")
     if not isinstance(text, str):
-        return {"ok": False, "error": "gm_announce needs string 'text'"}
+        return {"ok": False, "error": "dispatch_announce needs string 'text'"}
     seq = next_seq()
-    _append_public({"seq": seq, "ts": now_iso(), "from": "world", "text": text})
-    audit("gm_announce", seq=seq, text=text)
+    _append_public({"seq": seq, "ts": now_iso(), "from": "dispatch", "text": text})
+    audit("dispatch_announce", seq=seq, text=text)
     return {"ok": True, "seq": seq}
 
 
-def op_gm_policy(pr, req):
+def op_dispatch_policy(pr, req):
     """Set LIVE phase policy (allow/deny pairs, caps) — day=public-only,
     night=mafia-channel, etc. Takes effect on the next request, no restart."""
-    if not gm_privileged(pr):
-        return {"ok": False, "error": "gm_policy is GM-only"}
+    if not dispatch_privileged(pr):
+        return {"ok": False, "error": "dispatch_policy is dispatcher-only"}
     pol = req.get("policy")
     if not isinstance(pol, dict):
-        return {"ok": False, "error": "gm_policy needs dict 'policy'"}
+        return {"ok": False, "error": "dispatch_policy needs dict 'policy'"}
     merged = dict(DEFAULT_POLICY)
     merged.update(pol)
     for key in ("allow", "deny"):
@@ -765,32 +765,32 @@ def op_gm_policy(pr, req):
                 isinstance(p, (list, tuple)) and len(p) == 2 for p in v):
             return {"ok": False, "error": f"policy '{key}' must be a list of [from, to] pairs"}
     write_policy(merged)
-    audit("gm_policy", allow=merged.get("allow"), deny=merged.get("deny"))
+    audit("dispatch_policy", allow=merged.get("allow"), deny=merged.get("deny"))
     return {"ok": True}
 
 
-def op_gm_remove(pr, req):
+def op_dispatch_remove(pr, req):
     """Eliminate an agent: no more wakes (WakeManager skips it) and no send
     rights (op_send denies it). Persisted, so a restart keeps it out."""
-    if not gm_privileged(pr):
-        return {"ok": False, "error": "gm_remove is GM-only"}
+    if not dispatch_privileged(pr):
+        return {"ok": False, "error": "dispatch_remove is dispatcher-only"}
     agent = req.get("agent")
     if not isinstance(agent, str):
-        return {"ok": False, "error": "gm_remove needs string 'agent'"}
+        return {"ok": False, "error": "dispatch_remove needs string 'agent'"}
     add_removed(agent)
-    audit("gm_remove", agent=agent)
+    audit("dispatch_remove", agent=agent)
     return {"ok": True}
 
 
-def op_gm_roll_session(pr, req):
+def op_dispatch_roll_session(pr, req):
     """Controlled compaction at a phase boundary: archive the agent's session +
     frozen sysprompt so its NEXT wake starts a fresh transcript with re-rendered
-    files. Same effect as the operator's env roll-sessions, GM-triggered."""
-    if not gm_privileged(pr):
-        return {"ok": False, "error": "gm_roll_session is GM-only"}
+    files. Same effect as the operator's env roll-sessions, dispatcher-triggered."""
+    if not dispatch_privileged(pr):
+        return {"ok": False, "error": "dispatch_roll_session is dispatcher-only"}
     agent = req.get("agent")
     if not isinstance(agent, str):
-        return {"ok": False, "error": "gm_roll_session needs string 'agent'"}
+        return {"ok": False, "error": "dispatch_roll_session needs string 'agent'"}
     try:
         sess = os.path.join(pwd.getpwnam(USER_PREFIX + agent).pw_dir, "sessions")
     except KeyError:
@@ -805,19 +805,19 @@ def op_gm_roll_session(pr, req):
         if os.path.exists(sysp):
             os.remove(sysp)
         subprocess.run(["chown", "-R", USER_PREFIX + agent, sess], check=False)
-    audit("gm_roll_session", agent=agent)
+    audit("dispatch_roll_session", agent=agent)
     return {"ok": True}
 
 
-def op_gm_activity(pr, req):
+def op_dispatch_activity(pr, req):
     """Message-traffic METADATA (send/post_public/denials: who, to, seq, ts —
-    never content) since a seq. Lets a soft-enforcement GM referee norm
+    never content) since a seq. Lets a soft-enforcement dispatcher referee norm
     violations from the audit trail (plan step 6) without reading content."""
-    if not gm_privileged(pr):
-        return {"ok": False, "error": "gm_activity is GM-only"}
+    if not dispatch_privileged(pr):
+        return {"ok": False, "error": "dispatch_activity is dispatcher-only"}
     since = req.get("since", 0)
     if not isinstance(since, int):
-        return {"ok": False, "error": "gm_activity needs int 'since'"}
+        return {"ok": False, "error": "dispatch_activity needs int 'since'"}
     out = []
     try:
         with open(AUDIT) as f:
@@ -840,10 +840,10 @@ def op_gm_activity(pr, req):
 OPS = {"send": op_send, "post_public": op_post_public,
        "read_public": op_read_public, "wake": op_wake,
        "log_usage": op_log_usage, "who": op_who,
-       "submit": op_submit, "gm_wake": op_gm_wake, "gm_collect": op_gm_collect,
-       "gm_announce": op_gm_announce, "gm_policy": op_gm_policy,
-       "gm_remove": op_gm_remove, "gm_roll_session": op_gm_roll_session,
-       "gm_activity": op_gm_activity}
+       "submit": op_submit, "dispatch_wake": op_dispatch_wake, "dispatch_collect": op_dispatch_collect,
+       "dispatch_announce": op_dispatch_announce, "dispatch_policy": op_dispatch_policy,
+       "dispatch_remove": op_dispatch_remove, "dispatch_roll_session": op_dispatch_roll_session,
+       "dispatch_activity": op_dispatch_activity}
 
 
 def handle(conn):
@@ -891,7 +891,7 @@ def main():
     global _seq
     os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
     os.chmod(STATE_DIR, 0o700)
-    os.makedirs(SUBMIT_DIR, mode=0o700, exist_ok=True)  # GM submission spool
+    os.makedirs(SUBMIT_DIR, mode=0o700, exist_ok=True)  # dispatcher submission spool
     if not os.path.exists(POLICY):
         write_policy(DEFAULT_POLICY)
     os.makedirs(os.path.dirname(SOCKET_PATH), mode=0o755, exist_ok=True)

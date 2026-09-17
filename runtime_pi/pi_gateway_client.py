@@ -6,7 +6,7 @@ Docs: docs/runtime_pi.md §2.
 Usage:
   pi_gateway_client.py send <to> <text...>
   pi_gateway_client.py post <text...>
-  pi_gateway_client.py submit <action...>     # hand the GM a structured action (GM scens)
+  pi_gateway_client.py submit <action...>     # hand the dispatcher a structured action (dispatcher scens)
   pi_gateway_client.py read-public [--since N]
   pi_gateway_client.py wake <to|*>           # operator-only: wake without a message
   pi_gateway_client.py who                   # list agent ids in this world

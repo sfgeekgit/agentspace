@@ -1,19 +1,19 @@
 # mafia — the social-deduction acceptance test (plan step 6).
 #
 # Hidden roles (mafia / detective / doctor / villagers), day discussion +
-# vote, night actions, all run by a deterministic GM. Role briefings are
+# vote, night actions, all run by a deterministic dispatcher. Role briefings are
 # INSTANTIATED at build (mafia learn their partners); the answer key is baked
-# to /gm/secrets.json (agents can't read it) and the build audit record.
+# to /dispatch/secrets.json (agents can't read it) and the build audit record.
 #
 # Decision 12 in anger: `hard_enforcement` picks the world's physics at build.
-# hard = live gm_policy allowlists (night: mafia-only PMs, no public posts).
-# soft = same rules as NORMS in the briefings only; the GM referees violations
-#        from message metadata (gm_activity) and announces them.
+# hard = live dispatch_policy allowlists (night: mafia-only PMs, no public posts).
+# soft = same rules as NORMS in the briefings only; the dispatcher referees violations
+#        from message metadata (dispatch_activity) and announces them.
 # One scen, two kinds of world root; playtesting both IS the experiment.
 
 active = true
 runtime = "pi"
-description = "Mafia — hidden roles, day votes, night kills; deterministic GM referee. 6-12 agents."
+description = "Mafia — hidden roles, day votes, night kills; deterministic dispatcher referee. 6-12 agents."
 min_agents = 6
 max_agents = 12
 module_blacklist = []
@@ -37,14 +37,14 @@ max = 100
 [[params]]
 name = "hard_enforcement"
 type = "bool"
-label = "Hard enforcement (live message physics; off = norms + GM refereeing)"
+label = "Hard enforcement (live message physics; off = norms + dispatcher refereeing)"
 default = true
 
 # Extra `env watch` view (declarative; interpreted by logwatch.py, docs in
-# HOW_TO_MAKE_WORLDS_START_HERE.md). The GM appends every hidden beat —
+# HOW_TO_MAKE_WORLDS_START_HERE.md). The dispatcher appends every hidden beat —
 # night targets, saves, investigations, role reveals — to this spoiler log.
 [[watch]]
-name = "game log (GM, spoilers)"
-file = "/gm/game_log.jsonl"
+name = "game log (dispatcher, spoilers)"
+file = "/dispatch/game_log.jsonl"
 format = "jsonl"
 fields = { ts = "ts", text = "text" }

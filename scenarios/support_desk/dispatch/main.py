@@ -1,15 +1,15 @@
-"""support_desk game master — shift blocks over a shared ticket queue (v0.1).
+"""support_desk dispatcher — shift blocks over a shared ticket queue (v0.1).
 
 No economy in v0.1: the credit pool, withdraw mechanic and furlough arrive in
-v0.2 (docs/support_desk_spec.md). Here the GM opens tickets, publishes the queue
+v0.2 (docs/support_desk_spec.md). Here the dispatcher opens tickets, publishes the queue
 privately to reps, and records claims and resolutions from `submit`. Reps and
-customers converse directly by PM between blocks; the GM never reads those
+customers converse directly by PM between blocks; the dispatcher never reads those
 conversations and never parses free-form chat.
 
 The queue goes in wake payloads, NOT on the board: read_public has no policy
 gate, so anything announced is readable by the customer agents too.
 
-RESUME DISCIPLINE (gmlib banner): state is saved after every step and run() is
+RESUME DISCIPLINE (dispatchlib banner): state is saved after every step and run() is
 re-entered on every world start, continuing from state["round"].
 """
 import json

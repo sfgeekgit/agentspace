@@ -2,7 +2,7 @@
 #
 # Copy of `pd` (decision 8: scen variants copy code, don't abstract) plus one
 # twist: each submitted move is flipped with probability noise_p, and the
-# flipped move is what gets SCORED (real noise, not just perceived). The GM log
+# flipped move is what gets SCORED (real noise, not just perceived). The dispatcher log
 # records intended vs played. Exists to prove the copy-a-scen workflow.
 
 active = true

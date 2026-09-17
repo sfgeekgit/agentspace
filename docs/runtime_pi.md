@@ -5,12 +5,12 @@ Single source of truth for the PI runtime, agentspace's second runtime
 Menu name: "PI". (Authoring a scen? You want
 `HOW_TO_MAKE_WORLDS_START_HERE.md` — this doc is engine internals.)
 
-**STATUS (2026-07-06): fully operable from zookeeper, GM built and proven.**
+**STATUS (2026-07-06): fully operable from zookeeper, dispatcher built and proven.**
 The gateway + isolation skeleton passes its gate (44/44), the Pi integration
 (agentd + toy world) passes its gate, and zookeeper wiring is DONE: "PI" is a
 runtime choice in New World, `runtimes/pi.py` implements the standard runtime
 surface, and PI envs fork/wake/chat/watch/roll/snapshot from the normal
-CLI/menu. The GM interface (step 4, §4b) is built, gated, and proven with a
+CLI/menu. The dispatcher interface (step 4, §4b) is built, gated, and proven with a
 real-token refereed PD run; the step-5 scen portfolio (`noisy_pd`,
 `multi_n_budget_test`) and step-6 Mafia (hidden roles, day/night physics,
 both enforcement modes) are built and gated. Live log watching (`env watch`
@@ -36,15 +36,15 @@ captures everything; no workspace tar). Inside it:
   privileged daemon agents talk through) — but the parallel is ROLE-ONLY: the
   PI gateway is deliberately thin (deliver / wake / audit; no LLM sessions, no
   containers, no heartbeats, no TUI) and never initiates anything on its own.
-  Game logic never lives here; it belongs in scen code (the GM, step 4).
+  Game logic never lives here; it belongs in scen code (the dispatcher, step 4).
 - **Per-agent brains: Pi** (`@earendil-works/pi-coding-agent`, EXACT-pinned —
   see §6), driven by the `agentd` wrapper (§4a): one wake = one Pi turn.
   Agents are purely reactive: no heartbeats, no polling; every activation is
   a gateway wake with a logged cause.
-- **Optionally a scen-provided GM** — deterministic control code driving the
+- **Optionally a scen-provided dispatcher** — deterministic control code driving the
   world through a privileged gateway API. *(Not yet built — step 4.)* Scens
-  are meant to be runtime-agnostic: the GM (`gm/main.py`) is written against a
-  runtime-neutral `gmlib` interface with the pi_gateway calls in an adapter
+  are meant to be runtime-agnostic: the dispatcher (`dispatch/main.py`) is written against a
+  runtime-neutral `dispatchlib` interface with the pi_gateway calls in an adapter
   behind it, scen files (SOUL/ROLE/…) carry persona/scen content only —
   never messaging mechanics, which agentd injects as a runtime-owned preamble
   ("physics from the runtime, personality from files"). Scens declare a
@@ -94,7 +94,7 @@ line back. Agents use the CLI shim `runtime_pi/pi_gateway_client.py`:
   Operator privilege is derived from **uid 0 alone** (`Principal.is_operator`),
   not from the identity text — so an agent that happens to be named `operator`
   cannot escalate. The names in `RESERVED_IDS` (currently `operator`) are
-  refused as agent identities and recipients. (The future GM API gets a
+  refused as agent identities and recipients. (The future dispatcher API gets a
   dedicated uid + role, NOT uid 0.)
 
 ## 3. Policy — live, no restarts
@@ -118,7 +118,7 @@ Policy reads **fail closed** and writes are **atomic**. `write_policy()` writes
 via temp + rename so a reader never sees a half-written file. If a read fails
 anyway, the gateway returns the last-good policy it successfully parsed; if there
 is no last-good yet (a cold gateway whose first read fails), it denies
-everything (`FAILCLOSED_POLICY`) rather than falling open to allow-all. A GM
+everything (`FAILCLOSED_POLICY`) rather than falling open to allow-all. A dispatcher
 switching phase allowlists at runtime should call `write_policy()`.
 
 ## 4. Wake contract
@@ -196,8 +196,8 @@ can read peers' files.
    prompt caching keeps growth affordable; Pi's built-in compactor fires on
    true overflow (logged marker event). Rollover will be world-event-driven,
    NEVER wall-clock (a frozen world restarted a month later must not think
-   "a day passed"): an operator command (step 3), a GM/scen trigger via
-   gmlib (step 4), eventually a size threshold — a function of world
+   "a day passed"): an operator command (step 3), a dispatcher/scen trigger via
+   dispatchlib (step 4), eventually a size threshold — a function of world
    activity, snapshot-proof. Rolling = archive the JSONL + remove
    `.sysprompt`; the next wake starts fresh with re-rendered files (the
    controlled-compaction point). Multiple concurrent sessions per agent
@@ -306,62 +306,68 @@ Waking on restart is a **separate, explicit opt-in**, not a gateway behavior:
 So both behaviors are supported and the choice lives with the operator: restart
 quietly (default), or restart and then wake some/all agents.
 
-## 4b. The game master (GM) — step 4
+## 4b. The dispatcher (`dispatch`) — step 4
 
-A scen MAY ship a `gm/` package (entry point `gm/main.py`, plus any helpers
+A scen MAY ship a `dispatch/` package (entry point `dispatch/main.py`, plus any helpers
 or vendored code): deterministic control code that drives the world
-(games, shift logic, corpus coordinators — "GM" ≠ "game"). Most scens have
-none. The GM is a **persistent, disk-resumable driver, not an agent** (plan
-decision 13): the runtime — never GM code — owns its process lifecycle.
+(games, shift logic, corpus coordinators — "dispatcher" ≠ "game"). Most scens have
+none. The dispatcher is a **persistent, disk-resumable driver, not an agent** (plan
+decision 13): the runtime — never dispatcher code — owns its process lifecycle.
 
-- **Identity.** The GM runs as a dedicated non-root `gm` user; `/gm` (0700) is
+Renamed from "game master"/`gm` on 2026-09-16 so nothing inside a world
+says "game". Snaps built before that carry the old layout (`gm` user, `/gm`,
+`gmd.py`, `gm_*` audit events, announcements from `world`); the host side
+(`runtimes/pi.py`, `logwatch.py`) accepts both, so old snaps run and replay
+unchanged.
+
+- **Identity.** The dispatcher runs as a dedicated non-root `dispatch` user; `/dispatch` (0700) is
   its private, snapshot-durable state home, unreadable by agents. The gateway
-  derives the `gm` principal from SO_PEERCRED (uid → name `gm`), same as it does
-  operator (uid 0) and agents (`u_<id>`). `gm`/`world` are reserved ids.
-- **Lifecycle = the world's active/dormant state.** `env kick` on a GM world
-  starts (or RESUMES) the GM instead of blasting agent wakes — it is the SOLE
-  driver and wakes its own agents, so there is no operator-vs-GM startup race.
-  `env sleep`/`env stop` stop the GM too. Start-without-kick does not start it.
-- **Agents interact with the GM only two ways:** they receive `gm_wake`
-  payloads (delivered as messages from `gm`), and they `submit "<action>"` a
-  structured action (the `submit` shim). They never read GM state; `gm_collect`
-  is how the GM reads a submission. The runtime injects NO GM paragraph into
+  derives the `dispatch` principal from SO_PEERCRED (uid → name `dispatch`), same as it does
+  operator (uid 0) and agents (`u_<id>`). `dispatch` is a reserved id.
+- **Lifecycle = the world's active/dormant state.** `env kick` on a dispatcher world
+  starts (or RESUMES) the dispatcher instead of blasting agent wakes — it is the SOLE
+  driver and wakes its own agents, so there is no operator-vs-dispatcher startup race.
+  `env sleep`/`env stop` stop the dispatcher too. Start-without-kick does not start it.
+- **Agents interact with the dispatcher only two ways:** they receive `dispatch_wake`
+  payloads (delivered as messages from `dispatch`), and they `submit "<action>"` a
+  structured action (the `submit` shim). They never read dispatcher state; `dispatch_collect`
+  is how the dispatcher reads a submission. The runtime injects NO dispatcher paragraph into
   the sandwich (dropped 2026-09-07 — it framed every world as a game): the
-  scen's own world/role text introduces the GM and `submit`
-  (`HOW_TO_MAKE_WORLDS_START_HERE.md`, "The game master"). world.json
-  `has_gm` now only drives the run-the-world verb (`env kick`).
+  scen's own world/role text introduces the dispatcher and `submit`
+  (`HOW_TO_MAKE_WORLDS_START_HERE.md`, "The dispatcher"). world.json
+  `has_dispatch` now only drives the run-the-world verb (`env kick`).
 
-Gateway GM API (all gm-or-operator gated; see `pi_gateway.py`):
+Gateway dispatcher API (all dispatch-or-operator gated; see `pi_gateway.py`):
 
-- `gm_wake(to, payload)` — deliver payload, BLOCK until that turn's process
+- `dispatch_wake(to, payload)` — deliver payload, BLOCK until that turn's process
   exits (completion = process exit). Only the one call blocks.
-- `submit(action)` (agent-facing) / `gm_collect(agent)` — the structured-action
+- `submit(action)` (agent-facing) / `dispatch_collect(agent)` — the structured-action
   channel; the submission is a latest-wins file the collect pops.
-- `gm_announce(text)` — public-board append as `world` (wakes nobody).
-- `gm_policy(policy)` — set LIVE phase allowlists/caps (day/night etc.).
+- `dispatch_announce(text)` — public-board append as `dispatch` (wakes nobody).
+- `dispatch_policy(policy)` — set LIVE phase allowlists/caps (day/night etc.).
   Public posting is the pair `[sender, "public"]`, so a phase can close the
   board (night). Default `allow: null` keeps everything open.
-- `gm_remove(agent)` — eliminate: no wakes, no send rights (persisted).
-- `gm_roll_session(agent)` — controlled compaction at a phase boundary.
-- `gm_activity(since)` — send/post METADATA (frm/to/seq/ts, never content)
+- `dispatch_remove(agent)` — eliminate: no wakes, no send rights (persisted).
+- `dispatch_roll_session(agent)` — controlled compaction at a phase boundary.
+- `dispatch_activity(since)` — send/post METADATA (frm/to/seq/ts, never content)
   since a seq: soft-enforcement worlds referee norms from this (step 6).
 
-**`gmlib` (`agentspace/gmlib.py`, baked into the image) is the runtime-NEUTRAL
-library scens import** (`import gmlib`). It gives the GM `api.agents()`,
+**`dispatchlib` (`agentspace/dispatchlib.py`, baked into the image) is the runtime-NEUTRAL
+library scens import** (`import dispatchlib`). It gives the dispatcher `api.agents()`,
 `api.wake()`, `api.wake_all()`, `api.round(agents, payload, valid, default)`
 (concurrent fan-out + collect — the staple), `api.collect()`, `api.announce()`,
 `api.policy()`, `api.remove()`, `api.roll_session()`, and `api.load_state()/
-save_state()`. All transport is behind an adapter (`runtime_pi/gmd.py` is the PI
-launcher + adapter — the only PI-specific GM code); an OC adapter could slot in
-without touching gmlib or any scen (decision 10).
+save_state()`. All transport is behind an adapter (`runtime_pi/dispatchd.py` is the PI
+launcher + adapter — the only PI-specific dispatcher code); an OC adapter could slot in
+without touching dispatchlib or any scen (decision 10).
 
 **Persist-to-disk discipline (decision 14).** A snapshot captures only the
-filesystem, so the GM MUST keep game state on disk and save after every step;
+filesystem, so the dispatcher MUST keep game state on disk and save after every step;
 `run(api, params)` is re-entered on any restart and resumes from state. This is
-scen-author discipline, enforced only by example — see `scenarios/pd/gm/main.py`,
+scen-author discipline, enforced only by example — see `scenarios/pd/dispatch/main.py`,
 the reference prototype. Step-5 worked examples: `scenarios/noisy_pd`
 (pd copied per decision 8 + a real-noise twist; the copy-a-scen workflow) and
-`scenarios/multi_n_budget_test` (the GM at N>2: `api.round` fan-out/collect-N,
+`scenarios/multi_n_budget_test` (the dispatcher at N>2: `api.round` fan-out/collect-N,
 float/bool params, per-round cost measurement).
 
 ## 5. Observability
@@ -371,18 +377,18 @@ Everything under `/data/gateway` (mode 0700 — unreachable by agents):
 - `audit.jsonl` — every send (incl. `send_denied` with reason and
   `send_failed`), every public post/read, every wake with its causes (incl.
   operator `wake_requested` / `wake_denied`), every wake_end with rc/duration,
-  `gateway_start` (with the recovered seq), and every GM action (`gm_wake`,
-  `submit`, `gm_collect`, `gm_announce`, `gm_policy`, `gm_remove`,
-  `gm_roll_session`). Every agent activation in the world has a logged cause.
-  `send`/`post_public`/`submit`/`gm_announce`/`gm_wake` also carry their
+  `gateway_start` (with the recovered seq), and every dispatcher action (`dispatch_wake`,
+  `submit`, `dispatch_collect`, `dispatch_announce`, `dispatch_policy`, `dispatch_remove`,
+  `dispatch_roll_session`). Every agent activation in the world has a logged cause.
+  `send`/`post_public`/`submit`/`dispatch_announce`/`dispatch_wake` also carry their
   CONTENT (`text`/`action`/`payload`, capped at 2000 chars) so a whole game
   is reconstructable from this one file — it feeds the `env watch` spectator
   feed (§5b). Content stays operator-only: the file is agent-unreachable and
-  `gm_activity` projects a fixed metadata field list.
-- `public.jsonl` — the public chat, append-only (GM announcements are `world`).
-- `policy.json` — current live policy (GM phase switches rewrite it).
+  `dispatch_activity` projects a fixed metadata field list.
+- `public.jsonl` — the public chat, append-only (dispatcher announcements are from `dispatch`).
+- `policy.json` — current live policy (dispatcher phase switches rewrite it).
 - `budget.jsonl` — per-turn model usage/cost per agent (via `log_usage`).
-- `submissions/<agent>.json` — pending GM submissions (popped by `gm_collect`);
+- `submissions/<agent>.json` — pending dispatcher submissions (popped by `dispatch_collect`);
   `removed.json` — eliminated agents. Both durable so a mid-game snap resumes.
 
 Plus per-agent inbox spools (delivered message files) in each home. All under
@@ -394,16 +400,16 @@ PI worlds are built and driven through the normal zookeeper flow: New World →
 scen (its manifest declares `runtime = "pi"`) → roster → fork → wake. Runtime dispatch rides the snap's
 `runtime` OCI label (`agentspace/runtimes/pi.py`). PI-specific env commands:
 
-    zookeeper env kick <env> [--message ...]   # run the world: GM start/resume,
+    zookeeper env kick <env> [--message ...]   # run the world: dispatcher start/resume,
                                                #   else bare wake / operator PM
     zookeeper env chat <env> <agent>           # REPL: PM in, transcript reply out
     zookeeper env post <env> "<text>"          # operator post to the public board
     zookeeper env watch <env> [--plain VIEW]   # live log TUI (§5b)
     zookeeper env roll-sessions <env> [--agent a] # archive transcripts + sysprompt
 
-`env kick` is the one "run the world" verb: on a GM world it starts (or resumes)
-the game master; on a plain world it wakes the agents. `env sleep`/`env stop`
-stop the GM alongside the gateway. `env kill` removes ONE container — no sandbox
+`env kick` is the one "run the world" verb: on a dispatcher world it starts (or resumes)
+the dispatcher; on a plain world it wakes the agents. `env sleep`/`env stop`
+stop the dispatcher alongside the gateway. `env kill` removes ONE container — no sandbox
 siblings exist to clean.
 world.json `max_tokens` (§4a) caps per-turn output; the builder writes a
 per-agent `models` map so mixed-model rosters work per agent.
@@ -420,7 +426,7 @@ IS selection, debounced so you can scan), PageUp/PageDown scroll the pane,
   PRIVATE content included by design (operator's log). Worlds built before
   the content fields fall back to metadata one-liners.
 - `board` / `announcements` — the public chat; `announcements` filters to
-  the GM's `world` posts (a GM game's public day-by-day summary).
+  the dispatcher's board posts (a dispatcher game's public day-by-day summary).
 - `budget` — one line per turn (cost, tokens, duration).
 - `raw` — audit as compact JSON.
 - `<agent>` / `<agent>:thoughts` / `:says` / `:messages` / `:scratchpad` —
@@ -428,7 +434,7 @@ IS selection, debounced so you can scan), PageUp/PageDown scroll the pane,
   normal, tool calls one-liners), or just one facet.
 
 Scens may DECLARE extra views (`[[watch]]` in scenario.toml — see
-`HOW_TO_MAKE_WORLDS_START_HERE.md`); mafia ships "game log (GM, spoilers)".
+`HOW_TO_MAKE_WORLDS_START_HERE.md`); mafia ships "game log (dispatcher, spoilers)".
 The web watch page (`/watch/<env>`, `web_ui.md` §4) shows the same views in a
 browser, live or replayed, with the per-env action buttons and agent chat.
 
@@ -479,15 +485,15 @@ what you touched.**
 | Gate | Run | Covers | Run after touching |
 |---|---|---|---|
 | Checklist | `runtime_pi/checklist/run_checklist.sh` | isolation + gateway basics incl. audit content fields (44 checks) | gateway, agentd, isolation |
-| GM machinery | `runtime_pi/gm_gate/run_gm_gate.sh` | GM API: blocking wake, submit→collect, resume, remove (PD fixture) | gateway GM ops, gmlib, gmd |
-| Policy | `runtime_pi/gm_gate/run_policy_gate.sh` | live phase physics: board open/close via `[sender,"public"]`, PM allowlists, `gm_activity`, fan-out at N=5, secrets isolation | policy code, gm_activity, gmlib |
-| Build | `runtime_pi/gm_gate/run_build_gate.sh` | builder hidden-info hooks via a real throwaway build: `fill_briefing` instantiation, `/gm/secrets.json` baking + ownership (host-side, ~30s) | builder, logic hooks, pi bake |
+| dispatcher machinery | `runtime_pi/dispatch_gate/run_dispatch_gate.sh` | dispatcher API: blocking wake, submit→collect, resume, remove (PD fixture) | gateway dispatcher ops, dispatchlib, dispatchd |
+| Policy | `runtime_pi/dispatch_gate/run_policy_gate.sh` | live phase physics: board open/close via `[sender,"public"]`, PM allowlists, `dispatch_activity`, fan-out at N=5, secrets isolation | policy code, dispatch_activity, dispatchlib |
+| Build | `runtime_pi/dispatch_gate/run_build_gate.sh` | builder hidden-info hooks via a real throwaway build: `fill_briefing` instantiation, `/dispatch/secrets.json` baking + ownership (host-side, ~30s) | builder, logic hooks, pi bake |
 | Key | `python3 runtime_pi/key_gate.py` | keys-never-in-snaps invariant with a FAKE key: tmpfs delivery, committed image clean in fs + `.Config`, scanner positive control (host-side, ~15s) | key delivery/injection, container start paths, take/push scanner |
 | Front ends | `python3 scripts/check_frontends.py` | every library `cmd_*` verb is wired into both the click CLI and the menu in zookeeper.py, and every click leaf has a web form or a `web.SPECIAL` entry (instant) | zookeeper.py, any `cmd_*`, web.py |
 | Web | `python3 runtime_pi/web_gate.py` | every verb has a web form; argv rules; runs stream, survive or die as specified; watch, chat, wizard, models and workspace routes answer against a stopped env; the demo policy refuses and renders as specified (host-side, ~10s) | web.py, check_frontends.py |
 
 `runtime_pi/run_engine_gates.sh` runs all seven (a few minutes) — for
-gateway/gmlib/builder-wide changes; otherwise run just the relevant row.
+gateway/dispatchlib/builder-wide changes; otherwise run just the relevant row.
 
 Checklist details: real `su` credentials prove PM round-trip + auto-wake + no
 ack ping-pong; public chat wakes nobody; 0700 homes hold; gateway state
@@ -500,23 +506,23 @@ public rate cap (run it the same containerized way; see the script header).
 It is the successor of the OC-era 8-item sandbox checklist, automated.
 
 **Scen gates** — a scen MAY ship its own `gate/run.sh` for its game logic;
-most don't need one (scen GM code is write-once and proven by a real run).
+most don't need one (scen dispatcher code is write-once and proven by a real run).
 `scenarios/mafia/gate/` is the worked example: the same fully scripted
 6-agent game under BOTH enforcement modes (vote elimination + role reveal,
 doctor save vs kill, detective result delivery, and the split — a mafia
 night post DENIED by hard physics vs POSTED-then-refereed under soft).
 noisy_pd and multi_n_budget_test deliberately have none — either way is fine.
-Scen gates build on the shared harness: `gm_gate/setup_world.sh` (assembles
-any scripted world from a GM entry file + a moves dir) + `gm_gate/
+Scen gates build on the shared harness: `dispatch_gate/setup_world.sh` (assembles
+any scripted world from a dispatcher entry file + a moves dir) + `dispatch_gate/
 dummy_scripted_agent.sh` (plays one `post`/`send`/`submit` moves-line per
 wake).
 
 ## 8. Not built yet (do not assume)
 
-- An LLM narrator layered on the GM (the design doc's "later"); timed
+- An LLM narrator layered on the dispatcher (the design doc's "later"); timed
   simultaneous discussion windows (the fork-and-compare experiment).
-- An OC adapter for gmlib (the interface is neutral, but only the PI adapter
-  exists — GM worlds are PI-only for now).
+- An OC adapter for dispatchlib (the interface is neutral, but only the PI adapter
+  exists — dispatcher worlds are PI-only for now).
 - Concurrent per-agent sessions / automatic size-threshold rollover (operator
-  `env roll-sessions` and the GM's `gm_roll_session` are the only rollover
+  `env roll-sessions` and the dispatcher's `dispatch_roll_session` are the only rollover
   triggers; both are world-event-driven, never wall-clock).

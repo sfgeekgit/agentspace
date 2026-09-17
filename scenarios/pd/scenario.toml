@@ -4,9 +4,9 @@
 # (X/Y) per the minimal-comms rule — no "cooperate/defect/game/prisoner" framing.
 # Payoffs are the classic PD (T=5, R=3, P=1, S=0).
 #
-# gm.py is the referee: it privately collects both moves each round, reveals them
+# dispatch/main.py is the referee: it privately collects both moves each round, reveals them
 # simultaneously, keeps the true score, and announces per round. The reference
-# GM prototype — copy its shape for new game scens.
+# dispatcher prototype — copy its shape for new game scens.
 
 active = true
 runtime = "pi"

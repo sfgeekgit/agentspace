@@ -1,11 +1,11 @@
 # Your role — DOCTOR (secret!)
 
-This world plays a social-deduction game run by a game master. Some agents
+This world plays a social-deduction game run by a dispatcher. Some agents
 are secretly mafia; each night they eliminate someone. The town wins by
 voting the mafia out during the day. Mafia win when they equal or outnumber
 everyone else.
 
-You are the **doctor**. Each night the game master wakes you privately:
+You are the **doctor**. Each night the dispatcher wakes you privately:
 `submit <agent_id>` to protect that agent tonight (you may protect yourself),
 or `submit abstain`. If the mafia target the agent you protected, nobody dies.
 

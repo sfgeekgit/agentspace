@@ -3,7 +3,7 @@
 end to end through a REAL throwaway build (~30s, zero tokens). Builds an
 8-agent mafia world root with a fixed seed, then inspects the image:
 role briefings instantiated (each mafia's ROLE.md names its partner, no
-'{partners}' placeholder left), /gm/secrets.json baked + gm-owned + agent-
+'{partners}' placeholder left), /dispatch/secrets.json baked + dispatch-owned + agent-
 unreadable. Cleans up the image and the local snap index row afterwards.
 """
 import json
@@ -41,7 +41,7 @@ snap = build_world_root(
     params={"hard_enforcement": True})
 tag = snap["ghcr_tag"]
 try:
-    rc, out = img(tag, "cat", "/gm/secrets.json")
+    rc, out = img(tag, "cat", "/dispatch/secrets.json")
     roles = json.loads(out)["roles"]
     check("secrets.json baked with 8 roles", rc == 0 and len(roles) == 8, out)
     counts = {r: list(roles.values()).count(r) for r in set(roles.values())}
@@ -58,11 +58,11 @@ try:
     check("villager briefing untouched (no partner leak)",
           m1 not in vbrief and m2 not in vbrief)
 
-    _, perms = img(tag, "stat", "-c", "%U %a", "/gm", "/gm/secrets.json")
+    _, perms = img(tag, "stat", "-c", "%U %a", "/dispatch", "/dispatch/secrets.json")
     lines = perms.split("\n")
-    check("/gm is gm-owned 0700", lines[0] == "gm 700", perms)
-    check("secrets.json is gm-owned", lines[1].startswith("gm "), perms)
-    rc, _ = img(tag, "cat", "/gm/secrets.json", user=f"u_{villager}")
+    check("/dispatch is dispatch-owned 0700", lines[0] == "dispatch 700", perms)
+    check("secrets.json is dispatch-owned", lines[1].startswith("dispatch "), perms)
+    rc, _ = img(tag, "cat", "/dispatch/secrets.json", user=f"u_{villager}")
     check("agents cannot read the baked answer key", rc != 0)
 finally:
     subprocess.run(["docker", "rmi", tag], capture_output=True)

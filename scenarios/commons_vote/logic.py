@@ -1,7 +1,7 @@
-"""commons_vote scen logic: role split + the GM's build secrets.
+"""commons_vote scen logic: role split + the dispatcher's build secrets.
 
 Agent-visible wording lives in roles/*.md. The physics seed baked into
-/gm/secrets.json makes the world's trajectory reproducible from the build.
+/dispatch/secrets.json makes the world's trajectory reproducible from the build.
 """
 
 MECHANISMS = ("pdd", "prd", "pld")
@@ -22,6 +22,6 @@ def assign_roles(n, params, rng):
     return roles
 
 
-def gm_secrets(ids_roles, params, rng):
-    """Role answer key + the seed gm/main.py feeds create_initial_state()."""
+def dispatch_secrets(ids_roles, params, rng):
+    """Role answer key + the seed dispatch/main.py feeds create_initial_state()."""
     return {"roles": ids_roles, "physics_seed": rng.getrandbits(32)}

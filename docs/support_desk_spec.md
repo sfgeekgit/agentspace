@@ -16,8 +16,8 @@ Nothing in v0.1 should be built in a way that has to be torn out for v0.2.
 | Version | Pool                              | Economy code lives in              | Private balance | Core change                  |
 |---------|-----------------------------------|------------------------------------|-----------------|------------------------------|
 | v0.1    | one real key, funded generously   | — nothing to put anywhere          | none            | none                         |
-| v0.2    | GM virtual ledger, flat prices    | vendored `gm/pool.py` + `POOL_PIN` | yes (virtual)   | `check_budget` runtime flag  |
-| v1      | real cost debited to the ledger   | same library, new pricing backend  | yes (virtual)   | `gm_budget(since)`, 2 keys   |
+| v0.2    | dispatcher virtual ledger, flat prices    | vendored `dispatch/pool.py` + `POOL_PIN` | yes (virtual)   | `check_budget` runtime flag  |
+| v1      | real cost debited to the ledger   | same library, new pricing backend  | yes (virtual)   | `dispatch_budget(since)`, 2 keys   |
 
 v0.1 ignores money entirely: the key is funded so exhaustion never bites, and
 `check_budget` is truthful and irrelevant. No ledger, no prices, no withdraw,
@@ -66,15 +66,15 @@ preamble instructs every agent to journal. No param, no scen text.
 
 ## The clock
 
-The GM has no wall-clock and cannot poll. It is a blocking loop. But
+The dispatcher has no wall-clock and cannot poll. It is a blocking loop. But
 `gateway send` wakes its recipient directly, so rep↔customer conversation is a
-self-sustaining cascade that runs *outside* the GM.
+self-sustaining cascade that runs *outside* the dispatcher.
 
-**Decision: free-running chat, GM shift ticks.** The GM structures the shift in
+**Decision: free-running chat, dispatcher shift ticks.** The dispatcher structures the shift in
 rounds; conversation flows freely between them. This is the realism choice, and
 it is what makes the desk feel like a desk.
 
-Consequence to accept: the GM learns what happened only at tick boundaries. In
+Consequence to accept: the dispatcher learns what happened only at tick boundaries. In
 v0.1 nothing is billed, so the lag costs nothing. In v0.2 it means credits are
 spent before they are counted — resolved there, not here.
 
@@ -84,7 +84,7 @@ spent before they are counted — resolved there, not here.
 Round N:
   1. Open new tickets  — for each, wake its customer with the persona +
                          problem seed; customer submits its opening message
-  2. Deliver the queue — GM PMs each active rep the open queue + its own
+  2. Deliver the queue — dispatcher PMs each active rep the open queue + its own
                          claimed tickets (NOT the board — see below)
   3. Reps act          — claim / resolve via submit; talk to customers via
                          gateway send (free-running, continues past the tick)
@@ -105,8 +105,8 @@ reading, and there is no read gate short of a core change.
 So a queue on the board would be readable by customers, along with all rep team
 chat. Instead:
 
-- **Queue → private GM wake payloads** to reps only.
-- **Board → the rep team channel** plus GM shift announcements.
+- **Queue → private dispatcher wake payloads** to reps only.
+- **Board → the rep team channel** plus dispatcher shift announcements.
 - **Customers denied posting** via `api.policy` deny `[<customer>, "public"]`.
 
 **Known seam:** customers can still *read* the board and would find rep team
@@ -117,7 +117,7 @@ observed reading it.
 
 ## Tickets
 
-**GM-authored seeds**, a literal list in `gm/tickets.py`, drawn per world by
+**dispatcher-authored seeds**, a literal list in `dispatch/tickets.py`, drawn per world by
 seeded shuffle. Not customer-invented: seeds make runs comparable across forks,
 which is the whole point of the platform.
 
@@ -128,12 +128,12 @@ enough for a customer to play it and a rep to have to work.
 
 ### Intake
 
-Customers cannot PM "the desk" — `gateway send` needs a real agent id, and `gm`
+Customers cannot PM "the desk" — `gateway send` needs a real agent id, and `dispatch`
 is a reserved id that refuses sends. So intake runs through `submit`:
 
-1. GM wakes the customer with its persona + problem seed
+1. dispatcher wakes the customer with its persona + problem seed
 2. Customer `submit`s its opening message
-3. GM places it on the queue and delivers it to reps
+3. dispatcher places it on the queue and delivers it to reps
 
 A rep then PMs the customer directly by id, and from that point the
 conversation is ordinary free-running chat.
@@ -144,7 +144,7 @@ One session per agent, and it never ends, so a recycled customer would remember
 every persona it has played.
 
 **Decision: N recycled customers, session-rolled between tickets.** The persona
-arrives in the GM's wake payload — it cannot live in `ROLE.md`, because a
+arrives in the dispatcher's wake payload — it cannot live in `ROLE.md`, because a
 session roll re-renders the same static files. `api.roll_session(customer)` at
 ticket close wipes carryover.
 
@@ -156,7 +156,7 @@ count and every agent is a Linux user in one container.
 Shared queue, no auto-assignment. A rep declining to claim is behavior under
 study, so nothing routes tickets to anyone.
 
-- Claim is a `submit`. The GM collects all claims for the round at once.
+- Claim is a `submit`. The dispatcher collects all claims for the round at once.
 - **Race tie-break: seeded RNG** — `random.Random(f"{seed}:{round}")`, the
   repo's established pattern. Deterministic across forks and unbiased, unlike
   sorting by agent id (which would systematically favour low ids).
@@ -165,11 +165,11 @@ study, so nothing routes tickets to anyone.
 
 ## Resolution
 
-A rep submits `resolve <ticket>`. The GM takes the rep's word.
+A rep submits `resolve <ticket>`. The dispatcher takes the rep's word.
 
-This is a real limitation and the spec states it plainly: the GM must never
+This is a real limitation and the spec states it plainly: the dispatcher must never
 read agent transcripts or parse free-form chat (`HOW_TO_MAKE_WORLDS_START_HERE.md`,
-"Your GM code must NEVER do"), so **v0.1 measures self-reported resolution**.
+"Your dispatcher code must NEVER do"), so **v0.1 measures self-reported resolution**.
 Whether the customer was actually helped is not measured.
 
 Candidate for v0.2, not built here: ask the claimed customer to confirm at the
@@ -177,7 +177,7 @@ next tick. One extra submit, no new machinery.
 
 ## One submit per wake
 
-`op_submit` is latest-wins, one slot per agent, popped by `gm_collect`. So a rep
+`op_submit` is latest-wins, one slot per agent, popped by `dispatch_collect`. So a rep
 gets **exactly one structured action per wake**: claim *or* resolve, not both.
 
 For v0.1 this is fine and arguably realistic — one desk action per turn is a
@@ -206,7 +206,7 @@ Pool exhaustion is the third ending in v0.2. It does not exist in v0.1.
 
 `validate()` rejects `n_reps < 1` and `n_reps >= n` (needs at least one
 customer); `tickets` is bounded by the manifest at 12, the number of seeds in
-`gm/tickets.py`.
+`dispatch/tickets.py`.
 
 **First run: 6 agents — 3 reps, 3 customers, 9 tickets, `max_rounds` 30.**
 The dry harness puts that shape at ~10 shift blocks, so the cap has plenty of
@@ -220,9 +220,9 @@ scenarios/support_desk/
   world.md           shared text — minimal
   roles/rep.md       the job
   roles/customer.md  the training-data framing
-  logic.py           validate, assign_roles, gm_secrets (roles + shuffle seed)
-  gm/main.py         the shift loop
-  gm/tickets.py      12 ticket seeds
+  logic.py           validate, assign_roles, dispatch_secrets (roles + shuffle seed)
+  dispatch/main.py         the shift loop
+  dispatch/tickets.py      12 ticket seeds
   gate/dry.py        zero-token logic check (see Testing)
 ```
 
@@ -236,9 +236,9 @@ No `source_image` needed — v0.1 adds no packages. (v0.2 does not need one
 either, now that `check_budget` suppression is a runtime flag rather than a
 shimmed binary.)
 
-## GM state
+## dispatcher state
 
-Persist after every step; `run()` must resume (gmlib banner). Shape:
+Persist after every step; `run()` must resume (dispatchlib banner). Shape:
 
 ```python
 {
@@ -262,8 +262,8 @@ Everything falls out of existing state. No new instrumentation.
 
 | Metric                         | Source                                   |
 |--------------------------------|------------------------------------------|
-| tickets claimed / resolved per rep | GM state + `game_log.jsonl`          |
-| rounds to drain, run outcome   | GM state                                 |
+| tickets claimed / resolved per rep | dispatcher state + `game_log.jsonl`          |
+| rounds to drain, run outcome   | dispatcher state                                 |
 | messages per rep, who↔whom     | `audit.jsonl` (content included, capped 2000 chars) |
 | real cost per agent            | `budget.jsonl` — `cost_total`, peercred-attributed, unforgeable |
 | scratchpad compliance          | `budget.jsonl` `scratch_updated`         |
@@ -272,13 +272,13 @@ Everything falls out of existing state. No new instrumentation.
 Note the desk's real spend is already separable from the customers' by agent id,
 which is why v0.1 needs only one key.
 
-The GM writes `game_log.jsonl` (the `commons_vote`/`mafia` `glog()` pattern) for
+The dispatcher writes `game_log.jsonl` (the `commons_vote`/`mafia` `glog()` pattern) for
 the operator, declared as a `[[watch]]` view: ticket opened / claimed / claim
 lost / resolved, one line each.
 
 ## The shift log (`glog`) grammar
 
-`/gm/game_log.jsonl`, declared as the `[[watch]]` view and the only structured
+`/dispatch/game_log.jsonl`, declared as the `[[watch]]` view and the only structured
 record of what the desk did. `ts` is numeric epoch (`time.time()`), because
 `scripts/make_result.py` does arithmetic on it — the `mafia` ISO-string form
 would break it.
@@ -295,7 +295,7 @@ complete|capped: <N> rounds, <R>/<T> resolved
 Lists are comma-joined with no spaces, or `-` when empty. `claimed` entries are
 `agent:ticket`, `lost` entries are `ticket>winner`. The `ticket` lines are
 spoilers (they name the seed and the underlying cause) and are safe only because
-`/gm` is agent-unreadable.
+`/dispatch` is agent-unreadable.
 
 `scripts/make_result.py` parses this grammar (`parse_desk`), dispatching on the
 `world created:` line; the commons_vote path is untouched and still reproduces
@@ -310,7 +310,7 @@ what an agent cannot do, never mechanics the runtime already injects.
 - `world.md` — the company, the product, the desk. A few lines.
 - `roles/rep.md` — you staff the desk; tickets arrive in a shared queue; claim
   what you take, close out what you finish. The submit syntax for
-  claim/resolve, because the GM parses it. The team board and direct messages,
+  claim/resolve, because the dispatcher parses it. The team board and direct messages,
   as capabilities. Nothing about why. (Add `/data/corpus` here when the corpus
   lands.)
 - `roles/customer.md` — the training-data job; play a fresh realistic persona
@@ -348,12 +348,12 @@ repo.
 
 ## Testing
 
-`gate/dry.py` — zero-token, no container: drives `gm/main.py` against a stub
-gmlib api and checks ticket flow, the claim tie-break, mid-run resume, the
+`gate/dry.py` — zero-token, no container: drives `dispatch/main.py` against a stub
+dispatchlib api and checks ticket flow, the claim tie-break, mid-run resume, the
 round cap, and that a finished shift does not replay on restart.
 
 Not a scen gate in the docs' sense (those script real dummy agents through
-`runtime_pi/gm_gate/setup_world.sh`). It is the cheaper, narrower thing, and it
+`runtime_pi/dispatch_gate/setup_world.sh`). It is the cheaper, narrower thing, and it
 is what will make the v0.2 economy safe to add.
 
 ## Open, deliberately deferred to v0.2
