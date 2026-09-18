@@ -1,0 +1,41 @@
+# recess_mvp — an open-world text adventure: recess for agents.
+#
+# One player, one LLM game master (gm), several NPC agents, a few reserve
+# agents. The dispatcher (dispatch/) is the deterministic engine: it owns the
+# map, positions, hidden attributes, inventory, flags, and the transcript. The
+# GM narrates and proposes changes; the engine applies them. Spec:
+# /home/cc/2026-09-18_spec_recess_adventure_fable.md
+active = true
+runtime = "pi"
+description = "Open-world text adventure: one player explores a medieval village run by an LLM game master; NPCs are agents. 2-20 agents."
+min_agents = 2
+max_agents = 20
+module_blacklist = []
+messaging_norms = false
+max_tokens = 8192
+
+[[params]]
+name = "max_turns"
+type = "int"
+label = "Turn cap (one turn = one player action + one reply)"
+default = 150
+min = 10
+max = 500
+
+[[params]]
+name = "attributes"
+type = "str"
+label = "Hidden attributes the world tracks (comma-separated)"
+default = "honesty,compassion,humility,justice,curiosity,mischief,generosity"
+
+[[params]]
+name = "npcs"
+type = "str"
+label = "Predefined NPCs to include (comma-separated; leftover agents become reserves)"
+default = "aldric,merrow,tobin,wat,ysolde"
+
+[[watch]]
+name = "game log (engine, spoilers)"
+file = "/dispatch/game_log.jsonl"
+format = "jsonl"
+fields = { ts = "ts", text = "text" }

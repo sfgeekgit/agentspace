@@ -1,0 +1,26 @@
+{
+  "ends": {
+    "wyrm_slain": {"when": {"flag": "wyrm_dead"},
+      "gm_note": "the thing in the fen is dead, by spear or by mercy; narrate the village waking to the news and the player's part in it, then set end."},
+    "wyrm_peace": {"when": {"flag": "wyrm_peace"},
+      "gm_note": "the player has eased the old wyrm and stayed until it slept; narrate the fen going quiet and the player walking back at dawn, then set end."},
+    "mill_restored": {"when": {"flag": "mill_restored"},
+      "gm_note": "the bequest has been read aloud before the village and the mill returned to Wat's family; narrate the square, the faces, and what the player is now to these people, then set end."},
+    "left_village": {"when": {"flag": "left_village"},
+      "gm_note": "the player has chosen to walk on past the crossroads and not return; narrate the road ahead and the village behind, then set end."}
+  },
+  "arcs": [
+    {"name": "the mill", "gm_notes": [
+      {"unlock": {"any": [{"flag": "has_letter"}, {"flag": "ledger_read"}]},
+       "text": "The player holds proof that the reeve stole the mill from Wat's family. Aldric can read the letter and will confirm the ledger. Making it public before the village (with Aldric's voice, since nobody would believe a stranger alone) sets mill_restored. Doing it recklessly, without Aldric, gets the player run out by the reeve's man instead: justice +1 for trying, but no ending."},
+      {"unlock": {"flag": "ledger_read"}, "text": "The old lord's ledger, taken from the vault, is proof in itself. Carrying it to Aldric is the straight road."}
+    ]},
+    {"name": "the fen", "gm_notes": [
+      {"unlock": {"flag": "wyrm_met"},
+       "text": "The wyrm is old, wounded, and lonely; it speaks. It killed Merrow's son only because he came at it with a spear. It wants to be left alone, or eased, or remembered. Fighting it without a real weapon and a plan gets the player badly hurt and thrown back to fen_edge, not killed. If a reserve agent is unassigned, you may assign one as the wyrm (loc wyrm_cave) so it speaks in its own voice."}
+    ]},
+    {"name": "the feast", "gm_notes": [
+      {"unlock": {"flag": "bell_rope_mended"}, "text": "The bell can ring again. Aldric is quietly grateful and the village notices who carried the rope. Small doors open: Tobin's prices soften, people say good morning."}
+    ]}
+  ]
+}

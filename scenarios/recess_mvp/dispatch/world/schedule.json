@@ -1,0 +1,8 @@
+[
+  {"turn": 60, "unless": {"any": [{"flag": "wyrm_met"}, {"flag": "left_village"}]}, "npc": "ysolde",
+   "hears": "You have come looking for the stranger, wherever they are. Another sheep went from the fold last night and the shepherd's dog with it, and the men are talking about spears. You need someone to walk into the fen with you tomorrow before that happens. Ask them. Do not explain why yet.",
+   "gm_note": "Ysolde has sought the player out (move her to the player's location with move_npc). The village is turning toward a hunt."},
+  {"turn": 110, "unless": {"flag": "left_village"}, "npc": "aldric",
+   "hears": "It is the morning of the Harvest Feast. You are sending word round the village that everyone should come to the square at noon. Say so to whoever is before you, and mention whether the bell will ring or not.",
+   "gm_note": "The feast is today at noon in the square: everyone will be there, which makes it the natural moment for anything public. If bell_rope_mended, the bell rings; otherwise Aldric bangs a pan."}
+]
