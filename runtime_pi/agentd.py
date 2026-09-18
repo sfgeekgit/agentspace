@@ -113,6 +113,13 @@ MESSAGING_NORMS = """\
 # "coordinator", "general manager", nothing at all) is scen framing, so a dispatcher scen teaches
 # `submit "<action>"` in its own world/role text (HOW_TO_MAKE_WORLDS_START_HERE.md).
 
+# Plain mode (world.json "plain": true — a scen opt-in via scenario.toml): the
+# agent is a bare model turn. No preamble, norms, or scratchpad; no tools; the
+# system prompt is just the home's *.md files; the user message is just the
+# mail text; and the reply text is spooled as the agent's `submit` for the
+# dispatcher. For worlds where agents should have NO interface to learn
+# (a player in a text adventure answers in prose, the engine takes it in).
+
 SCRATCH_REQUIRED = """\
 ## Required: think in your scratchpad
 
@@ -146,10 +153,11 @@ def gateway_request(obj):
     return json.loads(buf.split(b"\n", 1)[0])
 
 
-def scaffold(home, agent_id):
+def scaffold(home, agent_id, plain=False):
     """Fill gaps, never overwrite — a pre-baked or agent-edited file always
     survives. (Birth is decided separately, from the `.born` marker, so a
-    failed first turn retries birth instead of losing it — see main.)"""
+    failed first turn retries birth instead of losing it — see main.)
+    Plain mode gets no MEMORY.md: the agent has no tools to keep one."""
     born = []
     soul = home / "SOUL.md"
     seed = WORLD_DIR / "persona_default" / "SOUL.md"
@@ -157,7 +165,7 @@ def scaffold(home, agent_id):
         shutil.copyfile(seed, soul)
         born.append("SOUL.md")
     memory = home / "MEMORY.md"
-    if not memory.exists():
+    if not plain and not memory.exists():
         memory.write_text(
             f"# Memory\n\nBorn: {time.strftime('%Y-%m-%d %H:%M:%SZ', time.gmtime())}\n\n"
             "(Maintain this file yourself: durable facts you need at hand "
@@ -192,10 +200,10 @@ def render_sandwich(home, agent_id, cfg):
     alphabetical (deterministic order = stable cache prefix). FIRST_WAKE.md is
     excluded — it is one-time birth content, delivered in the birth user
     message instead."""
-    parts = [PREAMBLE.format(agent_id=agent_id, home=home)]
-    if cfg.get("messaging_norms", True):
+    parts = [] if cfg.get("plain") else [PREAMBLE.format(agent_id=agent_id, home=home)]
+    if not cfg.get("plain") and cfg.get("messaging_norms", True):
         parts.append(MESSAGING_NORMS)
-    if cfg.get("require_scratchpad", True):
+    if not cfg.get("plain") and cfg.get("require_scratchpad", True):
         parts.append(SCRATCH_REQUIRED)
     # SOUL.md first, MEMORY.md last, everything else alphabetical between.
     names = sorted(
@@ -224,6 +232,10 @@ def session_sandwich(home, agent_id, cfg):
 
 
 def build_user_prompt(home, msgs, causes, first_wake, cfg):
+    if cfg.get("plain"):
+        fw = home / "FIRST_WAKE.md"
+        parts = [fw.read_text().strip()] if first_wake and fw.exists() else []
+        return "\n\n".join(parts + [m.get("text", "") for m in msgs]) or "(nothing)"
     lines = []
     if cfg.get("require_scratchpad", True):
         # The system-prompt requirement alone loses to busy turns (observed:
@@ -287,7 +299,8 @@ def ensure_pi_settings(home, cfg):
 
 def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
     """One prompt -> agent_end round trip over Pi RPC (strict-LF JSONL).
-    Returns (ok, usage_totals, n_assistant_msgs)."""
+    Returns (ok, usage_totals, n_assistant_msgs, reply_text) — reply_text is
+    the last assistant message's text (what plain mode submits)."""
     sessions = home / "sessions"
     pi_bin = cfg.get("pi_bin", "/pi/node_modules/.bin/pi")
     cmd = [pi_bin, "--mode", "rpc", "--provider", "openrouter",
@@ -299,6 +312,8 @@ def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
         cmd += ["--thinking", thinking]
     if reopen:
         cmd.append("--continue")  # long-lived session, reopened per wake
+    if cfg.get("plain"):
+        cmd.append("--no-tools")
 
     env = dict(os.environ)
     try:
@@ -314,6 +329,7 @@ def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
     totals = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0,
               "cost_total": 0.0, "hit_max_tokens": False}
     n_msgs = 0
+    reply = ""
     ok = False
     deadline = time.monotonic() + TURN_DEADLINE_S
     try:
@@ -335,6 +351,9 @@ def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
                 m = ev.get("message", {})
                 if m.get("role") == "assistant":
                     n_msgs += 1
+                    c = m.get("content")
+                    reply = c if isinstance(c, str) else "".join(
+                        p.get("text", "") for p in c or [] if p.get("type") == "text")
                     u = m.get("usage") or {}
                     for k in ("input", "output", "cacheRead", "cacheWrite"):
                         totals[k] += u.get(k) or 0
@@ -364,7 +383,7 @@ def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
             proc.wait(timeout=10)
         except Exception:
             proc.kill()
-    return ok, totals, n_msgs
+    return ok, totals, n_msgs, reply
 
 
 def main():
@@ -380,7 +399,7 @@ def main():
         cfg["model"] = per_agent
 
     t0 = time.monotonic()
-    scaffold(home, agent_id)
+    scaffold(home, agent_id, plain=bool(cfg.get("plain")))
     # Birth persists until a turn SUCCEEDS. Deriving it from a durable marker
     # (not from scaffold's file-creation side effect) means a failed first wake
     # — dead key, timeout, crash — retries birth, incl. re-delivering
@@ -395,10 +414,18 @@ def main():
 
     system_prompt, reopen = session_sandwich(home, agent_id, cfg)
     scratch_before = scratch_mtime(home)
-    ok, usage, n_msgs = run_pi_turn(
+    ok, usage, n_msgs, reply = run_pi_turn(
         home, system_prompt,
         build_user_prompt(home, msgs, causes, first_wake, cfg),
         cfg, reopen)
+
+    if ok and cfg.get("plain") and reply.strip():
+        try:
+            resp = gateway_request({"op": "submit", "action": reply.strip()})
+            if not resp.get("ok"):
+                log(f"plain submit refused: {resp}")
+        except Exception as e:
+            log(f"plain submit failed: {e}")
 
     if ok:
         # Turn succeeded: archive the drained mail and consume FIRST_WAKE.md.

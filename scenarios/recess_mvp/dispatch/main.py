@@ -35,8 +35,8 @@ def run(api, params):
         parsed = engine.parse_gm(api.collect(gm))
         if parsed is None:
             log("gm_parse_error", "retrying once")
-            api.wake(gm, "Your last submission was not valid JSON with a \"narration\" string. "
-                         "Submit it again, corrected.\n\n" + ctx)
+            api.wake(gm, "Your last reply was empty or its ```json block was not valid JSON. "
+                         "Reply again: narration, then the block.\n\n" + ctx)
             parsed = engine.parse_gm(api.collect(gm))
         return parsed or {"narration": engine.FALLBACK}
 

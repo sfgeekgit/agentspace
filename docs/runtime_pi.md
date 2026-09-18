@@ -243,14 +243,23 @@ world's cap — don't leave agents clipped. GOTCHA (verified on 0.80.3):
 `modelOverrides` in `settings.json` is silently ignored — it only works in
 `models.json`.
 
+**`plain`** (world.json, DEFAULT false): plain mode — the agent is a bare
+model turn. agentd skips the preamble, norms, and scratchpad block (system
+prompt = the home's `*.md` files only), sends the user message as just the
+mail text (plus `FIRST_WAKE.md` on birth), runs Pi with `--no-tools`, and after
+the turn spools the last assistant message's text as the agent's `submit`
+(gateway cap `SUBMIT_MAX_BYTES`, 16 KB). The agent has no commands to learn;
+the dispatcher wakes it with a prompt and collects its reply. Thinking is still
+captured in the session JSONL; `scratch_updated` is always false.
+
 **Scen overrides.** A scen may set `thinking`, `require_scratchpad`,
-`messaging_norms` or `max_tokens` in its `scenario.toml`; the value replaces
+`messaging_norms`, `max_tokens` or `plain` in its `scenario.toml`; the value replaces
 this runtime's default in world.json (`registry.RUNTIME_FLAGS` bounds the set
 and types it). Omit them — as every scen in the repo does — and the defaults
 above stand.
 
 Config from `/world/world.json` (`model`, per-agent `models` map, `pi_bin`,
-`thinking`, `require_scratchpad`, `messaging_norms`, `max_tokens`);
+`thinking`, `require_scratchpad`, `messaging_norms`, `max_tokens`, `plain`);
 OpenRouter key at `/run/svc/openrouter_key`
 (world-readable in-container by design — shared budget, `check_budget`;
 see "Key delivery" below). agentd env knobs use the
@@ -488,6 +497,7 @@ what you touched.**
 | dispatcher machinery | `runtime_pi/dispatch_gate/run_dispatch_gate.sh` | dispatcher API: blocking wake, submit→collect, resume, remove (PD fixture) | gateway dispatcher ops, dispatchlib, dispatchd |
 | Policy | `runtime_pi/dispatch_gate/run_policy_gate.sh` | live phase physics: board open/close via `[sender,"public"]`, PM allowlists, `dispatch_activity`, fan-out at N=5, secrets isolation | policy code, dispatch_activity, dispatchlib |
 | Build | `runtime_pi/dispatch_gate/run_build_gate.sh` | builder hidden-info hooks via a real throwaway build: `fill_briefing` instantiation, `/dispatch/secrets.json` baking + ownership (host-side, ~30s) | builder, logic hooks, pi bake |
+| Plain mode | `runtime_pi/plain_gate/run_plain_gate.sh` | world.json `plain`: real agentd with a fake Pi — bare system prompt (md files only), mail-only user prompt, `--no-tools`, reply text spooled as `submit`, no MEMORY.md scaffold (~seconds) | agentd prompt assembly, plain mode, submit cap |
 | Key | `python3 runtime_pi/key_gate.py` | keys-never-in-snaps invariant with a FAKE key: tmpfs delivery, committed image clean in fs + `.Config`, scanner positive control (host-side, ~15s) | key delivery/injection, container start paths, take/push scanner |
 | Front ends | `python3 scripts/check_frontends.py` | every library `cmd_*` verb is wired into both the click CLI and the menu in zookeeper.py, and every click leaf has a web form or a `web.SPECIAL` entry (instant) | zookeeper.py, any `cmd_*`, web.py |
 | Web | `python3 runtime_pi/web_gate.py` | every verb has a web form; argv rules; runs stream, survive or die as specified; watch, chat, wizard, models and workspace routes answer against a stopped env; the demo policy refuses and renders as specified (host-side, ~10s) | web.py, check_frontends.py |

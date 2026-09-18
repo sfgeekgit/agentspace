@@ -2,6 +2,7 @@
 attributes, inventory, flags, unlocks, schedules, and the transcript. Knows no
 village facts — everything specific comes from the bundle or the GM."""
 import json
+import re
 
 BANDS = [(-5, "very low"), (-1, "low"), (0, "neutral"), (4, "high")]
 FALLBACK = "The world is quiet for a moment. What do you do?"
@@ -92,13 +93,13 @@ def _notes(state, bundle):
     return out
 
 
-FORMAT = ('RESPOND WITH one `submit \'<json>\'`: {"narration": "...", "stats": {"name": delta}, '
+FORMAT = ('REPLY WITH the narration (prose only), then a ```json block: {"stats": {"name": delta}, '
           '"move": "<exit or null>", "items": {"take": [], "drop": [], "create": []}, '
           '"flags": {"name": true}, "map": [{"op": "open|close", "node": "<id>"} or '
           '{"op": "add", "id": "<new id>", "name": "...", "desc": "...", "via": "<direction from here>"}], '
           '"move_npc": {"<npc>": "<node>"}, "talk": [{"npc": "<npc>", "hears": "..."}], '
           '"assign_reserve": {"name": "...", "brief": "...", "loc": "<node>"} or null, '
-          '"end": "<end name>" or null}. Only "narration" is required. Keep it under 3500 bytes.')
+          '"end": "<end name>" or null}. Every key is optional; omit the block if nothing changes.')
 
 
 def gm_context(state, bundle, action, params, npc_lines=None, scheduled=None):
@@ -130,14 +131,25 @@ def gm_context(state, bundle, action, params, npc_lines=None, scheduled=None):
     return "\n\n".join(sec)
 
 
+FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
+
+
 def parse_gm(raw):
-    if not raw:
+    """Narration prose + optional fenced JSON block -> proposal dict with
+    "narration". None (= ask again) only if empty or the block is malformed."""
+    if not raw or not raw.strip():
         return None
+    m = FENCE.search(raw)
+    if not m:
+        return {"narration": raw.strip()}
     try:
-        d = json.loads(raw)
+        d = json.loads(m.group(1))
     except ValueError:
         return None
-    return d if isinstance(d, dict) and isinstance(d.get("narration"), str) else None
+    if not isinstance(d, dict):
+        return None
+    d["narration"] = (raw[:m.start()] + raw[m.end():]).strip()
+    return d
 
 
 # ---- applying a GM turn ----
@@ -264,7 +276,7 @@ def npc_payload(state, name, hears):
     if npc["notes"]:
         sec.append("YOU REMEMBER:\n" + "\n".join(npc["notes"][-6:]))
     sec.append("YOU HEAR: " + hears)
-    sec.append('RESPOND WITH one `submit "<what you say or do>"`, under 120 words.')
+    sec.append("Reply with only what you say or do, under 120 words.")
     return "\n\n".join(sec)
 
 

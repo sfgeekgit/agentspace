@@ -66,6 +66,7 @@ USER_PREFIX = "u_"
 # Real Pi turns (LLM + tool calls) need more than the 120s the dummy agents
 # did; a turn that overruns is killed and audited as wake_error.
 WAKE_TIMEOUT_S = int(os.environ.get("GATEWAY_WAKE_TIMEOUT_S", "300"))
+SUBMIT_MAX_BYTES = 16384   # a plain-mode agent's whole reply is its submission
 
 AUDIT = os.path.join(STATE_DIR, "audit.jsonl")
 PUBLIC = os.path.join(STATE_DIR, "public.jsonl")
@@ -686,8 +687,8 @@ def op_submit(pr, req):
     if pr.identity is None or pr.is_operator or pr.is_dispatch:
         return {"ok": False, "error": "submit is for agents"}
     action = req.get("action")
-    if not isinstance(action, str) or len(action.encode()) > 4096:
-        return {"ok": False, "error": "submit needs a short string 'action'"}
+    if not isinstance(action, str) or len(action.encode()) > SUBMIT_MAX_BYTES:
+        return {"ok": False, "error": f"submit needs a string 'action' of at most {SUBMIT_MAX_BYTES} bytes"}
     if not _rate_ok(f"submit:{pr.identity}", load_policy()["rate_limit_per_min"]):
         audit("submit_denied", frm=pr.identity, reason="rate_cap")
         return {"ok": False, "error": "rate cap exceeded"}

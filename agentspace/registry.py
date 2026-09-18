@@ -33,7 +33,7 @@ SCEN_MANIFEST = "scenario.toml"
 # every agent is told, so they belong to the world, not to one agent's files.
 # Omit one and the runtime's own default stands.
 RUNTIME_FLAGS = {"thinking": str, "require_scratchpad": bool,
-                 "messaging_norms": bool, "max_tokens": int}
+                 "messaging_norms": bool, "max_tokens": int, "plain": bool}
 
 
 

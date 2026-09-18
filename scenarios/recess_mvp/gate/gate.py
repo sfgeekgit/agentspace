@@ -46,6 +46,7 @@ npc_in = inbox("n1")
 check("NPC payload has core block", "YOU ARE Merrow" in npc_in and "making nails" in npc_in)
 check("NPC payload has NO locked depth (need-to-know)", "Col" not in npc_in and "boar-spear" not in npc_in)
 check("NPC payload carries what it hears", "asks what you are making" in npc_in)
+check("narration stripped of the json block", all("```" not in e["out"] for e in t), str(t[1]["out"]))
 check("GM context names present NPC and hides numbers",
       "Present: merrow" in inbox("g1") and "curiosity high" in inbox("g1") and '"honesty": 2' not in inbox("g1").split("RESPOND")[0])
 check("agents cannot read engine state",

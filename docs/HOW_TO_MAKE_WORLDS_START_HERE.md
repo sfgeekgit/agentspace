@@ -77,6 +77,7 @@ them in your `scenario.toml` to override for your world.
 | `thinking`           | `"low"`   | Real chain-of-thought, captured in the session JSONL. Distinct from the scratchpad: CoT is what the model reasoned, the scratchpad is what the agent chose to articulate. |
 | `messaging_norms`    | `true`    | Injects the anti-ping-pong norms (don't reply unless it helps). |
 | `max_tokens`         | `16384`   | Per-turn output ceiling. A safety rail, not a leash; hitting it is loud (`hit_max_tokens` in `budget.jsonl`). |
+| `plain`              | `false`   | **Plain mode**: agents are bare model turns. No preamble, norms, scratchpad, or tools; the system prompt is just the home's `*.md` files, the user message is just the mail text, and the agent's reply text is spooled as its `submit`. For worlds where agents should have NO interface to learn (a text-adventure player answers in prose; the dispatcher takes it in). World-wide; the dispatcher is the only waker that makes sense with it. See `scenarios/recess_mvp`. |
 
 Read both signals when reviewing a run: `env watch <env> <agent>:thoughts` and
 `<agent>:scratchpad` are separate facets. See `docs/runtime_pi.md` for the

@@ -11,7 +11,7 @@ description = "Open-world text adventure: one player explores a medieval village
 min_agents = 2
 max_agents = 20
 module_blacklist = []
-messaging_norms = false
+plain = true          # bare model turns: no shell, no preamble; a reply IS the submission
 max_tokens = 8192
 
 [[params]]
