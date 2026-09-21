@@ -57,7 +57,7 @@ DEMO_VERBS = {"world build", "snap fork", "snap take", "snap note", "snap show",
               "env list", "env show", "budget show", "scen list", "results show"}
 DEMO_DROP = {"attach", "souls", "host", "allow_key_leak"}   # server paths, other hosts, safety off
 DEMO_MAX_BUDGET = 2.0                                        # dollars per launch
-DEMO_MAX_ENVS = 15                                           # live containers (all of them) before launches are refused
+DEMO_MAX_ENVS = 25                                           # live containers (all of them) before launches are refused
 NEEDS_OPERATOR = "needs the operator password"
 
 
