@@ -20,9 +20,11 @@ or a throwaway test copy.
 
 There is a third, separate tier that is not this app at all: the **public
 mirror** at `/publicview/` on the demo's hostname, no password. It is a
-directory of static files written by `zookeeper.py mirror publish` from an
-operator-owned manifest and served by Caddy's `file_server`; nothing a
-visitor sends reaches this process. See [mirror.md](mirror.md).
+directory of static files written by `zookeeper.py mirror publish`
+(everything the operator's manifest does not exclude: environments, worlds,
+snapshots, scenarios, results) and served by Caddy's `file_server`; nothing a
+visitor sends reaches this process. Environments launched from the demo show
+up there too. See [mirror.md](mirror.md).
 
 ## 1. Pages
 

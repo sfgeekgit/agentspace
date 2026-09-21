@@ -12,3 +12,7 @@
 .mirror-side{margin-top:28px}.mirror-side button{display:block;text-align:left;white-space:normal;overflow-wrap:anywhere}.mirror-side small{display:block;color:#64705d;font-size:10px}
 #pane pre.document{margin:0 18px;max-height:none}
 @media(max-width:780px){.board-row{grid-template-columns:1fr;padding:16px}.board-row .board-line,.board-row .button-row{grid-column:1}}
+.mirror-nav{display:flex;gap:22px;margin:0 auto 0 34px}.mirror-nav a:hover{color:var(--ink)}
+.board-row[hidden]{display:none}.world-card .card-bottom{margin-top:14px}.mirror-result{margin-bottom:12px}.mirror-result a{margin-right:10px}
+.lineage a{text-decoration:underline;text-underline-offset:3px}
+@media(max-width:780px){.mirror-nav{display:none}}

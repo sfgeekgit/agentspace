@@ -34,8 +34,9 @@ password-protected public demo, where a demo policy keeps anything that touches 
 files, registry or deletions operator-only. See [`docs/web_ui.md`](docs/web_ui.md).
 
 For a no-password audience there is a **public mirror**: `zookeeper.py mirror publish` exports
-the runs an operator lists in a manifest (facts, log views, replay in the browser, downloads) to a
-directory of static files that Caddy serves. No application code is reachable from it; the one
+every environment (facts, log views, replay in the browser, results, downloads), every world and
+snapshot and every scenario, minus what an operator's manifest excludes, to a directory of static
+files that Caddy serves. No application code is reachable from it; the one
 thing a visitor can ask for is a debounced republish. See [`docs/mirror.md`](docs/mirror.md).
 
 

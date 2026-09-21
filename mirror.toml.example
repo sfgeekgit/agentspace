@@ -1,27 +1,21 @@
-# The public mirror's manifest. Copy to /var/agentspace-ctl/mirror.toml and edit; only what is
-# listed here is published, to a site with no password. `python3 zookeeper.py mirror publish`
-# builds it, `mirror show` says what is up. See docs/mirror.md.
+# The public mirror's manifest. Copy to /var/agentspace-ctl/mirror.toml (it is optional).
+# EVERYTHING is public by default, with no password: every environment (all its views except
+# `raw`, each agent's whole session with reasoning and scratchpad, its generated results
+# bundle), every world root and snapshot, every scenario. This file only holds exceptions.
+# `python3 zookeeper.py mirror publish` builds the site, `mirror show` says what is up.
+# See docs/mirror.md.
 
 title = "Agent World Maker"
 min_refresh_seconds = 20        # the public Refresh button will not publish more often than this
 keep_builds = 3                 # old builds pruned after a successful swap
+exclude = ["scratch_env"]       # environment names that stay off the mirror entirely
 
-[[run]]
-id = "mafia-11"                 # public id and URL slug: lowercase letters, digits, hyphens; keep it for the run's life
-env = "mafia_11_demo"           # the environment on this box
+[env.mafia_11_demo]             # per-environment settings, all optional
 title = "Mafia with eleven agents"
 blurb = "Six villagers, three mafia, a doctor and a detective. Dispatch runs the days."
-views = ["feed", "board", "announcements", "budget", "game log (GM, spoilers)"]   # exact view names; default feed, board, announcements
-agents = true                   # each agent's own view: what it said
-thoughts = true                 # ...upgraded to its whole session plus thoughts / says / messages / scratchpad
-results = false                 # copy the generated results bundle, if one exists
-budget = true                   # one OpenRouter lookup per publish, so the board can show spend
-# container = "8f45cfbfd489"    # pin a container id prefix when the env name has been reused
-
-[[run]]
-id = "support-desk-3"
-env = "desk3"
-title = "Support desk, run 3"
-views = ["feed", "board", "budget"]
-agents = true
-results = true
+views = ["feed", "board", "announcements", "budget"]   # exact view names; default: every view except raw
+agents = true                   # each agent's own view (default true)
+thoughts = false                # false: only what each agent said; true (default): whole session + thoughts / says / messages / scratchpad
+results = true                  # the generated results bundle, if one exists (default true)
+budget = true                   # one OpenRouter lookup per publish so the board shows spend (default false)
+# container = "8f45cfbfd489"    # publish only while the env name resolves to this container id prefix

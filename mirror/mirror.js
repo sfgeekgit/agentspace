@@ -29,43 +29,97 @@ async function refresh(reload) {
   button.disabled = false; button.textContent = 'Refresh';
 }
 
-function boardRow(r) {
+function boardRow(r, known) {
   const row = node('div', '', 'board-row'), head = node('div', '', 'board-head'), run = 'run.html?id=' + enc(r.id);
-  head.append(link(run, r.env, 'row-title'), link(run, r.title), link('scenario.html?name=' + enc(r.scenario), r.scenario, 'text-link'),
-    node('span', r.status === 'stopped' ? 'replay and downloads still work' :
-      'started ' + when(r.started) + ' · ' + (r.status === 'active' ? 'running ' : 'ran ') + span(r.runtime_seconds), 'muted'));
-  row.append(pill(r.status), head,
-    node('div', r.agents + ' agents · ' + models(r.models) + '   ·   ' + spend(r) + '   ·   ' + r.events.toLocaleString() + ' events' +
+  head.append(link(run, r.env, 'row-title'));
+  if (r.title) head.append(link(run, r.title));
+  if (r.scenario) head.append(known.has(r.scenario) ? link('scenario.html?name=' + enc(r.scenario), r.scenario, 'text-link') : node('span', r.scenario, 'muted'));
+  head.append(node('span', r.status === 'stopped' ? 'created ' + when(r.created) + ' · ran ' + span(r.runtime_seconds) + ' · replay and downloads still work' :
+    'started ' + when(r.started) + ' · ' + (r.status === 'active' ? 'running ' : 'up ') + span(r.runtime_seconds), 'muted'));
+  row.append(pill(r.status), head);
+  if (r.blurb) row.append(node('div', r.blurb, 'board-line'));
+  row.append(node('div', r.agents + ' agents · ' + models(r.models) + '   ·   ' + spend(r) + '   ·   ' + r.events.toLocaleString() + ' events' +
       (r.last_event_ts ? ' · last ' + span((Date.now() - Date.parse(r.last_event_ts)) / 1000) + ' ago' : '') + (r.stale ? '   ·   not refreshed since ' + when(r.as_of) : ''), 'board-line'),
     node('div', [...r.views, ...(r.agent_views ? [r.agent_views + ' agent sessions'] : [])].join(' · '), 'board-line'));
   const buttons = node('div', '', 'button-row');
   buttons.append(link(run, 'Watch', 'button'), link(run + '&mode=replay', 'Replay', 'button secondary'));
-  if (r.results) buttons.append(link(run + '#results', 'Results', 'button secondary'));
+  if (r.results) buttons.append(link(run + '#results', 'Results · ' + r.results + ' files', 'button secondary'));
   buttons.append(link('runs/' + enc(r.id) + '/all.zip', 'Download', 'button secondary'));
-  row.append(buttons);
+  if (r.snap) buttons.append(link('world.html?id=' + enc(r.snap), 'Its snapshot', 'text-link'));
+  row.append(buttons); row.dataset.search = [r.env, r.title, r.scenario, r.status, LABEL[r.status], ...Object.keys(r.models)].join(' ').toLowerCase();
   return row;
 }
 const ORDER = {active: 0, dormant: 1};
-function board(runs) { $('board').replaceChildren(...(runs.length ? [...runs].sort((a, b) => (ORDER[a.status] ?? 2) - (ORDER[b.status] ?? 2)).map(boardRow) : [node('p', 'Nothing is published yet.', 'empty')])); }
+function board(site, runs, none = 'No environments here.') {
+  const known = new Set(site.scenarios.map(s => s.name));
+  $('board').replaceChildren(...(runs.length ? [...runs].sort((a, b) => (ORDER[a.status] ?? 2) - (ORDER[b.status] ?? 2) || (b.created || '').localeCompare(a.created || '')).map(r => boardRow(r, known))
+    : [node('p', none, 'empty')]));
+}
 function siteChrome(site) { $('as-of').textContent = 'Data as of ' + when(site.generated_at); if ($('site-title')) $('site-title').textContent = site.title; }
+function worldCard(w) {
+  const card = node('div', '', 'world-card'), counts = node('div', '', 'world-counts');
+  for (const [n, label] of [[w.envs, 'ENVIRONMENTS'], [w.snapshots, 'SNAPSHOTS'], [w.agents, 'AGENTS']]) { const c = node('span', String(n)); c.append(node('small', label)); counts.append(c); }
+  card.append(link('world.html?id=' + enc(w.id), w.ref, 'card-title'), node('p', w.message || 'No description'), counts,
+    node('div', (w.scenario || 'scenario not recorded') + ' · ' + when(w.created), 'card-bottom'));
+  return card;
+}
+function snapRow(s, depth = 0) {
+  const row = node('div', '', 'snapshot-row'), main = node('div', '', 'snapshot-main'); row.style.setProperty('--depth', Math.min(depth, 8));
+  main.append(link('world.html?id=' + enc(s.id), s.ref), node('p', (s.message || 'No description') + (s.envs.length ? ' · environments: ' + s.envs.join(', ') : '')));
+  row.append(main, node('span', s.root ? 'World root' : 'Snapshot', 'tag'), node('span', when(s.created), 'muted'));
+  return row;
+}
 
 async function indexPage() {
-  const site = await getJSON('site.json');
-  siteChrome(site); document.title = $('title').textContent = site.title; board(site.runs);
-  $('scenarios').replaceChildren(...site.scenarios.map(s => {
+  const [site, lib] = await Promise.all([getJSON('site.json'), getJSON('worlds.json')]);
+  siteChrome(site); document.title = $('title').textContent = site.title; board(site, site.runs, 'No environments yet.');
+  $('board-filter').oninput = () => { const q = $('board-filter').value.toLowerCase(); for (const row of $('board').children) row.hidden = !(row.dataset.search || '').includes(q); };
+  $('world-cards').replaceChildren(...site.worlds.map(worldCard));
+  $('snapshot-count').textContent = 'All snapshots · ' + lib.snaps.length;
+  $('snapshot-list').replaceChildren(...lib.snaps.map(s => snapRow(s)));
+  $('scenario-cards').replaceChildren(...site.scenarios.map(s => {
     const card = node('a', '', 'scenario-card'); card.href = 'scenario.html?name=' + enc(s.name);
-    card.append(node('h3', s.name), node('p', s.description), node('div', s.roles + ' roles · ' + s.runs.length + ' run' + (s.runs.length === 1 ? '' : 's') + ' here', 'card-bottom'));
+    card.append(node('h3', s.name), node('p', s.description), node('div', s.agents + ' agents · ' + s.roles + ' roles · ' + s.worlds + ' worlds · ' + s.runs.length + ' environments' + (s.active ? '' : ' · inactive'), 'card-bottom'));
     return card; }));
+  if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
 }
+
+const fact = ([k, v]) => { const f = node('span'); f.append(node('small', k), String(v)); return f; };
+const doc = (title, text) => { const d = node('details'); d.append(node('summary', title), node('pre', text, 'document')); return d; };
 
 async function scenarioPage() {
   const name = params.get('name') || '', [site, s] = await Promise.all([getJSON('site.json'), getJSON('scenarios/' + enc(name) + '.json')]);
   siteChrome(site); document.title = s.name + ' · ' + site.title;
   $('title').textContent = s.name; $('description').textContent = s.description; $('github').href = s.github;
-  $('facts').replaceChildren(...[['AGENTS', s.agents], ['ROLES', s.roles.length], ['RUNS HERE', s.runs.length]].map(([k, v]) => { const f = node('span'); f.append(node('small', k), String(v)); return f; }));
-  $('briefing').replaceChildren(...[{name: 'Shared world briefing', text: s.world || 'This scenario has no separate shared world briefing.'}, ...s.roles].map(r => {
-    const d = node('details'); d.append(node('summary', r.name), node('pre', r.text, 'document')); return d; }));
-  board(site.runs.filter(r => s.runs.includes(r.id)));
+  const runs = site.runs.filter(r => r.scenario === s.name), worlds = site.worlds.filter(w => w.scenario === s.name);
+  $('facts').replaceChildren(...[['AGENTS', s.agents], ['ROLES', s.roles.length], ['RUNTIME', s.runtime || '—'], ['COORDINATION', s.dispatcher ? 'Dispatcher' : 'Open interaction'],
+    ['WORLDS', worlds.length], ['ENVIRONMENTS', runs.length], ...(s.active ? [] : [['STATUS', 'inactive']])].map(fact));
+  $('briefing').replaceChildren(doc('Shared world briefing', s.world || 'This scenario has no separate shared world briefing.'), ...s.roles.map(r => doc(r.name, r.text)),
+    ...(s.readme ? [doc('README', s.readme)] : []));
+  board(site, runs, 'No environments from this scenario.');
+  $('world-cards').replaceChildren(...(worlds.length ? worlds.map(worldCard) : [node('p', 'No worlds built from this scenario yet.', 'muted')]));
+}
+
+async function worldPage() {
+  const id = params.get('id') || '', [site, lib] = await Promise.all([getJSON('site.json'), getJSON('worlds.json')]);
+  const s = lib.snaps.find(x => x.id === id); if (!s) throw new Error('no such world or snapshot');
+  const byId = new Map(lib.snaps.map(x => [x.id, x])), root = byId.get(s.root_id) || s, known = new Set(site.scenarios.map(x => x.name));
+  siteChrome(site); document.title = s.ref + ' · ' + site.title;
+  $('kind').textContent = s.root ? 'WORLD ROOT' : 'SNAPSHOT'; $('title').textContent = s.ref; $('description').textContent = s.message || 'No description';
+  if (!s.root) $('crumbs').append(link('world.html?id=' + enc(root.id), root.ref));
+  if (known.has(s.scenario)) $('crumbs').append(link('scenario.html?name=' + enc(s.scenario), 'scenario ' + s.scenario));
+  $('facts').replaceChildren(...[['AGENTS', s.roster.length], ['MODEL', s.model || '—'], ['RUNTIME', s.runtime || '—'], ['CREATED', when(s.created)],
+    ...(s.taken_from ? [['TAKEN FROM', s.taken_from]] : [])].map(fact));
+  board(site, site.runs.filter(r => s.envs.includes(r.id)), 'No environments were launched from this exact snapshot.');
+  const kids = p => lib.snaps.filter(x => x.parent === p).sort((a, b) => (a.created || '').localeCompare(b.created || ''));
+  const walk = (x, depth) => { const row = snapRow(x, depth); if (x.id === s.id) row.style.background = '#f1f5e7'; return [row, ...kids(x.id).flatMap(k => walk(k, depth + 1))]; };
+  $('tree').replaceChildren(...walk(root, 0));
+  $('roster').replaceChildren(...s.roster.map(a => { const tr = node('tr'); tr.append(node('td', a.id), node('td', a.role || '—'), node('td', a.persona || '—'), node('td', a.model || '—')); return tr; }));
+  const files = Object.entries(s.files);
+  $('notes-section').hidden = !s.notes.length && !files.length;
+  $('notes').replaceChildren(...s.notes.map(n => { const d = node('div', '', 'saved-note'); d.append(node('p', n.text), node('small', when(n.ts))); return d; }), ...files.map(([name, text]) => doc(name, text)));
+  $('details').replaceChildren(...[['Snapshot id', s.id], ['Registry tag', s.tag || '—'], ['Flags', Object.entries(s.flags).map(([k, v]) => k + '=' + v).join(' ') || '—']]
+    .flatMap(([k, v]) => [node('dt', k), node('dd', v)]));
 }
 
 async function runPage() {
@@ -122,22 +176,18 @@ async function runPage() {
   async function select(v) {
     stop(); view = v; agent = v.agent; tabs();
     $('dl-txt').href = base + 'views/' + v.file + '.txt'; $('dl-jsonl').href = base + 'views/' + v.file + '.jsonl';
-    document.title = run.title + ' · ' + v.name; pane.replaceChildren(node('div', 'Loading…', 'muted'));
+    document.title = run.env + ' · ' + v.name; pane.replaceChildren(node('div', 'Loading…', 'muted'));
     events = await load(); restamp(); $('mode').onchange();
   }
-  async function preview(f) {                   // plain text only; the demo keeps the richer results reader
-    stop(); const text = await (await fetch(base + f.file, {cache: 'no-cache'})).text();
-    pane.replaceChildren(node('pre', text.length > 400000 ? text.slice(0, 400000) + '\n… (download the file for the rest)' : text, 'document'));
-    pane.scrollTop = 0; $('earlier').hidden = true; $('event-count').textContent = ''; $('live').textContent = f.name;
-  }
   function facts() {
-    document.title = run.title; $('title').textContent = run.env; $('subtitle').textContent = run.title + (run.blurb ? ' — ' + run.blurb : '');
+    document.title = run.env; $('title').textContent = run.env; $('subtitle').textContent = [run.title, run.blurb].filter(Boolean).join(' — ');
     $('status').replaceChildren(pill(run.status)); $('as-of').textContent = 'Data as of ' + when(run.as_of);
-    const s = $('scenario-link'); s.textContent = run.scenario; s.href = 'scenario.html?name=' + enc(run.scenario);
+    const s = $('scenario-link'); s.textContent = run.scenario ? 'scenario ' + run.scenario : ''; s.href = 'scenario.html?name=' + enc(run.scenario);
     const counts = {}; for (const a of run.roster) counts[a.model] = (counts[a.model] || 0) + 1;
-    $('facts').replaceChildren(...[['started', when(run.started)], [run.status === 'active' ? 'running' : 'ran', span(run.runtime_seconds)],
+    $('facts').replaceChildren(...[['created', when(run.created)], ...(run.started ? [['started', when(run.started)]] : []), [run.status === 'stopped' ? 'ran' : 'up', span(run.runtime_seconds)],
       ['agents', run.roster.length + ' · ' + models(counts)], [run.budget_used == null ? 'budget' : 'spent', spend(run).replace(/^budget | used$/g, '')], ['container', run.container]].map(([k, v]) => { const f = node('span', k + ' '); f.append(node('b', v)); return f; }));
-    $('lineage').replaceChildren(...run.lineage.flatMap((l, i) => { const step = node('span'); step.append(node('b', l.kind === 'env' ? 'this environment' : l.kind === 'root' ? 'world root ' + l.ref : l.kind + ' ' + l.ref));
+    $('lineage').replaceChildren(...run.lineage.flatMap((l, i) => { const step = node('span'), label = l.kind === 'env' ? 'this environment' : l.kind === 'root' ? 'world root ' + l.ref : l.kind + ' ' + (l.ref || 'not recorded');
+      step.append(l.id ? link('world.html?id=' + enc(l.id), label) : node('b', label));
       if (l.message) step.append(node('i', ' “' + l.message + '”')); return i ? [node('span', '→'), step] : [step]; }));
     $('coverage').textContent = run.coverage; $('coverage').classList.toggle('stale', run.stale);
     $('agent-count').textContent = run.roster.length;
@@ -149,9 +199,9 @@ async function runPage() {
     box.querySelector('small').textContent = used == null ? 'limit; spend is not published' : 'of ' + money(run.budget_usd);
     box.querySelector('.bar>div').style.width = used != null && run.budget_usd ? Math.min(100, 100 * used / run.budget_usd) + '%' : '0';
     $('dl-all').href = base + 'all.zip';
-    if (run.results.length) $('result-files').replaceChildren(...run.results.map(f => { const row = node('div', '', 'mirror-result'), open = node('button', f.name, 'text-button');
-      open.onclick = () => preview(f); open.disabled = !/\.(md|txt|json|jsonl)$/.test(f.name);
-      row.append(open, node('small', Math.ceil(f.size / 1024).toLocaleString() + ' KB · '), link(base + f.file, 'download', 'text-link')); row.lastChild.download = f.name; return row; }));
+    if (run.results.length) $('result-files').replaceChildren(...run.results.map(f => { const row = node('div', '', 'mirror-result'), get = link(base + f.file, 'download', 'text-link');
+      get.download = f.name; row.append(node('b', f.name), node('small', Math.ceil(f.size / 1024).toLocaleString() + ' KB'));
+      if (f.page) row.append(link(base + f.file + '.html', 'read', 'text-link')); row.append(get); return row; }));
   }
   run = await getJSON(base + 'run.json'); facts();
   if (params.get('mode') === 'replay') $('mode').value = 'replay';
@@ -165,6 +215,6 @@ async function runPage() {
   });
 }
 
-const pages = {index: indexPage, scenario: scenarioPage, run: runPage}, start = pages[document.body.dataset.page];
+const pages = {index: indexPage, scenario: scenarioPage, world: worldPage, run: runPage}, start = pages[document.body.dataset.page];
 if (document.body.dataset.page !== 'run') $('refresh').onclick = () => refresh(start);
 start().catch(e => { document.querySelector('main').prepend(node('p', 'This page could not be loaded: ' + e.message, 'notice')); });

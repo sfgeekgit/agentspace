@@ -179,16 +179,18 @@ results repository configuration: `results.md`.
 ### mirror
 
 ```bash
-agentspace mirror publish [--manifest PATH]   # export the manifest's runs to the public static mirror, swap the build in
+agentspace mirror publish [--manifest PATH]   # export everything the manifest does not exclude to the public static mirror
 agentspace mirror show                        # the current build: stamp, each run's as-of time, staleness, event count
 ```
 
-The manifest (default `/var/agentspace-ctl/mirror.toml`, sample in
-`mirror.toml.example`) lists which environments, views, agent sessions and
-results are public; only what it lists is published. The publisher reads
-only: one `docker inspect` and one fixed `docker exec` per run, never a wake,
-start, stop or message. A run whose container is down keeps its last
-published copy, marked stale. Builds land in `$AGENTSPACE_MIRROR_DIR`
+Everything is public by default: every environment with its views, agent
+sessions and results bundle, every world root and snapshot, every scenario.
+The optional manifest (default `/var/agentspace-ctl/mirror.toml`, sample in
+`mirror.toml.example`) holds only exceptions: `exclude`, and per-environment
+settings. The publisher reads only: one `docker inspect` and one fixed
+`docker exec` per running env (`docker cp` for a stopped one), never a wake,
+start, stop or message. Unchanged runs are hard-linked from the previous
+build. Builds land in `$AGENTSPACE_MIRROR_DIR`
 (default `/srv/agentworldmaker-public`) and Caddy serves `current/`. Details,
 the refresh trigger and the Caddy block: `mirror.md`.
 
@@ -431,7 +433,7 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
                                  streams, the demo policy; http://127.0.0.1:7788 via ssh -L; the
                                  agentspace-web service (deploy/); AGENTSPACE_WEB_PORT for a 2nd instance
   web_views.py                ← the web pages (server-rendered HTML); web.js + web.css
-  mirror/                     ← the public mirror's static viewer: index, run and scenario pages, mirror.js (mirror.md)
+  mirror/                     ← the public mirror's static viewer: index, run, world and scenario pages, mirror.js (mirror.md)
   mirror_refresh.py           ← the mirror's refresh trigger: loopback 7787, POST /refresh only, debounced,
                                  imports nothing from agentspace; the agentspace-mirror-refresh service (deploy/)
   mirror.toml.example         ← sample manifest for the mirror (the real one is /var/agentspace-ctl/mirror.toml)

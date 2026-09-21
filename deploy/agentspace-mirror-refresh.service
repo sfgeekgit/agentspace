@@ -10,7 +10,7 @@ WorkingDirectory=/opt/agentspace-ctl
 ExecStart=/usr/bin/python3 -u /opt/agentspace-ctl/mirror_refresh.py
 Restart=always
 RestartSec=2
-# Covers the publisher it spawns: a run's logs are held in memory, capped at 50 MB each.
+# Covers the publisher it spawns: four runs' logs are held in memory at a time, capped at 25 MB each.
 MemoryMax=300M
 TasksMax=50
 

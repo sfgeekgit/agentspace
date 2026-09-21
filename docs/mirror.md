@@ -1,11 +1,17 @@
 # The public mirror
 
-A no-password website that shows chosen environments from this box: their
-facts, the log views the operator lists, replay of a run in the browser, and
-downloads. It is a **mirror**: a directory of static files that a publisher
-writes and Caddy serves. No Python, docker, database or credential is
-reachable from the public internet. The one thing a visitor can make the box
-do is "publish again", with no arguments, at most once per minimum interval.
+A no-password website for browsing this box: every environment (running,
+dormant or stopped) with its facts, log views, replay in the browser, results
+and downloads; every world root and snapshot; every scenario. It is a
+**mirror**: a directory of static files that a publisher writes and Caddy
+serves. No Python, docker, database or credential is reachable from the public
+internet. The one thing a visitor can make the box do is "publish again", with
+no arguments, at most once per minimum interval.
+
+The rule is: **publish as much as possible that is not a security problem.**
+Everything is public unless the operator's manifest says otherwise. That
+includes environments launched from the password demo, which appear on the
+mirror at the next refresh.
 
 Live at `https://agentworldmaker.com/publicview/`. It is a path, not a
 hostname, on purpose: a path appears in no certificate and no DNS record, and
@@ -17,101 +23,121 @@ path staying unknown.
 | Address | ssh tunnel to 7788 | `agentworldmaker.com`, shared password | `/publicview/`, no password |
 | What answers | the app | the app with the demo policy | Caddy `file_server` |
 | Can do | everything | build, launch, run, chat, snapshot | read, replay, download, press Refresh |
-| Sees | everything | everything | what the manifest lists |
+| Sees | everything | everything | everything except what the manifest excludes, as of the last refresh |
 
 ## 1. Pieces
 
 ```
 agentspace/mirror.py                       the publisher: cmd_publish(), cmd_show()
 zookeeper.py                               `mirror publish [--manifest PATH]`, `mirror show`, the menu's Mirror branch
-mirror/                                    the viewer: index.html, run.html, scenario.html, mirror.js, mirror.css
+mirror/                                    the viewer: index, run, world and scenario pages, mirror.js, mirror.css
 mirror_refresh.py                          the refresh trigger, 127.0.0.1:7787
 deploy/agentspace-mirror-refresh.service   its unit (user cc, MemoryMax=300M)
 mirror.toml.example                        a sample manifest
 runtime_pi/mirror_gate.py                  the gate
 
-/var/agentspace-ctl/mirror.toml            the manifest (operator-owned, like secrets.env)
+/var/agentspace-ctl/mirror.toml            the manifest (operator-owned, like secrets.env; optional)
 /srv/agentworldmaker-public/               the webroot: builds/<stamp>/ and a `current` symlink
 ```
 
 `mirror publish` and `mirror show` are ordinary library verbs, so they have a
 click command, a menu branch, and a generated form under Advanced tools. They
-are not in `DEMO_VERBS`: publishing is the operator's decision.
+are not in `DEMO_VERBS`: the demo cannot change what the mirror excludes.
 
 ## 2. The manifest
 
-See `mirror.toml.example`. Rules:
+Optional, and only exceptions live in it; see `mirror.toml.example`.
 
-- Only what is listed is published. `views` match the environment's world and
-  scenario view names exactly (`env watch` shows them); an unknown name is
-  reported and skipped, never guessed. Default: `feed`, `board`,
-  `announcements`.
-- `agents = true` adds one view per agent holding **what the agent said** and
-  nothing else. `thoughts = true` upgrades that to the whole session
-  (prompts, reasoning, tool calls) and adds the `thoughts`, `says`,
-  `messages` and `scratchpad` facets. Note that `feed` already contains the
-  text of private messages between agents; leave `feed` out to keep those off
-  the mirror.
-- `results = true` copies the bundle in `/opt/agentspace-results/<env>`, each
-  file checked against its sha256 as `results.download` does. No bundle, or a
-  file that fails its hash: the run is published without results.
-- `budget = true` does one OpenRouter lookup per publish for the run's spend.
-  Without it the mirror shows the limit only and the publisher makes no
-  network call at all.
-- **Name reuse.** A build records each run's container id. If the env name
-  later resolves to a different container, that run is refused with a message
-  and its last published copy stays, until you change the run's `id` or pin
-  `container = "<id prefix>"`. A new run under an old name is never published
-  by accident.
-- Removing a `[[run]]` and publishing removes its files from the next build.
-  What someone already downloaded is gone for good: publish only what you are
-  willing to distribute.
-- The scenario of every published run is published with it (description,
-  world briefing, role prompts, from the scenario directory).
+- `exclude = ["name", ...]` keeps environments off the mirror entirely (their
+  snapshots stay in the library, without the link to them).
+- `[env.<name>]` holds one environment's settings, all optional:
+  `title`, `blurb`; `views` (exact world and scenario view names as `env
+  watch` shows them; default every view except `raw`, which is whole audit
+  records; an unknown name is reported and skipped); `agents` (default true);
+  `thoughts` (default true: each agent's whole session plus its `thoughts`,
+  `says`, `messages` and `scratchpad` facets; false: only what the agent
+  said); `results` (default true); `budget` (default false: one OpenRouter
+  lookup per publish so the board shows spend; without it the publisher makes
+  no network call at all); `container` (publish only while the env name
+  resolves to that container id prefix).
+- An unknown setting or a wrong type is refused with the reason, so a typo
+  cannot silently leave something public.
+- Removing something from the mirror takes effect on the next publish; Caddy
+  serves without caching. What someone already downloaded is gone for good.
+- What is public by default is a lot: private messages between agents (in
+  `feed`), hidden game state (the scenarios' spoiler logs, results bundles),
+  every prompt, every agent's reasoning. None of it is a way into the box.
+  The thing to keep in mind is an experiment whose agents have network access
+  and could be told this URL.
 
 ## 3. What a publish does
 
-For each run: look up the env row, one `docker inspect` (container id,
-running, started), then **one** `docker exec`: a fixed Python one-liner
-(`mirror.EXTRACTOR`) that tars exactly the files the views read (the gateway
-logs, session files, scratchpads, `world.json`, and the files of the
-scenario's declared views) to stdout, plus a marker saying whether the gateway
-process is up. Nothing else ever runs in the container, and nothing the
-publisher does wakes, starts, stops or messages it.
+**Environments.** For each one not excluded: one `docker inspect` (container
+id, running, started). A running container gets **one** `docker exec`: a fixed
+Python one-liner (`mirror.EXTRACTOR`) that tars exactly the files the views
+read (the gateway logs, session files, scratchpads, `world.json`, and the
+files of the scenario's declared views) to stdout, plus a marker saying whether
+the gateway process is up. A stopped container gets `docker cp` of the same
+places, since nothing can run in it. Nothing else ever touches the container,
+and nothing the publisher does wakes, starts, stops or messages it.
 
-On the host the tar is read in memory, regular files only, 50 MB per run; it
-is never unpacked to disk, so a symlink an agent left in its scratch directory
-cannot point the publisher at a host file. The view tree is rebuilt with
-`logwatch.tree` (the same function `env watch` and the web UI use, minus
-docker), every line goes through the same parsers, and events are sorted by
-time. Each published event is built field by field from the `Event` dataclass
-(`ts`, `who`, `kind`, `text`), so a new private field in a log can never leak.
-The environment's OpenRouter key, which is readable inside the container, is
-replaced by `[redacted]` wherever a log quotes it.
+On the host each tar is read in memory, regular files only, 25 MB per run,
+four runs at a time; it is never unpacked to disk, so a symlink an agent left
+in its scratch directory cannot point the publisher at a host file. The view
+tree is rebuilt with `logwatch.tree` (what `env watch` and the web UI use,
+minus docker), every line goes through the same parsers, and events are sorted
+by time. Each published event is built field by field from the `Event`
+dataclass (`ts`, `who`, `kind`, `text`), so a new private field in a log can
+never leak. The environment's OpenRouter key, which is readable inside the
+container, is replaced by `[redacted]` in every view and results file.
+
+Work is only done for what changed. The extracted logs are hashed; a run whose
+hash, container and settings match the previous build has its views
+**hard-linked** from that build (builds are immutable, so links are safe and
+cost no disk). A stopped container already published with the same settings
+is final and is not read at all. A container that is gone, unreadable, over
+the cap, or not the pinned one keeps its last published copy, marked `stale`
+with the reason in its `coverage` line; if it was never published it is left
+out. An env name that now resolves to a new container is simply the new run.
+
+**Results.** If `/opt/agentspace-results/<env>` holds a generated bundle, its
+files are copied, each re-checked against its sha256 as `results.download`
+does, and every text file (`.md .txt .json .jsonl .log`, up to 5 MB) gets a
+static reader page rendered by the app's own `result_view` (the demo's results
+reader): the file is treated as untrusted there, HTML in it is escaped,
+Markdown runs with raw HTML off and `javascript:` links refused, images are
+not fetched. An unchanged bundle is hard-linked too. The mirror never
+generates a bundle; `results generate` stays an operator action.
+
+**The library.** `worlds.json` lists every world root and snapshot from the
+db: reference, scenario, parent and root, creation message, runtime, model,
+roster, flags, registry tag, notes, attachments, and the published
+environments launched from it. It carries nothing from the env rows, where the
+keys live. `scenarios/<name>.json` is written for every active scenario and
+every scenario a published run came from: description, world briefing, role
+prompts, README; all of it already public in the repository.
 
 ```
 builds/<stamp>/
-  index.html run.html scenario.html mirror.js mirror.css web.css
-  site.json                      the board: title, generated_at, min_refresh_seconds, runs, scenarios
-  runs/<id>/run.json             facts, lineage, roster, views, results
-  runs/<id>/views/<slug>.jsonl   one event per line
-  runs/<id>/views/<slug>.txt     the same as plain text
-  runs/<id>/results/<file>       the bundle, if published
-  runs/<id>/all.zip              every .txt plus the results
+  index.html run.html world.html scenario.html mirror.js mirror.css web.css
+  site.json                           the board and the library's summaries; written last
+  worlds.json                         every world root and snapshot
   scenarios/<name>.json
+  runs/<env>/run.json                 facts, lineage, roster, views, results
+  runs/<env>/views/<slug>.jsonl       one event per line; <slug>.txt the same as plain text
+  runs/<env>/results/<file>           the bundle; <file>.html its reader page
+  runs/<env>/all.zip                  every view's .txt plus the results files
 ```
 
 `site.json` is written last, then a temporary symlink is renamed over
 `current`, so a reader never sees a partial build; if anything raises, the new
 build directory is deleted and `current` is untouched. Builds beyond
-`keep_builds` are pruned. A run whose container is missing, stopped, refused
-or too large is **carried over** from the previous build and marked `stale`
-with the reason in its `coverage` line; a run that was never published and
-cannot be read is left out. A stopped environment therefore stays on the
-mirror if it was published while it ran, and cannot be added afterwards
-without starting it.
+`keep_builds` are pruned.
 
-A publish of three small runs takes under two seconds and about 1.4 MB.
+On this box (24 environments, 51 snapshots, 14 scenarios, seven results
+bundles) a first publish takes about 13 seconds and 95 MB; a refresh with
+little changed takes 3 to 4 seconds and under 1 MB, peaking near 125 MB of
+memory.
 
 ## 4. The refresh trigger
 
@@ -142,15 +168,24 @@ is its own. Every piece of data reaches the page through `textContent`; the
 gate greps for `innerHTML`. The site's Content-Security-Policy allows no
 inline script.
 
-- **index.html**: the board, live runs first, then dormant, then stopped;
-  the scenarios in play; "data as of" and Refresh.
-- **run.html?id=**: facts, the lineage strip (scenario → world root →
-  snapshots → this environment), agents, a tab per view. *Latest* shows the
-  last 500 events with "load earlier"; *Replay* plays the whole view paced by
-  its own timestamps at 1× to 30×, with pause, seek and "skip gaps over N
-  seconds". Filter, per-view `.txt` / `.jsonl` downloads, `all.zip`, and a
-  plain-text preview of results files.
-- **scenario.html?name=**: description, world briefing, role prompts, runs.
+- **index.html**: environments first (the board, live then dormant then
+  stopped, with a filter box), then worlds and snapshots, then scenarios;
+  "data as of" and Refresh.
+- **run.html?id=<env>**: facts, the lineage strip (scenario → world root →
+  snapshots → this environment, each linked), agents, a tab per view. *Latest*
+  shows the last 500 events with "load earlier"; *Replay* plays the whole view
+  paced by its own timestamps at 1× to 30×, with pause, seek and "skip gaps
+  over N seconds". Filter, per-view `.txt` / `.jsonl` downloads, `all.zip`,
+  and the results files, each with "read" (its reader page) and "download".
+- **world.html?id=<snapshot id>**: a world root or snapshot: facts, the
+  environments launched from it, the whole snapshot tree of its world, the
+  roster, notes and attachments.
+- **scenario.html?name=**: description, world briefing, role prompts, README,
+  its environments and its worlds.
+
+The reader pages under `results/` are the one place HTML is built from data,
+and it is built by the publisher with the app's escaping renderer, not in the
+browser.
 
 ## 6. Caddy
 
@@ -191,10 +226,19 @@ job instead. The webroot is owned by `cc`, directories 0755 and files 0644.
 
 - A visitor can read files and ask for a republish. Nothing they send is ever
   an argument to anything.
-- The publisher's inputs are the manifest, which only the operator edits, and
-  the containers it names.
-- Disclosure is exactly the manifest. The mirror carries no keys, no host
-  names, and container ids only as a 12-character prefix.
+- The publisher's inputs are the manifest, the db, the repo's scenarios, the
+  results directory, and the containers' log files. Names that become file
+  names or URL parameters (env names, snapshot ids, scenario names, results
+  file names) are shape-checked first. Log content is only ever parsed as
+  JSON lines and written back out as JSON or escaped HTML; nothing from a
+  container is executed, unpacked or used as a path on the host.
+- A demo password holder can put text on the public site (an environment
+  name, a post, a note). That is accepted: the password goes to trusted
+  people. What they cannot do through the mirror is reach anything: it adds no
+  route into the app.
+- The mirror carries no keys (env rows are never published; the env's key is
+  redacted from logs and results), no host names, and container ids only as a
+  12-character prefix.
 - The cost of a hostile crowd is static file serving plus one publish per
   `min_refresh_seconds`. The trigger has its own memory cap; the app, the
   demo and the tunnel share nothing with it.
@@ -203,11 +247,13 @@ job instead. The webroot is owned by `cc`, directories 0755 and files 0644.
 
 ## 8. Tests
 
-`python3 runtime_pi/mirror_gate.py` (52 checks): the publisher and the trigger against a
-fresh state directory, a fixture env row and a fixture log tree in place of
-the container. No docker, no tokens, a few seconds. It covers manifest
-validation, view derivation against `logwatch` event for event, the
-four-field event, key redaction, the `thoughts` switch, the atomic swap, stale
-carry-over, name reuse and pinning, results hashes, unpublish and pruning, the
-trigger's debounce and refusals, and the viewer's no-HTML rule. The web gate
-checks that the demo cannot run `mirror publish`.
+`python3 runtime_pi/mirror_gate.py` (62 checks): the publisher and the
+trigger against a fresh state directory, a fixture env row and a fixture log
+tree in place of the container. No docker, no tokens, a few seconds. It covers
+manifest validation, publish-by-default, view derivation against `logwatch`
+event for event, the four-field event, key redaction, the library, per-env
+settings and `exclude`, hard-linked reuse of unchanged runs, the atomic swap,
+gone / unreadable / stopped / replaced / pinned containers, results hashes and
+the escaped reader pages, pruning, the trigger's debounce and refusals, and
+the viewer's no-HTML rule. The web gate checks that the demo cannot run
+`mirror publish`.

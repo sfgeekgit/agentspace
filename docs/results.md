@@ -103,9 +103,11 @@ checkout with an `origin` remote. On this host it is
 explicitly refused. On the password demo, holders of the password can open
 the Results page, read completion status, preview files and download them
 (`results show` is in the demo's verb allowlist); generating and publishing
-require operator access. The no-password mirror carries a run's bundle only
-when its manifest entry says `results = true`, each file re-checked against
-its sha256 (`mirror.md`).
+require operator access. The no-password mirror publishes every generated
+bundle by default (each file re-checked against its sha256, with a static
+reader page per text file rendered by the same `result_view`), unless the
+mirror's manifest sets `results = false` for that environment (`mirror.md`).
+It shows the last generated bundle; it never generates one.
 
 The upload button publishes the **last generated bundle**, including partial
 bundles if chosen. Generation never publishes automatically. Publishing uses
