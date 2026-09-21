@@ -100,8 +100,12 @@ Default local results directory: `/opt/agentspace-results`; override with
 `AGENTSPACE_RESULTS_DIR` in the server environment. It must be a separate Git
 checkout with an `origin` remote. On this host it is
 `git@github.com:sfgeekgit/agentspace_results.git`. Core-repository publication is
-explicitly refused. Results actions/downloads require operator access rather
-than the public demo's restricted controls.
+explicitly refused. On the password demo, holders of the password can open
+the Results page, read completion status, preview files and download them
+(`results show` is in the demo's verb allowlist); generating and publishing
+require operator access. The no-password mirror carries a run's bundle only
+when its manifest entry says `results = true`, each file re-checked against
+its sha256 (`mirror.md`).
 
 The upload button publishes the **last generated bundle**, including partial
 bundles if chosen. Generation never publishes automatically. Publishing uses

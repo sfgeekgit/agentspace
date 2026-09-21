@@ -105,10 +105,10 @@ only the reverse proxy can set. `web.py`:
 DEMO_HEADER = "X-Agentspace-Public"   # Caddy sets it on every demo request; the tunnel never has it
 DEMO_VERBS  = {...}                   # the verbs the demo may run (world build, snap fork, snap take, note,
                                       #   show, tree, list; env start/stop/sleep/kick/post/chat/logs/list/show;
-                                      #   budget show; scen list)
+                                      #   budget show; scen list; results show)
 DEMO_DROP   = {"attach", "souls", "host", "allow_key_leak"}   # fields that name server paths or other hosts
 DEMO_MAX_BUDGET = 2.0                 # dollars per launch
-DEMO_MAX_ENVS   = 15                  # live containers, all of them, before launches are refused
+DEMO_MAX_ENVS   = 25                  # live containers, all of them, before launches are refused
 ```
 
 `demo_denied(verb, fields)` returns why the demo may not run a verb with
@@ -130,7 +130,8 @@ What stays operator-only, and why: anything that names a file or host on
 the server (`snap attach`, `snap take --attach`, `snap extract`, `snap fork
 --souls`, `--host`), the registry (`snap pull`, `snap push`), `env kill`
 (no ownership yet, so nobody can delete the featured environments), `budget
-topup`, `scen deactivate`, `scen env build`, and the terminal-only verbs.
+topup`, `scen deactivate`, `scen env build`, `mirror publish` (what goes on
+the no-password mirror is the operator's decision), and the terminal-only verbs.
 A fork is also refused for a snapshot whose `feature_flags` request
 `fs_isolation=sandbox`, because that mode mounts the docker socket. The
 policy resolves the snapshot with the launcher's own resolver, so every
@@ -197,6 +198,11 @@ demo.example.com {
 }
 ```
 
+On this deployment the same site block also carries the public mirror's
+`/publicview/` handlers, and `basic_auth` is scoped with a matcher
+(`@demo not path /publicview /publicview/*`) so the password covers
+everything except the mirror. Those lines are in `mirror.md` §6.
+
 Never proxy the app to the public without the header: without the demo
 policy, `POST /run/*` is a shell on the box (several verbs take host paths,
 and `cc` is in the docker group).
@@ -216,6 +222,9 @@ tunnel keeps working.
   directory with a fixture child in place of `zookeeper.py`; checks every
   verb has a form, argv rules, run lifetimes, watch, chat, wizard, models,
   the workspace pages, and the demo policy. About ten seconds.
+- `python3 runtime_pi/mirror_gate.py`: the public mirror's publisher and refresh
+  trigger against fixtures, no docker. See `mirror.md` §8. The web gate itself
+  checks that the demo refuses `mirror publish`.
 - `python3 scripts/check_frontends.py`: every library `cmd_*` is wired into
   the CLI, the menu, and the web (a form or a `SPECIAL` entry).
 - `scripts/check_web_workspace.cjs`: a Playwright browser pass over the pages

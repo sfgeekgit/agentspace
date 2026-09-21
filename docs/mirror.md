@@ -111,7 +111,7 @@ cannot be read is left out. A stopped environment therefore stays on the
 mirror if it was published while it ran, and cannot be added afterwards
 without starting it.
 
-A publish of five runs takes about two seconds.
+A publish of three small runs takes under two seconds and about 1.4 MB.
 
 ## 4. The refresh trigger
 
@@ -203,7 +203,7 @@ job instead. The webroot is owned by `cc`, directories 0755 and files 0644.
 
 ## 8. Tests
 
-`python3 runtime_pi/mirror_gate.py`: the publisher and the trigger against a
+`python3 runtime_pi/mirror_gate.py` (52 checks): the publisher and the trigger against a
 fresh state directory, a fixture env row and a fixture log tree in place of
 the container. No docker, no tokens, a few seconds. It covers manifest
 validation, view derivation against `logwatch` event for event, the

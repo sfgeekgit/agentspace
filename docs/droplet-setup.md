@@ -156,4 +156,8 @@ See the project repo for:
 - Python control CLI and menu (`zookeeper.py`; `agentspace_cli.md`)
 - The web UI service (`deploy/agentspace-web.service`) and, for a public demo,
   the Caddy block and demo policy in `web_ui.md`
+- The no-password public mirror: the manifest, the webroot
+  (`/srv/agentworldmaker-public`, owned by the CLI's user, world-readable), the
+  refresh trigger (`deploy/agentspace-mirror-refresh.service`) and its Caddy
+  lines, all in `mirror.md`
 - Scenario definitions, personas, modules (`HOW_TO_MAKE_WORLDS_START_HERE.md`)

@@ -66,9 +66,10 @@ anything not written to a file should be assumed forgettable.
   Dockerfile                      ← base runtime: OS + Node + OpenClaw
   zookeeper.py                    ← control CLI + interactive menu
   web.py, web_views.py, web.js, web.css   ← browser front end (web_ui.md)
+  mirror/, mirror_refresh.py      ← the no-password public mirror: static viewer + refresh trigger (mirror.md)
   agentspace/                     ← the library every front end calls (agentspace_cli.md, "Package layout")
   runtime_pi/                     ← the PI runtime that runs inside env containers (runtime_pi.md)
-  deploy/                         ← systemd unit for the web service
+  deploy/                         ← systemd units: the web service, the mirror's refresh trigger
   scripts/                        ← front-end coverage check, scenario build helper
   scenarios/
     <scenario-name>/
@@ -342,7 +343,7 @@ The control droplet's SQLite is rebuildable from OpenRouter (list keys) + Docker
 ## Out of Scope for MVP
 
 - Agent-level details (number of agents per env, exact inter-agent comms protocol, scenario design, experimental design).
-- Multi-user accounts in the web UI (the web UI itself exists: `web_ui.md`; its public demo is a shared password plus a server-side allowlist, not per-user access).
+- Multi-user accounts in the web UI (the web UI itself exists: `web_ui.md`; its public demo is a shared password plus a server-side allowlist, not per-user access; the no-password tier is a static mirror, `mirror.md`, with no accounts either).
 - Multi-user / team support.
 - Local GPU / open-source model integration.
 - Cross-host orchestration beyond "control SSHs into host and runs `docker`."

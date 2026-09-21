@@ -392,8 +392,9 @@ Everything under `/data/gateway` (mode 0700 — unreachable by agents):
   `send`/`post_public`/`submit`/`dispatch_announce`/`dispatch_wake` also carry their
   CONTENT (`text`/`action`/`payload`, capped at 2000 chars) so a whole game
   is reconstructable from this one file — it feeds the `env watch` spectator
-  feed (§5b). Content stays operator-only: the file is agent-unreachable and
-  `dispatch_activity` projects a fixed metadata field list.
+  feed (§5b). Content stays out of agents' reach: the file is agent-unreachable and
+  `dispatch_activity` projects a fixed metadata field list. It reaches the public
+  only if the operator lists the `feed` view for that run in the mirror's manifest.
 - `public.jsonl` — the public chat, append-only (dispatcher announcements are from `dispatch`).
 - `policy.json` — current live policy (dispatcher phase switches rewrite it).
 - `budget.jsonl` — per-turn model usage/cost per agent (via `log_usage`).
@@ -446,6 +447,10 @@ Scens may DECLARE extra views (`[[watch]]` in scenario.toml — see
 `HOW_TO_MAKE_WORLDS_START_HERE.md`); mafia ships "game log (dispatcher, spoilers)".
 The web watch page (`/watch/<env>`, `web_ui.md` §4) shows the same views in a
 browser, live or replayed, with the per-env action buttons and agent chat.
+The public mirror (`mirror.md`) publishes operator-chosen views as static
+files: it pulls the same files out in one exec, builds the same view tree
+with `logwatch.tree()` (the docker-free half of `view_tree`) and runs the
+same parsers on the host, so a view reads the same in all four places.
 
 Implementation (`agentspace/logwatch.py` + `watch_tui.py`): one tiny streamer
 loop runs in-container via docker exec and re-globs the view's file patterns
@@ -501,12 +506,13 @@ what you touched.**
 | Key | `python3 runtime_pi/key_gate.py` | keys-never-in-snaps invariant with a FAKE key: tmpfs delivery, committed image clean in fs + `.Config`, scanner positive control (host-side, ~15s) | key delivery/injection, container start paths, take/push scanner |
 | Front ends | `python3 scripts/check_frontends.py` | every library `cmd_*` verb is wired into both the click CLI and the menu in zookeeper.py, and every click leaf has a web form or a `web.SPECIAL` entry (instant) | zookeeper.py, any `cmd_*`, web.py |
 | Web | `python3 runtime_pi/web_gate.py` | every verb has a web form; argv rules; runs stream, survive or die as specified; watch, chat, wizard, models and workspace routes answer against a stopped env; the demo policy refuses and renders as specified, including alternate snapshot spellings, agent ids, persona names and the container cap (host-side, ~10s) | web.py, web_views.py, web.js, web_gate fixtures |
+| Mirror | `python3 runtime_pi/mirror_gate.py` | the public mirror's publisher and refresh trigger against a fixture env row and log tree, no docker: manifest validation, views match logwatch event for event, four-field events, key redaction, the `thoughts` switch, atomic swap, stale carry-over, env-name reuse, results hashes, unpublish, the trigger's debounce and refusals, no HTML from data in the viewer (host-side, a few seconds; not in run_engine_gates.sh) | agentspace/mirror.py, logwatch.py views or parsers, mirror/, mirror_refresh.py |
 | Results | `python3 runtime_pi/results_gate.py` | results generate/show/publish against fixtures: bundle manifest and hashes, completion status, publication to a local bare repo; no model calls (not in run_engine_gates.sh) | agentspace/results.py, result_view.py, scenario results adapters |
 | Prompt capture | `docker run --rm --network none -v /opt/agentspace-ctl:/repo:ro pi-world:base python3 /repo/runtime_pi/prompt_capture_gate.py` | real installed Pi + agentd with a local fake provider: system/developer prompts are recorded as `results.md` describes; no network (not in run_engine_gates.sh) | runtime_pi/prompt_capture.mjs, agentd.py |
 
 `runtime_pi/run_engine_gates.sh` runs the first eight (a few minutes) — for
 gateway/dispatchlib/builder-wide changes; otherwise run just the relevant row.
-The results and prompt-capture gates run by hand, as `results.md` shows.
+The results and prompt-capture gates run by hand, as `results.md` shows; the mirror gate by hand too.
 
 Checklist details: real `su` credentials prove PM round-trip + auto-wake + no
 ack ping-pong; public chat wakes nobody; 0700 homes hold; gateway state
