@@ -510,7 +510,7 @@ def tail_gateway_log(host: str, container: str, follow: bool = False):
 
 def tail_agent_log(host: str, container: str, agent_id: str, follow: bool = False):
     """Tail the most recent session JSONL for one agent."""
-    sessions_dir = f"/data/openclaw/agents/{agent_id}/sessions"
+    sessions_dir = f"/data/openclaw/agents/{shlex.quote(agent_id)}/sessions"
     cmd = (
         f"latest=$(ls -t {sessions_dir}/*.jsonl 2>/dev/null | head -n1); "
         f"if [ -n \"$latest\" ]; then "

@@ -74,14 +74,16 @@ def demo_denied(verb, fields=None):
             budget = float(f.get("budget_usd") or "nan")
         except ValueError:
             budget = float("nan")
-        if not budget <= DEMO_MAX_BUDGET:                # blank too: the CLI default is not capped
-            return f"demo launches need a budget of ${DEMO_MAX_BUDGET:.0f} or less"
-        if sum(e["status"] in ("active", "dormant") for e in db.list_envs()) >= DEMO_MAX_ENVS:
-            return "the demo box is full: sleep or stop an environment first"
-        ref = f.get("snap_ref", "")
-        snap = (db.get_snap_by_ref(*ref.split(":", 1)) if ":" in ref
-                else next(iter(db.get_snap_by_id_prefix(ref)), None) if ref else None)
-        if ((snap or {}).get("feature_flags") or {}).get("fs_isolation") == "sandbox":
+        if not 0 < budget <= DEMO_MAX_BUDGET:            # blank too: the CLI default is not capped
+            return f"demo launches need a budget above $0 and at most ${DEMO_MAX_BUDGET:.0f}"
+        if sum(e["status"] in ("active", "dormant", "running") for e in db.list_envs()) >= DEMO_MAX_ENVS:
+            return "the demo box is full: sleep or stop an environment first"   # 'running' = just forked
+        from agentspace import snap as snap_mod            # the launcher's own resolver: every spelling, fail closed
+        try:
+            snap = snap_mod.resolve_snap_ref(f.get("snap_ref", ""))
+        except click.ClickException as err:
+            return f"unknown snapshot: {err.format_message()}"
+        if (snap.get("feature_flags") or {}).get("fs_isolation") == "sandbox":
             return f"sandbox-mode snapshots: {NEEDS_OPERATOR}"
     return None
 

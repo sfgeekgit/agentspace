@@ -457,10 +457,10 @@ def tail_gateway_log(host, container, follow: bool = False):
 
 def tail_agent_log(host, container, agent_id, follow: bool = False):
     """The agent's newest session JSONL (falls back to agentd.log pre-birth)."""
-    sd = f"/agents/{agent_id}/sessions"
+    sd = f"/agents/{shlex.quote(agent_id)}/sessions"
     cmd = (
         f"f=$(ls -t {sd}/*.jsonl 2>/dev/null | head -n1); "
-        f"[ -z \"$f\" ] && f=/agents/{agent_id}/agentd.log; "
+        f"[ -z \"$f\" ] && f=/agents/{shlex.quote(agent_id)}/agentd.log; "
         f"if [ -f \"$f\" ]; then tail {'-f ' if follow else ''}-n 200 \"$f\"; "
         f"else echo 'no logs yet for {shlex.quote(agent_id)}'; fi"
     )

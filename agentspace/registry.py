@@ -349,8 +349,10 @@ def _persona_summary(text: str) -> str:
 def load_persona(short_name: str) -> dict[str, Any]:
     """Load one persona by short_name (= filename stem). Raises RegistryError if
     missing. `text` is the full soul body baked into SOUL.md at build time."""
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", short_name):   # a stem, never a path
+        raise RegistryError(f"bad persona name: {short_name!r}")
     path = PERSONAS_DIR / f"{short_name}.md"
-    if not path.is_file():
+    if not path.is_file() or path.resolve().parent != PERSONAS_DIR.resolve():
         raise RegistryError(f"no persona: personas/{short_name}.md")
     text = path.read_text(encoding="utf-8")
     return {

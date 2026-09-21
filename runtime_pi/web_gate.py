@@ -269,6 +269,35 @@ check("demo: launch page caps the budget and disables host and souls", 'max="2"'
 check("tunnel: no header → nothing disabled, no notice",
       "demo-off" not in http("GET", "/tools")[1] and "shared demo" not in http("GET", "/")[1] and "data-demo" not in http("GET", "/watch/gate_env")[1])
 
+# The demo-tier fixes of 2026-09-21: sandbox snapshots under every spelling, unknown refs, the cap,
+# negative budgets, agent ids that reach a shell, persona names that leave personas/.
+sandbox = {**base, "snap_id": "5a4db0c5deadbeef5a4db0c5deadbeef", "version": "3.0",
+           "ghcr_tag": "ghcr.io/sfgeekgit/agentspace:snap-gate-3.0", "feature_flags": {"fs_isolation": "sandbox"}}
+db.upsert_snap(sandbox)
+for ref in ("gate:3.0", "5a4db0c5", sandbox["ghcr_tag"], "snap-gate-3.0", "no_such:9.9", ""):
+    st, out = http("POST", "/run/snap/fork", f"snap_ref={ref}&new_env_name=d2&budget_usd=1", headers=P)
+    check(f"demo: sandbox or unknown snapshot refused as {ref!r}", st == 403, f"{st} {out[:60]}")
+check("demo: a negative budget is refused", http("POST", "/run/snap/fork", "snap_ref=gate:1.0&new_env_name=d2&budget_usd=-5", headers=P)[0] == 403)
+for i in range(web.DEMO_MAX_ENVS):
+    db.upsert_env({"name": f"cap{i}", "snap_id": "deadbeef", "container_id": None, "openrouter_key": None,
+                   "budget_usd": 1, "host": "localhost", "status": "running", "created_at": "2026-09-21T00:00:00Z"})
+check("demo: just-forked ('running') envs count toward the cap",
+      http("POST", "/run/snap/fork", "snap_ref=gate:1.0&new_env_name=d3&budget_usd=1", headers=P)[0] == 403)
+for i in range(web.DEMO_MAX_ENVS):
+    db.delete_env(f"cap{i}")
+for bad in ("a1;id", "$(id)", "../a1", "a1 b"):
+    try:
+        web.env_mod.cmd_logs("gate_env", agent=bad); ok = False
+    except Exception as err:
+        ok = "invalid agent id" in str(err)
+    check(f"env logs: agent id {bad!r} rejected before any command", ok)
+for bad in ("../README", "/etc/passwd", "a/b", ".hidden"):
+    try:
+        web.registry.load_persona(bad); ok = False
+    except web.registry.RegistryError:
+        ok = True
+    check(f"persona name {bad!r} refused", ok)
+
 # 13. the front-end checker
 check("scripts/check_frontends.py exits 0",
       subprocess.run([sys.executable, str(web.REPO / "scripts/check_frontends.py")], capture_output=True).returncode == 0)

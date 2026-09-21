@@ -433,6 +433,8 @@ def cmd_logs(
                 include_gateway=everything, follow=follow_,
             )
         if agent:
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", agent):   # it is spliced into a shell line in-container
+                raise click.ClickException(f"invalid agent id {agent!r}")
             return rt.tail_agent_log(host, name, agent, follow=follow_)
         return rt.tail_gateway_log(host, name, follow=follow_)
 
