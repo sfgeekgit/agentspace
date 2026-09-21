@@ -269,11 +269,13 @@ class ResultsGate(unittest.TestCase):
                 self.assertEqual(response.headers["Content-Type"], "application/zip")
                 self.assertIn("attachment", response.headers["Content-Disposition"])
                 self.assertTrue(zipfile.is_zipfile(io.BytesIO(response.read())))
-                for suffix in ("", "/status", "/files/all.zip", "/files/agent_prompts.md", "/view/agent_prompts.md", "/view/state.json?full=1"):
+                # The demo (password holders) may read results; generating and publishing stay operator-only.
+                for suffix in ("", "/status", "/files/all.zip", "/view/transcript.md"):
                     req = urllib.request.Request(base+"/results/run1"+suffix, headers={"X-Agentspace-Public": "1"})
-                    with self.assertRaises(urllib.error.HTTPError) as error:
-                        urllib.request.urlopen(req)
-                    self.assertEqual(error.exception.code, 403)
+                    self.assertEqual(urllib.request.urlopen(req).status, 200)
+                demo_page = urllib.request.urlopen(urllib.request.Request(base+"/results/run1", headers={"X-Agentspace-Public": "1"})).read().decode()
+                self.assertNotIn('data-action="results generate"', demo_page)
+                self.assertNotIn('data-action="results publish"', demo_page)
                 with self.assertRaises(urllib.error.HTTPError) as error:
                     urllib.request.urlopen(base+"/results/run1/files/%2e%2e%2fsecret")
                 self.assertEqual(error.exception.code, 400)
