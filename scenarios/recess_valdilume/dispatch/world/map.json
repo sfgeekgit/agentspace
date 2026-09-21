@@ -1,0 +1,466 @@
+{
+  "title": "An afternoon in Valdilume",
+  "start": "piazza",
+  "opening": "The bus has left you on Valdilume's little piazza, with the afternoon to yourself. Slate roofs step up toward wooded foothills; distant higher peaks show between television aerials. A café door stands open. Beside it, someone is slowly teaching a bicycle bell to ring less indignantly. Water runs below the narrow lane. You have a charged phone, a pocket notebook and pencil, a light jacket, and enough spending money for an ordinary day. You can go where you like.",
+  "cap_ending": "The streetlights come on above Valdilume. You leave the village to its evening, taking the afternoon with you.",
+  "nodes": {
+    "piazza": {
+      "name": "Piazza del Tiglio",
+      "desc": "A small paved square around a lime tree and a drinking fountain. Apartment balconies carry laundry and satellite dishes. The café faces the bicycle workshop; a lane drops toward running water.",
+      "exits": {
+        "to the bus": "bus_stop",
+        "into the bar": "cafe",
+        "under the arches": "arcade",
+        "down the steps": "alley",
+        "to the church": "church_steps",
+        "into the hardware shop": "hardware"
+      }
+    },
+    "bus_stop": {
+      "name": "Bus shelter",
+      "desc": "A glass shelter with a local bus timetable and a working departure display. A return service connects to the rail station down the valley. You can wait here or choose to board and leave; merely arriving does not end the afternoon.",
+      "exits": {
+        "to the square": "piazza",
+        "to the footbridge": "stream_bridge"
+      }
+    },
+    "cafe": {
+      "name": "Bar del Tiglio",
+      "desc": "An espresso machine hisses behind a zinc counter. A handwritten cake label and a contactless card reader sit together. Daylight falls across two empty tables and a box of mismatched coasters.",
+      "exits": {
+        "out": "piazza",
+        "through the back door": "cafe_courtyard"
+      }
+    },
+    "arcade": {
+      "name": "Short arcade",
+      "desc": "Three shallow arches shelter bicycles, a parcel locker and a noticeboard with ordinary village notices. The workshop door is open beyond the last arch.",
+      "exits": {
+        "to the square": "piazza",
+        "up the side lane": "upper_lane",
+        "into the workshop": "cycle_shop",
+        "through the community doorway": "community_hall"
+      }
+    },
+    "alley": {
+      "name": "Vicolo delle Lastre",
+      "desc": "A lane of irregular stone slabs between inhabited houses. A television murmurs through an upstairs window. A sloping passage reaches the stream; a stair returns to the square.",
+      "exits": {
+        "up to the square": "piazza",
+        "to the water": "stream_bridge",
+        "through the courtyard gate": "cafe_courtyard",
+        "under the slate roof": "washhouse"
+      }
+    },
+    "stream_bridge": {
+      "name": "Footbridge over the Rio",
+      "desc": "A low footbridge crosses clear running water, protected by sound metal railings. The water amplifies tiny sounds. A flat path follows the bank; the bus shelter is visible through the trees.",
+      "exits": {
+        "up the lane": "alley",
+        "along the level path": "bus_stop",
+        "up to the washhouse": "washhouse",
+        "along the bank": "stream_path"
+      }
+    },
+    "upper_lane": {
+      "name": "Via Alta",
+      "desc": "A residential lane above the square, with recycling bins, climbing roses and an electric scooter plugged into a garage. The woods begin above the last roofs.",
+      "exits": {
+        "down to the church": "church_steps",
+        "down the side lane": "arcade",
+        "up the shallow steps": "lower_terrace",
+        "into the library": "library",
+        "past the last houses": "allotments",
+        "up the return path": "upper_bench"
+      }
+    },
+    "church_steps": {
+      "name": "San Lorenzo steps",
+      "desc": "Broad shallow steps beside a modest parish church. The doors stand open to a quiet public interior; no ceremony is underway. Stone seats catch afternoon sun and the distant sound of a motorbike.",
+      "exits": {
+        "to the square": "piazza",
+        "up the lane": "upper_lane",
+        "up to the terrace": "lower_terrace"
+      }
+    },
+    "cycle_shop": {
+      "name": "Enzo’s cycle workshop",
+      "desc": "A modern workstand holds an elderly town bicycle. An electric cargo bike waits beside chargers and labelled tool drawers. A box of clean discarded reflectors is marked for anyone to use.",
+      "exits": {
+        "out": "arcade"
+      }
+    },
+    "cafe_courtyard": {
+      "name": "Bar courtyard",
+      "desc": "Three tables occupy a courtyard no bigger than a room. A lemon tree grows in a wheeled pot; its shelter for winter is folded beside it. Two doors belong to private apartments.",
+      "exits": {
+        "into the bar": "cafe",
+        "through the side gate": "alley"
+      }
+    },
+    "washhouse": {
+      "name": "Old washhouse",
+      "desc": "A restored communal washing trough stands under a slate roof. Water still runs through it. The wide dry rim is a comfortable place for a notebook, an improvised percussion experiment or a quiet pause.",
+      "exits": {
+        "back to the lane": "alley",
+        "along the channel": "stream_bridge",
+        "to the repair room": "sound_room"
+      }
+    },
+    "lower_terrace": {
+      "name": "Terrace above the roofs",
+      "desc": "A public terrace reached by shallow steps. Television aerials and chimneys frame the valley. There is a bench, an empty plant pot and no sign telling you what to appreciate.",
+      "exits": {
+        "down the steps": "upper_lane",
+        "down by the church": "church_steps",
+        "up to the picnic wall": "picnic_wall"
+      }
+    },
+    "library": {
+      "name": "Village library",
+      "desc": "A small municipal lending room with novels, a printer and public Wi-Fi. A computer displays a perfectly ordinary opening-hours spreadsheet. A cabinet holds the catalogue for a tiny local collection.",
+      "exits": {
+        "out": "upper_lane",
+        "through the garden door": "reading_garden",
+        "to the collection room": "archive"
+      }
+    },
+    "reading_garden": {
+      "name": "Library reading garden",
+      "desc": "Folding chairs stand between pots of rosemary. A low wall separates this open garden from the stream path. Two spare chairs can be carried into the shade and brought back.",
+      "exits": {
+        "inside": "library",
+        "through the low gate": "stream_path",
+        "up to the plots": "allotments"
+      }
+    },
+    "sound_room": {
+      "name": "Samir’s repair room",
+      "desc": "A street-level room for mending radios, speakers and small electronics. A multimeter and a laptop sit on a tidy bench. Through the open window the washhouse water sounds unexpectedly loud.",
+      "exits": {
+        "to the washhouse": "washhouse",
+        "out by the stream": "stream_path"
+      }
+    },
+    "stream_path": {
+      "name": "Streamside path",
+      "desc": "A level footpath links the old lanes to the community rooms. Moving water, shoes on gravel and a distant ventilation fan make different rhythms. It is an ordinary safe public path.",
+      "exits": {
+        "up to the garden": "reading_garden",
+        "along the water": "stream_bridge",
+        "into the repair room": "sound_room",
+        "up to the forecourt": "hall_forecourt",
+        "past the bend": "mill_lane"
+      }
+    },
+    "archive": {
+      "name": "Local collection room",
+      "desc": "A dry little room off the library with labelled photographs, loaned objects and a public listening station. Nothing here is an undiscovered treasure; the pleasure is in looking closely.",
+      "exits": {
+        "back to the library": "library"
+      },
+      "gate": {
+        "flag": "archive_open"
+      },
+      "blocked": "The local collection room is closed; Marta keeps its key in the library."
+    },
+    "allotments": {
+      "name": "Shared garden plots",
+      "desc": "Several tiny growing plots stand above the inhabited lanes. A shared hose winds between bean poles and late tomatoes. Two unclaimed raised beds have been left available for experiments, with a sign asking people to leave paths clear.",
+      "exits": {
+        "down to the lane": "upper_lane",
+        "into the greenhouse": "greenhouse",
+        "through the small public gate": "reading_garden",
+        "onto the woodland path": "chestnut_path",
+        "down to the bocce court": "bocce_court",
+        "down to the meadow": "terraced_meadow"
+      }
+    },
+    "greenhouse": {
+      "name": "Patchwork greenhouse",
+      "desc": "A sound greenhouse assembled from mismatched salvaged windows. Labels show plant names and sowing dates. A public workbench holds spare pots; somebody has drawn faces on the least successful seedlings.",
+      "exits": {
+        "out": "allotments"
+      }
+    },
+    "chestnut_path": {
+      "name": "Chestnut path",
+      "desc": "A broad easy path climbs gently beneath chestnut trees. Fallen burrs sit beside the track, not across it. The village remains close below; the path is for ordinary shoes and unhurried walking.",
+      "exits": {
+        "down to the gardens": "allotments",
+        "toward the picnic table": "picnic_wall",
+        "up to the low ridge": "ridge_path"
+      }
+    },
+    "picnic_wall": {
+      "name": "Long picnic wall",
+      "desc": "A low broad wall beside a public picnic table. A few roofs show through leaves. A refillable water bottle has a taped lost-property label; a recycling bin stands at the far end.",
+      "exits": {
+        "back under the chestnuts": "chestnut_path",
+        "down the terrace steps": "lower_terrace",
+        "down toward the meadow": "terraced_meadow",
+        "up to the shelter": "shelter"
+      }
+    },
+    "community_hall": {
+      "name": "Circolo hall",
+      "desc": "A modest community hall with a kettle, stacked chairs, accessible toilets and a modern noticeboard. It hosts whatever residents arrange; no event is compulsory today. A short corridor leads to the little screening room.",
+      "exits": {
+        "out under the arches": "arcade",
+        "through the side door": "hall_forecourt",
+        "along the corridor": "cinema"
+      }
+    },
+    "hall_forecourt": {
+      "name": "Circolo forecourt",
+      "desc": "An open paved patch beside the hall. A faded hopscotch grid competes with markings for a game nobody has named. A gate connects the stream path and the bocce court.",
+      "exits": {
+        "inside": "community_hall",
+        "through the river gate": "stream_path",
+        "to the court": "bocce_court"
+      }
+    },
+    "bocce_court": {
+      "name": "Bocce court",
+      "desc": "A level gravel court under mesh shade, with a painted bench and a handwritten reminder to put equipment away. A set of practice balls is available beside the bench. Watching is as acceptable as playing.",
+      "exits": {
+        "back to the forecourt": "hall_forecourt",
+        "up the garden steps": "allotments"
+      }
+    },
+    "cinema": {
+      "name": "Little screening room",
+      "desc": "Thirty mismatched seats face a white screen. A modern digital projector sits beyond a small rear window; it is disconnected. This is a room where neighbours occasionally watch films, not an abandoned cinema.",
+      "exits": {
+        "to the hall": "community_hall",
+        "through the rear equipment door": "projection_booth"
+      }
+    },
+    "projection_booth": {
+      "name": "Projection cupboard",
+      "desc": "A small ventilated equipment room behind the screening room. The digital projector has a labelled low-voltage power socket; its proper adapter is missing. The player need not touch mains wiring.",
+      "exits": {
+        "back to the seats": "cinema"
+      },
+      "gate": {
+        "flag": "booth_open"
+      },
+      "blocked": "The equipment cupboard is locked; Ada looks after its key."
+    },
+    "hardware": {
+      "name": "Ferramenta counter",
+      "desc": "A tiny hardware shop with labelled drawers, phone chargers, door handles and seed trays. A printed card explains that repairs sometimes take longer than buying replacements. The rear yard is open while someone is here.",
+      "exits": {
+        "out to the square": "piazza",
+        "through the back": "repair_yard"
+      }
+    },
+    "repair_yard": {
+      "name": "Hardware repair yard",
+      "desc": "A sheltered yard behind the shop holds clean offcuts and a table for modest repairs. A discarded flat-pack shelf is available as scrap. Customer appliances and the electrical cupboard are clearly separate.",
+      "exits": {
+        "inside": "hardware",
+        "out to the mill lane": "mill_lane"
+      }
+    },
+    "mill_lane": {
+      "name": "Via del Mulino",
+      "desc": "A short paved lane beside the stream. The old mill building now has a fibre internet junction box and a shared-workspace sign. Its millwheel no longer turns and nobody is trying to make it turn today.",
+      "exits": {
+        "into the yard": "repair_yard",
+        "back along the stream": "stream_path",
+        "into the former mill": "old_mill",
+        "up the meadow path": "terraced_meadow"
+      }
+    },
+    "old_mill": {
+      "name": "Old mill common room",
+      "desc": "The mill’s ground floor is a public common room with working outlets, a kettle and tables. Above a glass panel, the preserved gearing can be seen without entering the machinery. A notice offers the room for small informal gatherings.",
+      "exits": {
+        "out": "mill_lane"
+      }
+    },
+    "terraced_meadow": {
+      "name": "Lower meadow terrace",
+      "desc": "A public grassy terrace between retaining walls, reached from the mill lane by a gentle path. A few old fruit trees provide shade. Village roofs and chestnut woods remain within sight.",
+      "exits": {
+        "down to the lane": "mill_lane",
+        "by the garden wall": "allotments",
+        "along the upper edge": "picnic_wall"
+      }
+    },
+    "ridge_path": {
+      "name": "Low ridge path",
+      "desc": "A wide marked village path follows a low wooded ridge. It is below the high mountains, with no exposure or technical climbing. Between trunks the valley opens in brief windows. A sign points toward a small public shelter.",
+      "exits": {
+        "down under the chestnuts": "chestnut_path",
+        "toward the timber roof": "shelter",
+        "along the birches": "viewpoint"
+      }
+    },
+    "shelter": {
+      "name": "Ridge picnic shelter",
+      "desc": "An open-sided timber shelter with a table, a public walking map and a notebook for ordinary observations. The village roofs are close below. This is a picnic shelter, not a staffed mountain refuge.",
+      "exits": {
+        "back along the ridge": "ridge_path",
+        "to the clearing": "weather_corner",
+        "down toward the picnic wall": "picnic_wall"
+      }
+    },
+    "weather_corner": {
+      "name": "Weather notebook corner",
+      "desc": "A small public clearing beside a simple rain gauge and a homemade wind ribbon. A label credits the local amateur weather group. There is a dry ledge to sit on while clouds change above the distant peaks.",
+      "exits": {
+        "back under the roof": "shelter",
+        "along the level trail": "viewpoint"
+      }
+    },
+    "viewpoint": {
+      "name": "Belvedere delle Betulle",
+      "desc": "A broad fenced viewpoint above birch trees. The small settlement lies in the foreground, with larger foothills beyond. There is room for a photograph, a drawing, a deliberately bad poem or no activity at all.",
+      "exits": {
+        "back to the clearing": "weather_corner",
+        "down the gentle return": "upper_bench",
+        "back along the birches": "ridge_path"
+      }
+    },
+    "upper_bench": {
+      "name": "Bench on the return path",
+      "desc": "An unremarkable wooden bench on a gentle path connecting the ridge to the upper houses. Its view is mostly the back of a hedge. A small gap reveals the sky, which may be all the view needed.",
+      "exits": {
+        "up to the viewpoint": "viewpoint",
+        "down to the houses": "upper_lane"
+      }
+    }
+  },
+  "items": {
+    "phone": {
+      "name": "your smartphone",
+      "desc": "Charged, with ordinary fictional camera and notes functions; no real internet access or private knowledge.",
+      "holder": "player"
+    },
+    "notebook": {
+      "name": "your pocket notebook and pencil",
+      "desc": "Several blank pages, a sharp pencil and enough room for a new idea.",
+      "holder": "player"
+    },
+    "wallet": {
+      "name": "your wallet",
+      "desc": "Enough cash and a bank card for an ordinary day of small purchases; no financial puzzle.",
+      "holder": "player"
+    },
+    "chalk": {
+      "name": "a piece of pavement chalk",
+      "desc": "A shared stub beside the public noticeboard, available for harmless drawings.",
+      "holder": "arcade"
+    },
+    "reflectors": {
+      "name": "a handful of spare reflectors",
+      "desc": "Clean plastic bicycle reflectors, freely available from the scrap box.",
+      "holder": "cycle_shop"
+    },
+    "coasters": {
+      "name": "a stack of blank coasters",
+      "desc": "Lucia keeps these for drawings or absurd labels.",
+      "holder": "npc:lucia",
+      "known_when": {
+        "topic": "labels"
+      }
+    },
+    "coffee": {
+      "name": "a small espresso",
+      "desc": "A freshly made cup offered by Lucia; the cup belongs to the bar.",
+      "holder": "npc:lucia",
+      "known_when": {
+        "topic": "coffee"
+      }
+    },
+    "inner_tube": {
+      "name": "a clean old inner tube",
+      "desc": "Flexible discarded rubber for an inventive project; not a working bicycle part.",
+      "holder": "npc:enzo",
+      "known_when": {
+        "topic": "making"
+      }
+    },
+    "archive_key": {
+      "name": "the local collection key",
+      "desc": "Marta can lend this for the little room beside the library.",
+      "holder": "npc:marta",
+      "known_when": {
+        "topic": "collection"
+      }
+    },
+    "recorder": {
+      "name": "a pocket audio recorder",
+      "desc": "A charged digital recorder for listening locally; no need to upload anything or record people without consent.",
+      "holder": "npc:samir",
+      "known_when": {
+        "topic": "listening"
+      }
+    },
+    "seed_mix": {
+      "name": "a packet of mixed flower seeds",
+      "desc": "Giulia saved a small mixture for experiments rather than straight rows.",
+      "holder": "npc:giulia",
+      "known_when": {
+        "topic": "plants"
+      }
+    },
+    "spare_pot": {
+      "name": "a small terracotta pot",
+      "desc": "One of the freely available spare pots on the greenhouse bench.",
+      "holder": "greenhouse"
+    },
+    "practice_balls": {
+      "name": "a set of practice bocce balls",
+      "desc": "Shared practice equipment; leave or return it after use.",
+      "holder": "bocce_court"
+    },
+    "booth_key": {
+      "name": "the projection cupboard key",
+      "desc": "Ada holds this for the small equipment room.",
+      "holder": "npc:ada",
+      "known_when": {
+        "topic": "screening"
+      }
+    },
+    "scrap_board": {
+      "name": "a clean scrap shelf board",
+      "desc": "Available scrap from a discarded shelf in the hardware yard.",
+      "holder": "repair_yard"
+    },
+    "projector_adapter": {
+      "name": "the correct projector power adapter",
+      "desc": "Davide has checked this matching low-voltage adapter for the circolo projector; no rewiring required.",
+      "holder": "npc:davide",
+      "known_when": {
+        "topic": "projection"
+      }
+    },
+    "paper_tape": {
+      "name": "a roll of paper tape",
+      "desc": "A partly used roll Davide keeps for temporary labels.",
+      "holder": "npc:davide",
+      "known_when": {
+        "topic": "making"
+      }
+    },
+    "observation_card": {
+      "name": "a spare observation card",
+      "desc": "Rina’s card has room for the time, weather and something unmeasured.",
+      "holder": "npc:rina",
+      "known_when": {
+        "topic": "weather"
+      }
+    },
+    "paper_frame": {
+      "name": "a little cardboard viewfinder",
+      "desc": "Teo cut a rectangular window in plain card to look without taking a photograph.",
+      "holder": "npc:teo",
+      "known_when": {
+        "topic": "photography"
+      }
+    }
+  }
+}

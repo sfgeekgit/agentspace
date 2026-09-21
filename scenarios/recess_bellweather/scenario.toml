@@ -1,0 +1,40 @@
+active = true
+runtime = "pi"
+description = "Recess in Bellweather: a compact, changeable village; independent characters, optional adventures, at most 80 moves."
+min_agents = 2
+max_agents = 12
+module_blacklist = []
+plain = true
+max_tokens = 4096
+
+[[params]]
+name = "max_turns"
+type = "int"
+label = "Maximum player moves (opening and farewell do not count)"
+default = 80
+min = 1
+max = 80
+
+[[params]]
+name = "npcs"
+type = "str"
+label = "Characters to include; remaining agents become reserves"
+default = "mara,pip,nella,oswin,ida"
+
+[[params]]
+name = "attributes"
+type = "str"
+label = "Initial hidden attributes (new ones can emerge during play)"
+default = "honesty,compassion,curiosity,mischief,generosity"
+
+[[watch]]
+name = "Player's adventure"
+file = "/dispatch/results/transcript.jsonl"
+format = "jsonl"
+fields = { ts = "ts", who = "speaker", text = "text" }
+
+[[watch]]
+name = "Engine decisions (spoilers)"
+file = "/dispatch/results/game_log.jsonl"
+format = "jsonl"
+fields = { ts = "ts", text = "text" }

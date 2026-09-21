@@ -1,0 +1,7 @@
+submit {"path":["missing_place"]}
+submit {"path":["workshop"],"talk":[{"npc":"mara","topic":"bell"}]}
+submit {"at":"workshop","scene":"The kettle steams beside the wooden duck."}
+submit {"path":["green","chapel","tower"],"effects":[{"op":"flag","id":"bell_mended"},{"op":"change_place","node":"tower","desc":"A repaired brace holds the clapper steady. The bell has a clear, warm note."}]}
+submit {"at":"tower","scene":"The bell rings clearly over the roofs."}
+submit {}
+submit {"at":"tower","scene":"The roofs below catch the afternoon sun."}

@@ -1,0 +1,280 @@
+{
+  "title": "Bellweather",
+  "start": "green",
+  "opening": "You arrive on Bellweather's green with an apple in your pocket. A crooked weathercock turns above the bakehouse. Someone has chalked a very small hopscotch court beside the well. The river makes a lazy bend below the village; an unfinished boat rests on its bank. You have the day to yourself.",
+  "nodes": {
+    "green": {
+      "name": "Village green",
+      "desc": "Grass worn into paths around a covered well. Chalk squares, a broad oak, and a bench in the sun.",
+      "exits": {
+        "east": "workshop",
+        "south": "bakehouse",
+        "west": "landing",
+        "north": "chapel",
+        "under the oak": "oak"
+      }
+    },
+    "oak": {
+      "name": "Under the oak",
+      "desc": "A low branch makes a natural seat. Acorns, beetles, and the view of people's shoes crossing the green.",
+      "exits": {
+        "out": "green"
+      }
+    },
+    "workshop": {
+      "name": "Mara's workshop",
+      "desc": "Wood shavings, boat ribs on trestles, a patient kettle. A pegboard holds tools in silhouettes drawn by a child.",
+      "exits": {
+        "west": "green",
+        "out back": "workshop_yard"
+      }
+    },
+    "workshop_yard": {
+      "name": "Workshop yard",
+      "desc": "Offcuts sorted by length, a uselessly small gate, and an empty stretch of level earth beside the fence.",
+      "exits": {
+        "inside": "workshop",
+        "through the gate": "orchard"
+      }
+    },
+    "bakehouse": {
+      "name": "Bakehouse",
+      "desc": "Warm brick, flour on the doorstep, a counter of rolls. Through a back window you can see the orchard.",
+      "exits": {
+        "north": "green",
+        "back door": "orchard",
+        "upstairs": "loft"
+      }
+    },
+    "loft": {
+      "name": "Bakehouse loft",
+      "desc": "Dry sacks, a round window, and a chest containing battered wooden masks. Room enough to rehearse something ridiculous.",
+      "gate": {
+        "any": [
+          {
+            "flag": "loft_invited"
+          },
+          {
+            "item": "loft_key"
+          }
+        ]
+      },
+      "blocked": "The loft door is shut; its keeper can invite you upstairs.",
+      "exits": {
+        "down": "bakehouse"
+      }
+    },
+    "orchard": {
+      "name": "Orchard",
+      "desc": "Small sour apples and a fallen trunk. A wash-line runs between trees; no two clothespins match.",
+      "exits": {
+        "north": "workshop_yard",
+        "inside": "bakehouse",
+        "along the hedge": "meadow"
+      }
+    },
+    "chapel": {
+      "name": "Open chapel",
+      "desc": "White walls, a cracked sundial in the porch, and a bell that sounds unexpectedly like a saucepan.",
+      "exits": {
+        "south": "green",
+        "up the stair": "tower",
+        "through the porch": "garden"
+      }
+    },
+    "tower": {
+      "name": "Bell tower",
+      "desc": "A sound little bell with a loose wooden clapper brace. Below lie the village roofs, the river, and the wide meadow.",
+      "exits": {
+        "down": "chapel"
+      }
+    },
+    "garden": {
+      "name": "Chapel garden",
+      "desc": "Beans climb crooked sticks. A patch has been left entirely to dandelions. A garden wall warms in the sun.",
+      "exits": {
+        "inside": "chapel",
+        "through the gap": "meadow"
+      }
+    },
+    "meadow": {
+      "name": "Long meadow",
+      "desc": "Grass, crickets, a wind good for kites, and a footpath that does not insist you follow it.",
+      "exits": {
+        "south": "orchard",
+        "west": "garden",
+        "downhill": "reedbank",
+        "north": "road"
+      }
+    },
+    "landing": {
+      "name": "River landing",
+      "desc": "A boat drawn onto rollers, a stout mooring post, and a plank landing. Minnows hide under its shadow.",
+      "exits": {
+        "east": "green",
+        "along the bank": "reedbank",
+        "into the boathouse": "boathouse"
+      }
+    },
+    "boathouse": {
+      "name": "Boathouse",
+      "desc": "An upturned skiff, old oars, coils of rope, and a table with a board marked for a game nobody has finished.",
+      "exits": {
+        "out": "landing"
+      }
+    },
+    "reedbank": {
+      "name": "Reed bank",
+      "desc": "Reeds tick together. A shallow side stream leaves a dry gravel bar within stepping distance.",
+      "exits": {
+        "upstream": "landing",
+        "uphill": "meadow",
+        "over the stones": "gravel_bar"
+      }
+    },
+    "gravel_bar": {
+      "name": "Gravel bar",
+      "desc": "Flat skipping stones and driftwood. One willow bends almost horizontally over the stream.",
+      "exits": {
+        "over the stones": "reedbank",
+        "under the willow": "willow_nook"
+      }
+    },
+    "willow_nook": {
+      "name": "Willow nook",
+      "desc": "A dry hollow behind the willow roots. Tiny clay houses stand on shelves of bark; a town built for beetles.",
+      "gate": {
+        "any": [
+          {
+            "flag": "nook_shown"
+          },
+          {
+            "attribute": "curiosity",
+            "min": 3
+          }
+        ]
+      },
+      "blocked": "A tangle of willow roots conceals what lies behind it.",
+      "exits": {
+        "out": "gravel_bar"
+      }
+    },
+    "road": {
+      "name": "Lane beyond the meadow",
+      "desc": "The lane climbs between hedges. Bellweather remains plainly visible behind you.",
+      "exits": {
+        "south": "meadow",
+        "onward": "crossroads"
+      }
+    },
+    "crossroads": {
+      "name": "Crossroads",
+      "desc": "Two roads continue beyond the village. You can choose to leave for good, or turn back and spend more of your day here.",
+      "exits": {
+        "back": "road"
+      }
+    }
+  },
+  "items": {
+    "apple": {
+      "name": "a small apple",
+      "desc": "A pocket apple, a little bruised.",
+      "holder": "player"
+    },
+    "chalk": {
+      "name": "a stub of chalk",
+      "desc": "Left on the green for anyone's use.",
+      "holder": "green"
+    },
+    "offcuts": {
+      "name": "a bundle of offcuts",
+      "desc": "Scrap wood freely available for making things.",
+      "holder": "workshop_yard"
+    },
+    "flat_stone": {
+      "name": "a flat river stone",
+      "desc": "Smooth enough to skip or paint.",
+      "holder": "gravel_bar"
+    },
+    "twine": {
+      "name": "a ball of twine",
+      "desc": "A shared ball on the boathouse table.",
+      "holder": "boathouse"
+    },
+    "brace": {
+      "name": "a wooden clapper brace",
+      "desc": "Mara made this for the chapel bell. It fits two slots without tools.",
+      "holder": "npc:mara",
+      "known_when": {
+        "topic": "bell"
+      }
+    },
+    "pitch": {
+      "name": "a pot of boat pitch",
+      "desc": "Enough pitch to seal the boat on the landing.",
+      "holder": "npc:mara",
+      "known_when": {
+        "topic": "boats"
+      }
+    },
+    "bun": {
+      "name": "a warm bun",
+      "desc": "Pip has set this one aside for a visitor.",
+      "holder": "npc:pip"
+    },
+    "loft_key": {
+      "name": "the bakehouse loft key",
+      "desc": "A brass key with a loop of red thread.",
+      "holder": "npc:pip",
+      "known_when": {
+        "any": [
+          {
+            "topic": "loft"
+          },
+          {
+            "topic": "theatre"
+          }
+        ]
+      }
+    },
+    "paddle": {
+      "name": "a short paddle",
+      "desc": "Nella keeps it for a little boat.",
+      "holder": "npc:nella",
+      "known_when": {
+        "any": [
+          {
+            "topic": "boats"
+          },
+          {
+            "topic": "river"
+          }
+        ]
+      }
+    },
+    "candle": {
+      "name": "a beeswax candle",
+      "desc": "Small enough for a leaf lantern.",
+      "holder": "npc:nella",
+      "known_when": {
+        "topic": "lanterns"
+      }
+    },
+    "seeds": {
+      "name": "a packet of marigold seeds",
+      "desc": "Oswin saved these last autumn.",
+      "holder": "npc:oswin",
+      "known_when": {
+        "topic": "garden"
+      }
+    },
+    "clay": {
+      "name": "a lump of river clay",
+      "desc": "Ida keeps it damp in a piece of cloth.",
+      "holder": "npc:ida",
+      "known_when": {
+        "topic": "clay"
+      }
+    }
+  }
+}

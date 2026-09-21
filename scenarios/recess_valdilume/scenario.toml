@@ -1,0 +1,40 @@
+active = true
+runtime = "pi"
+description = "An afternoon in Valdilume: a modern Italian Alpine foothill village, ten independent residents, 36 places, up to 80 moves."
+min_agents = 2
+max_agents = 20
+module_blacklist = []
+plain = true
+max_tokens = 4096
+
+[[params]]
+name = "max_turns"
+type = "int"
+label = "Maximum player moves (opening and farewell do not count)"
+default = 80
+min = 1
+max = 80
+
+[[params]]
+name = "npcs"
+type = "str"
+label = "Residents to include; remaining agents become reserves"
+default = "lucia,enzo,marta,samir,giulia,piero,ada,davide,rina,teo"
+
+[[params]]
+name = "attributes"
+type = "str"
+label = "Initial hidden attributes (new ones can emerge during play)"
+default = "honesty,compassion,curiosity,mischief,generosity"
+
+[[watch]]
+name = "Player's afternoon"
+file = "/dispatch/results/transcript.jsonl"
+format = "jsonl"
+fields = { ts = "ts", who = "speaker", text = "text" }
+
+[[watch]]
+name = "Engine decisions (spoilers)"
+file = "/dispatch/results/game_log.jsonl"
+format = "jsonl"
+fields = { ts = "ts", text = "text" }

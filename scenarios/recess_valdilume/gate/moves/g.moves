@@ -1,0 +1,13 @@
+submit {"operations": []}
+submit {"path": ["alley", "washhouse", "sound_room"], "talk": [{"npc": "samir", "topic": "listening"}]}
+submit {"at": "sound_room", "scene": "The afternoon light rests on the stone."}
+submit {"path": ["washhouse"], "effects": [{"op": "flag", "id": "water_recorded"}]}
+submit {"at": "washhouse", "scene": "The afternoon light rests on the stone."}
+submit {"path": ["alley", "piazza"], "effects": [{"op": "flag", "id": "square_recorded"}]}
+submit {"at": "piazza", "scene": "The afternoon light rests on the stone."}
+submit {"path": ["alley", "washhouse", "sound_room"], "effects": [{"op": "flag", "id": "soundwalk_shared"}], "talk": [{"npc": "samir", "topic": "listening"}]}
+submit {"at": "sound_room", "scene": "The afternoon light rests on the stone."}
+submit {"effects": [{"op": "add_place", "id": "paper_gallery", "name": "Paper gallery", "desc": "Paper frames hang under a new awning.", "via": "under the paper awning"}, {"op": "recruit", "id": "bea", "name": "Bea", "public": "a visitor with cardboard frames", "brief": "You like absurd exhibitions but want them small."}], "talk": [{"npc": "bea"}]}
+submit {"at": "sound_room", "scene": "The afternoon light rests on the stone."}
+submit {"path": ["washhouse", "stream_bridge", "bus_stop"], "end": "bus_departure"}
+submit {"at": "bus_stop", "scene": "The afternoon light rests on the stone."}

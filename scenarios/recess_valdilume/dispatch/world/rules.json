@@ -1,0 +1,173 @@
+{
+  "attributes": {
+    "honesty": "Keeping promises or telling difficult truths; routine speech earns nothing.",
+    "compassion": "Listening to another person's needs without deciding for them.",
+    "curiosity": "A meaningful experiment or discovery; routine walking or questions earn nothing.",
+    "mischief": "Inventive playful disruption; not inherently bad.",
+    "generosity": "Giving something wanted without making it a debt."
+  },
+  "flags": {
+    "archive_open": {
+      "when": {
+        "all": [
+          {
+            "loc": "library"
+          },
+          {
+            "item": "archive_key"
+          },
+          {
+            "npc": "marta"
+          }
+        ]
+      },
+      "instruction": "Only after the player unlocks the collection room with Marta’s loaned key. Do not require any performance or secret password."
+    },
+    "soundwalk_shared": {
+      "when": {
+        "all": [
+          {
+            "loc": "sound_room"
+          },
+          {
+            "item": "recorder"
+          },
+          {
+            "flag": "water_recorded"
+          },
+          {
+            "flag": "square_recorded"
+          }
+        ]
+      },
+      "instruction": "Only after the player chooses to play both local recordings back with Samir. This is a modest optional listening project; it never ends the afternoon."
+    },
+    "water_recorded": {
+      "when": {
+        "all": [
+          {
+            "loc": "washhouse"
+          },
+          {
+            "item": "recorder"
+          }
+        ]
+      },
+      "instruction": "Only after deliberately recording the sound of the water. Merely carrying a recorder here is not recording."
+    },
+    "square_recorded": {
+      "when": {
+        "all": [
+          {
+            "loc": "piazza"
+          },
+          {
+            "item": "recorder"
+          }
+        ]
+      },
+      "instruction": "Only after deliberately recording ambient square sounds. Do not secretly record private conversations; choose a fountain or footsteps instead."
+    },
+    "booth_open": {
+      "when": {
+        "all": [
+          {
+            "loc": "cinema"
+          },
+          {
+            "item": "booth_key"
+          },
+          {
+            "npc": "ada"
+          }
+        ]
+      },
+      "instruction": "Only after the player uses Ada’s loaned key on the projection cupboard door."
+    },
+    "projector_ready": {
+      "when": {
+        "all": [
+          {
+            "loc": "projection_booth"
+          },
+          {
+            "item": "projector_adapter"
+          },
+          {
+            "npc": "davide"
+          }
+        ]
+      },
+      "instruction": "Only after the player fits the checked adapter into the labelled low-voltage projector socket and switches it on. Update the projection cupboard description. No work on mains wiring is involved."
+    },
+    "film_shared": {
+      "when": {
+        "all": [
+          {
+            "loc": "cinema"
+          },
+          {
+            "flag": "projector_ready"
+          },
+          {
+            "npc": "ada"
+          }
+        ]
+      },
+      "instruction": "Only after the player chooses to watch Ada’s offered fifteen-second trolley-wheel film in the screening room. It is an optional shared moment, not a reason to finish the adventure."
+    }
+  },
+  "achievements": [
+    {
+      "id": "an_afternoon_in_sound",
+      "when": {
+        "flag": "soundwalk_shared"
+      },
+      "text": "Two ordinary places have become a small piece of listening. You can keep exploring, or simply hear it again."
+    },
+    {
+      "id": "fifteen_seconds_together",
+      "when": {
+        "flag": "film_shared"
+      },
+      "text": "The little film has had its little audience. There is still an afternoon around it."
+    }
+  ],
+  "schedules": [
+    {
+      "turn": 24,
+      "npc": "piero",
+      "loc": "piazza",
+      "fact": "Piero has taken a break on the bench by the piazza fountain.",
+      "hears": "You have taken a short break by the piazza fountain. You may idly invent a new destination for a bus, or sit without explaining yourself. If a visitor is present, you may talk; do not demand attention."
+    },
+    {
+      "turn": 52,
+      "npc": "ada",
+      "loc": "hall_forecourt",
+      "fact": "Ada has taken two spare chairs out to the circolo forecourt.",
+      "hears": "You have taken two spare chairs outside for a break. Watch the shape of the afternoon shadow or sit. If someone is here, ordinary company is welcome; no screening announcement or request for work is needed."
+    }
+  ],
+  "endings": {
+    "bus_departure": {
+      "when": {
+        "loc": "bus_stop"
+      },
+      "instruction": "Only if the player explicitly boards a departing bus to leave Valdilume for good. Checking the timetable, waiting or walking here does not end play.",
+      "text": "You take a seat on the valley bus. Valdilume folds behind the bend as the foothills widen beyond the window."
+    },
+    "enough_for_today": {
+      "when": "always",
+      "instruction": "Only if the player explicitly wants to end the adventure. Resting, waiting, silence or taking a nap is not quitting.",
+      "text": "You close the afternoon at a moment of your choosing. Valdilume carries on around you."
+    },
+    "evening_rest": {
+      "when": {
+        "loc": "upper_bench"
+      },
+      "instruction": "Only if the player explicitly chooses to call the adventure finished here and leave the rest of the evening unplayed. Sitting, watching the sky or resting alone is not enough.",
+      "text": "You let the evening remain unplanned. A little sky above the hedge is enough for the last moment of your visit."
+    }
+  }
+}

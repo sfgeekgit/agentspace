@@ -1,0 +1,122 @@
+{
+  "attributes": {
+    "honesty": "Keeping promises and telling difficult truths; no reward for merely speaking.",
+    "compassion": "Attending to another's needs without deciding for them.",
+    "curiosity": "A meaningful experiment or discovery; walking or asking routine questions earns nothing.",
+    "mischief": "Playful disruption, tricks, or delight in absurdity; not inherently bad.",
+    "generosity": "Giving something wanted without demanding a return."
+  },
+  "flags": {
+    "loft_invited": {
+      "when": {
+        "all": [
+          {
+            "npc": "pip"
+          },
+          {
+            "item": "loft_key"
+          }
+        ]
+      },
+      "instruction": "Only after the bakehouse keeper explicitly invites the player to use the loft."
+    },
+    "nook_shown": {
+      "when": {
+        "loc": "gravel_bar"
+      },
+      "instruction": "Only after someone shows the player the hollow behind the willow, or the player finds it by deliberate investigation."
+    },
+    "bell_mended": {
+      "when": {
+        "all": [
+          {
+            "loc": "tower"
+          },
+          {
+            "item": "brace"
+          },
+          {
+            "npc": "mara"
+          }
+        ]
+      },
+      "instruction": "Set after the player fits the brace into the two clapper slots. Record the changed tower description. The repair is an accomplishment, not an ending."
+    },
+    "boat_ready": {
+      "when": {
+        "all": [
+          {
+            "loc": "landing"
+          },
+          {
+            "item": "pitch"
+          },
+          {
+            "npc": "mara"
+          }
+        ]
+      },
+      "instruction": "Set after the player seals the boat seam with pitch and floats it successfully. Record its new condition in the landing description. No voyage is required."
+    }
+  },
+  "achievements": [
+    {
+      "id": "a_clear_note",
+      "when": {
+        "flag": "bell_mended"
+      },
+      "text": "The bell finds its clear note again. The afternoon continues."
+    },
+    {
+      "id": "a_boat_afloat",
+      "when": {
+        "flag": "boat_ready"
+      },
+      "text": "The boat floats evenly, ready for whatever journey someone wants."
+    }
+  ],
+  "endings": {
+    "road_departure": {
+      "when": {
+        "loc": "crossroads"
+      },
+      "instruction": "Only if the player explicitly chooses to leave the village for good. Walking to the crossroads is not enough.",
+      "text": "The road carries you beyond Bellweather, with the rest of the day still yours."
+    },
+    "enough_for_today": {
+      "when": "always",
+      "instruction": "Only if the player explicitly says they want to stop playing or end their adventure. Resting, waiting, or sitting is not quitting.",
+      "text": "You leave Bellweather to its own afternoon. Your adventure has ended for today."
+    },
+    "river_departure": {
+      "when": {
+        "all": [
+          {
+            "loc": "landing"
+          },
+          {
+            "flag": "boat_ready"
+          }
+        ]
+      },
+      "instruction": "Only if the player explicitly chooses to take the boat downstream and leave Bellweather for good. A trial trip or a float nearby does not end the adventure.",
+      "text": "The boat carries you around the river bend. Bellweather slips out of sight behind the willows."
+    }
+  },
+  "schedules": [
+    {
+      "turn": 28,
+      "npc": "oswin",
+      "loc": "green",
+      "fact": "Oswin has brought his tea to the bench on the green.",
+      "hears": "You have brought your tea to the bench on the green. Enjoy sitting here. You may try a new name for the dandelion patch if someone happens to be present. Nobody needs to stop what they are doing."
+    },
+    {
+      "turn": 56,
+      "npc": "nella",
+      "loc": "landing",
+      "fact": "Nella has put a small lantern beside the river landing as the afternoon light softens.",
+      "hears": "You have put a small lantern beside the landing. You are watching the current and deciding whether to float a leaf. If a visitor is here, company is welcome; if not, enjoy the river on your own."
+    }
+  ]
+}
