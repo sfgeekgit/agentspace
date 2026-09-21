@@ -255,6 +255,8 @@ check("demo: an allowed verb runs", st == 200 and bool(json.loads(out).get("id")
 st, out = http("POST", "/run/snap/fork", "snap_ref=gate:1.0&new_env_name=d1&budget_usd=2&host=localhost&kick=off", headers=P)
 check("demo: a capped fork on localhost is allowed", st == 200, f"{st} {out[:60]}")
 check("demo: chat reaches the handler (blank → 400, not 403)", http("POST", "/chat/gate_env/a11111", "  ", headers=P)[0] == 400)
+check("demo: results show reaches the handler, generate stays refused",
+      http("GET", "/results/gate_env", headers=P)[0] != 403 and http("POST", "/run/results/generate", "name=gate_env", headers=P)[0] == 403)
 body = http("GET", "/tools", headers=P)[1]
 check("demo: tools shows every form, refused ones disabled",
       '<fieldset disabled class="demo-off"><form data-path="env kill">' in body

@@ -54,7 +54,7 @@ SPECIAL = {                      # the only verb names written in this file
 DEMO_HEADER = "X-Agentspace-Public"
 DEMO_VERBS = {"world build", "snap fork", "snap take", "snap note", "snap show", "snap tree", "snap list",
               "env start", "env stop", "env sleep", "env kick", "env post", "env chat", "env logs",
-              "env list", "env show", "budget show", "scen list"}
+              "env list", "env show", "budget show", "scen list", "results show"}
 DEMO_DROP = {"attach", "souls", "host", "allow_key_leak"}   # server paths, other hosts, safety off
 DEMO_MAX_BUDGET = 2.0                                        # dollars per launch
 DEMO_MAX_ENVS = 15                                           # live containers (all of them) before launches are refused
