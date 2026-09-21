@@ -3,7 +3,7 @@ knows nothing about any particular village; everything world-specific is here.""
 import json
 from pathlib import Path
 
-PRED_KEYS = {"stat", "min", "max", "flag", "not_flag", "turn_min", "met", "loc", "all", "any"}
+PRED_KEYS = {"stat", "min", "max", "rank", "rank_low", "flag", "not_flag", "turn_min", "met", "loc", "all", "any"}
 
 
 def load(root):
@@ -16,7 +16,33 @@ def load(root):
         "schedule": json.loads((root / "schedule.json").read_text()),
     }
     validate(b)
+    b["flags"] = _flags(b)
+    b["ending_flags"] = {q["when"]["flag"] for q in b["quests"].get("ends", {}).values() if "flag" in q["when"]}
     return b
+
+
+def _flags(b):
+    """Every flag name any predicate in the bundle listens for."""
+    out = set()
+
+    def walk(p):
+        if isinstance(p, dict):
+            for k in ("flag", "not_flag"):
+                if k in p:
+                    out.add(p[k])
+            for sub in p.get("all", []) + p.get("any", []):
+                walk(sub)
+    for npc in b["npcs"].values():
+        for x in npc.get("blocks", []) + npc.get("gm_notes", []):
+            walk(x["unlock"])
+    for q in b["quests"].get("ends", {}).values():
+        walk(q["when"])
+    for arc in b["quests"].get("arcs", []):
+        for x in arc.get("gm_notes", []):
+            walk(x["unlock"])
+    for s_ in b["schedule"]:
+        walk(s_.get("unless"))
+    return out
 
 
 def _check_pred(p, where):

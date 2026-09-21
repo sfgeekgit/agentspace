@@ -128,3 +128,46 @@ body[data-env] #result-link a{color:var(--green)}body[data-env] #activity-toggle
 .demo-notice{margin:0 0 22px}.demo-notice a{color:inherit;text-decoration:underline}
 fieldset.demo-off{border:0;margin:0;padding:0;min-width:0;opacity:.55}
 button:disabled .tag{opacity:1}
+/* Results are a dedicated workspace view; downloads remain ordinary links. */
+.results-link { display: block; margin-top: .5rem; }
+.recess-tag { margin-left: .5rem; background: #e7eee3; color: #355538; }
+
+/* Result readers use the page scroll and browser Find; no clipped inner pane. */
+body[data-reader] main{max-width:1120px}
+.result-extent{font-size:12px;color:var(--muted);margin-bottom:22px}
+.result-preview-notice{background:#fff5de;border-color:#e8cf93;color:#654d1c;align-items:flex-start}
+.result-preview-notice p{margin:5px 0 0}.result-preview-notice>.button{flex:none;margin-left:auto}
+.result-reader-tools{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:20px;flex-wrap:wrap}
+.result-format{display:flex;gap:20px;border-bottom:1px solid var(--line)}
+.result-format a{padding:10px 0;font-size:12px;color:var(--muted);border-bottom:2px solid transparent}
+.result-format a[aria-current]{color:var(--ink);border-bottom-color:var(--green);font-weight:600}
+.result-jump{display:flex;flex-direction:row;align-items:center;gap:10px;margin:0;max-width:100%;font-size:12px}
+.result-jump>span{white-space:nowrap}.result-jump select{width:350px;max-width:100%;font-size:12px}
+.result-reader{min-width:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:36px 42px;overflow-wrap:anywhere}
+.result-prose{max-width:80ch;margin:0 auto;font-size:15px;line-height:1.85;color:#344237}
+.result-prose p{margin:0 0 1.1em}.result-prose h1{font-size:26px;line-height:1.3;letter-spacing:-.5px;margin:1.6em 0 .8em}
+.result-prose h2{font-size:20px;line-height:1.4;margin:2em 0 .9em;padding-top:1.2em;border-top:1px solid var(--line)}
+.result-prose h3,.result-prose h4,.result-prose h5,.result-prose h6{font-size:17px;line-height:1.5;margin:1.5em 0 .7em}
+.result-prose>:first-child{margin-top:0;padding-top:0;border-top:0}
+.result-prose ul,.result-prose ol{padding-left:1.5em;margin:1em 0}.result-prose li{margin:.35em 0}.result-prose li>p{margin:.4em 0}
+.result-prose a{color:#28644b;text-decoration:underline;text-underline-offset:3px}
+.result-prose blockquote{margin:1.4em 0;border-left:3px solid #abc0a0;padding:2px 0 2px 20px;color:#58664e}
+.result-prose blockquote>:last-child{margin-bottom:0}
+.result-prose code{font-size:.87em;background:#f0f4ed;padding:2px 4px;border-radius:3px}
+.result-prose pre,.result-code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal;tab-size:4;font:13px/1.75 var(--mono);margin:0;color:#364b3f}
+.result-prose pre{background:#f4f7f1;border:1px solid var(--line);border-radius:7px;padding:18px;margin:1.2em 0}
+.result-code code,.result-prose pre code{font:inherit;background:none;padding:0}
+.result-prose table{display:block;overflow:auto;margin:1.4em 0;font-size:13px}.result-prose th,.result-prose td{padding:12px 14px}
+.result-prose hr{margin:2em 0}.result-prose [id],.result-record{scroll-margin-top:24px}
+.result-record{border-top:1px solid var(--line);padding-top:24px;margin-top:30px}.result-record:first-child{border-top:0;margin-top:0;padding-top:0}
+.result-record h2{font-size:17px;line-height:1.5;margin-bottom:18px}
+.result-fields{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px 18px;margin:0}
+.result-fields dt{font:11px/1.8 var(--mono);color:var(--muted);padding-top:2px;overflow-wrap:anywhere}
+.result-fields dd{margin:0;min-width:0}.result-fields .result-code{font-size:12px;line-height:1.8}
+.result-reader-footer{display:flex;justify-content:space-between;gap:20px;margin-top:24px;font-size:12px}
+@media(max-width:780px){
+ .result-reader{padding:22px 18px;border-radius:9px}.result-prose{font-size:14px}.result-prose h1{font-size:23px}.result-prose h2{font-size:18px}
+ .result-jump{width:100%}.result-jump select{flex:1;width:0;min-width:0}.result-fields{grid-template-columns:minmax(0,1fr);gap:5px}
+ .result-fields dt:not(:first-child){margin-top:10px}.result-fields .result-code,.result-code{font-size:11px}
+ .result-preview-notice>.button{margin-left:0}.result-reader-footer{font-size:11px}
+}

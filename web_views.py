@@ -7,6 +7,8 @@ import shlex
 from urllib.parse import quote
 
 from agentspace import db, registry, versioning
+from agentspace import results as results_mod
+from agentspace import result_view
 
 esc = lambda x: html.escape(str(x if x is not None else ""))
 PUBLIC = contextvars.ContextVar("public", default=False)   # this request came through the public demo host (web.py sets it from Caddy's header)
@@ -136,7 +138,10 @@ def env_table(envs, snaps, limit=None):
         s = by_id.get(e['snap_id'])
         root = root_for(s, snaps) if s else None
         lineage = link(world_url(root), ref(root), 'text-link') if root else 'Root not indexed'
-        rows += f'<tr data-search="{esc(e["name"] + " " + (ref(s) if s else "") + " " + (e["status"] or ""))}"><td><a class="row-title" href="/watch/{u(e["name"])}">{icon("environment")}{esc(e["name"])}</a><small>{esc(e.get("host") or "localhost")}</small></td><td>{lineage}<small>{"From starting point" if s and root and s["snap_id"] == root["snap_id"] else "From " + esc(ref(s)) if s else "Unknown snapshot"}</small></td><td>{status(e["status"])}</td><td class="row-end">{link("/watch/"+u(e["name"]), "Open environment →", "text-link")}</td></tr>'
+        recess = results_mod.is_recess(s or {}) or results_mod.is_recess(root or {})
+        if recess:
+            lineage += ' <span class="status recess-tag">Recess</span>'
+        rows += f'<tr data-search="{esc(e["name"] + " " + (ref(s) if s else "") + " " + (e["status"] or "") + (" recess" if recess else ""))}"><td><a class="row-title" href="/watch/{u(e["name"])}">{icon("environment")}{esc(e["name"])}</a><small>{esc(e.get("host") or "localhost")}</small></td><td>{lineage}<small>{"From starting point" if s and root and s["snap_id"] == root["snap_id"] else "From " + esc(ref(s)) if s else "Unknown snapshot"}</small></td><td>{status(e["status"])}</td><td class="row-end">{link("/watch/"+u(e["name"]), "Open environment →", "text-link")}{link("/results/"+u(e["name"]), "Results", "text-link results-link") if recess else ""}</td></tr>'
     return f'<div class="table-wrap"><table class="env-table"><thead><tr><th>Environment</th><th>World root / source</th><th>Recorded status</th><th><span class="sr-only">Open</span></th></tr></thead><tbody>{rows}</tbody></table></div>' if rows else empty('No environments yet. Launch one from a world root.', '/worlds', 'Explore worlds')
 
 
@@ -328,6 +333,7 @@ def watch(name):
              '<span id="runtime-fact"></span><span id="started-fact"></span>')
     speeds = ''.join(f'<option value="{n}">Replay {n}×</option>' for n in (1, 2, 5, 10, 30))
     body = (f'<header class="watch-header"><div class="watch-topline">{breadcrumbs}'
+            + (link('/results/'+u(name), 'Results & downloads', 'button small secondary') if results_mod.is_recess(s) or results_mod.is_recess(root or {}) else '') +
             '<a href="/help" class="text-link">Watch guide ↗</a></div>'
             f'<div class="watch-heading"><h1>{esc(name)}</h1><span id="live-status">{status(e["status"])}</span>'
             '<div id="actions" class="button-row"></div></div>'
@@ -358,6 +364,81 @@ def watch(name):
             '<details class="watch-details"><summary>Environment details</summary><dl id="environment-details" class="detail-facts">'
             '<dt>Status</dt><dd>Checking…</dd></dl></details>' + terminal_note(name) + '</aside></div>')
     return page(name, frame(body, 'environments', 'Environment watch'), env=name)
+
+
+def results_page(name):
+    m = results_mod.manifest(name)
+    fields = {'name': name}
+    buttons = action('results generate', 'Generate results' if not m else 'Regenerate results', fields,
+                     note='Reads the run without waking or stopping agents. Unfinished runs produce a clearly labeled partial report.')
+    body = crumb([('← '+name, '/watch/'+u(name))]) + header('RECESS RESULTS', name,
+        'Player transcript, agent prompts, report and run data. Reports use no LLM calls.', buttons)
+    body += '<div class="notice" id="results-status" role="status">Checking game completion…</div>'
+    if m:
+        captured = m["captured_at"][:19].replace('T', ' ') + ' UTC'
+        body += f'<section class="section"><h2>Generated bundle</h2><p>{esc(captured)} · {status(m["status"])}</p>'
+        body += '<div class="button-row">' + link('/results/'+u(name)+'/files/all.zip', 'Download all (.zip)')
+        body += action('results publish', 'Upload to results GitHub', fields,
+                       note='Publishes this generated bundle, including hidden game state and all agent prompts, to the separate results repository. The generated snapshot may be partial.') + '</div>'
+        try:
+            target = results_mod.publish_target()
+            body += f'<p class="muted">Upload destination: {esc(target)}</p>'
+        except (ValueError, OSError) as error:
+            body += f'<p class="muted">Publishing needs configuration: {esc(error)}</p>'
+        receipt = results_mod.root() / f'.{name}.published.json'
+        if receipt.is_file() and not receipt.is_symlink():
+            published = json.loads(receipt.read_text())
+            body += f'<p>Last upload: {esc(published["published_at"])} · commit {esc(published["commit"][:12])}. Bundle captured {esc(published["captured_at"])}.</p>'
+        body += '<p class="muted">Click a filename to read it here, or download a copy.</p>'
+        body += '<div class="table-wrap"><table><thead><tr><th>File · click to view</th><th>Size</th><th>Download</th></tr></thead><tbody>'
+        for item in [*m['files'], {'name': 'manifest.json', 'size': None}]:
+            view = link('/results/'+u(name)+'/view/'+u(item['name']), item['name'], 'text-link')
+            body += f'<tr><td>{view}</td><td>{esc(result_view.size_label(item["size"]) if item["size"] is not None else "—")}</td><td>{link("/results/"+u(name)+"/files/"+u(item["name"]), "Download", "text-link")}</td></tr>'
+        body += '</tbody></table></div></section>'
+    else:
+        body += empty('Generate results to create a report and downloadable files.')
+    body += '<p class="muted">Historical runs did not record their full system prompts. Exports clearly label reconstructed prompts and any missing history. New worlds record provider system prompts. Game dialogue is separate from agent_prompts.md.</p>'
+    return page(name+' results', frame(body, 'environments', 'Results'), results=name)
+
+
+def result_file_page(name, filename, content, manifest, *, full=False, source=False):
+    text, truncated, shown = result_view.preview(content, full=full)
+    rendered, sections, note = result_view.render(filename, text, truncated=truncated, source=source)
+    base = '/results/'+u(name)+'/view/'+u(filename)
+    download = '/results/'+u(name)+'/files/'+u(filename)
+    body = crumb([('← '+name+' results', '/results/'+u(name)), (filename, '')])
+    description = (result_view.size_label(len(content)) + ' · Captured ' +
+                   manifest['captured_at'][:19].replace('T', ' ') + ' UTC')
+    body += header('RESULT FILE', filename, description, link(download, 'Download full file', 'button secondary'))
+    if truncated:
+        body += ('<div class="notice result-preview-notice" id="result-extent" role="status"><div>'
+                 '<strong>Truncated preview — this is not the whole file.</strong>'
+                 f'<p>Showing the beginning: {esc(result_view.size_label(shown))} of {esc(result_view.size_label(len(content)))}. '
+                 'Open the full file to read everything in your browser.</p></div>'
+                 + link(base+'?full=1'+('&source=1' if source else ''), 'View full file', 'button secondary') + '</div>')
+    else:
+        body += '<p class="result-extent" id="result-extent">Full file shown — nothing truncated.</p>'
+    if manifest.get('status') != 'complete':
+        body += '<p class="notice">This bundle was generated before the run completed. The file is a snapshot of that unfinished run.</p>'
+    body += '<div class="result-reader-tools">'
+    if filename.endswith(('.md', '.json', '.jsonl')):
+        normal = base + ('?full=1' if full else '')
+        raw = base + '?source=1' + ('&full=1' if full else '')
+        body += ('<nav class="result-format" aria-label="File format">'
+                 f'<a href="{esc(normal)}" {"aria-current=page" if not source else ""}>Formatted</a>'
+                 f'<a href="{esc(raw)}" {"aria-current=page" if source else ""}>Source</a></nav>')
+    if sections:
+        options = ''.join(f'<option value="{esc(anchor)}">{esc(title)}</option>' for anchor, title in sections)
+        body += ('<label class="result-jump"><span>Jump to</span><select id="result-jump">'
+                 '<option value="">Choose a section…</option>' + options + '</select></label>')
+    body += '</div>'
+    if note:
+        body += f'<p class="notice">{esc(note)}</p>'
+    body += '<div class="result-reader" id="result-document">'+rendered+'</div>'
+    if truncated:
+        body += '<p class="notice result-preview-notice">End of truncated preview. '+link(base+'?full=1'+('&source=1' if source else ''), 'View full file', 'text-link')+'</p>'
+    body += '<div class="result-reader-footer">'+link('/results/'+u(name), '← All result files', 'text-link')+link(download, 'Download full file', 'text-link')+'</div>'
+    return page(filename+' · '+name, frame(body, 'environments', 'Read results'), reader='1')
 
 
 def tools_page(leaves,special,form_html):

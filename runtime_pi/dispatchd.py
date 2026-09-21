@@ -37,6 +37,15 @@ def log(msg):
         f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {msg}\n")
 
 
+def run_status(status, **details):
+    """Machine-readable lifecycle; scenario state still owns game outcomes."""
+    target = Path.home() / "run_status.json"
+    temp = target.with_suffix(".tmp")
+    temp.write_text(json.dumps({"status": status, "pid": os.getpid(),
+                               "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), **details}) + "\n")
+    os.replace(temp, target)
+
+
 class PiAdapter:
     """dispatchlib transport over the pi_gateway unix socket, as the `dispatch` user. One
     JSON line per op; a fresh connection per call (thread-safe: dispatchlib.round
@@ -97,11 +106,23 @@ def main():
     cfg = json.loads((WORLD_DIR / "world.json").read_text())
     params = cfg.get("params", {})
     log(f"dispatch start: params={params}")
+    run_status("running")
     try:
         dispatchlib.run(PiAdapter(), load_scen_dispatch().run, params,
                   str(Path.home() / "state.json"))
-        log("dispatch run() returned (game complete)")
+        state_file = Path.home() / "state.json"
+        try:
+            state = json.loads(state_file.read_text())
+        except (FileNotFoundError, ValueError):
+            state = {}
+        if isinstance(state, dict) and state.get("paused_reason"):
+            run_status("paused", reason=state["paused_reason"])
+            log("dispatch run() returned (paused)")
+        else:
+            run_status("complete")
+            log("dispatch run() returned (game complete)")
     except Exception as e:
+        run_status("failed", reason=str(e))
         log(f"dispatch crashed: {e!r}")
         raise
 

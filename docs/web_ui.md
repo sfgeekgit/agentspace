@@ -201,6 +201,10 @@ tunnel keeps working.
 
 ## 8. Adding a verb
 
+Recess environments also have a **Results** page for generation, completion
+status, ZIP/individual downloads, and publishing to the separate results
+repository. See [results.md](results.md) for prompt provenance and configuration.
+
 Library `cmd_*` function, click command, menu branch, as in
 `agentspace_cli.md`. The web form appears by itself. Decide whether the
 demo may run it: add it to `DEMO_VERBS` if so, and to `DEMO_DROP` any of its

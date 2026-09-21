@@ -307,6 +307,9 @@ def run_pi_turn(home, system_prompt, user_prompt, cfg, reopen):
            "--model", cfg.get("model", "anthropic/claude-haiku-4.5"),
            "--session-dir", str(sessions),
            "--system-prompt", system_prompt]
+    capture_extension = Path(__file__).with_name("prompt_capture.mjs")
+    if capture_extension.is_file():
+        cmd += ["--extension", str(capture_extension)]
     thinking = cfg.get("thinking", "low")  # thinking ON by default (logged CoT)
     if thinking and thinking != "off":
         cmd += ["--thinking", thinking]

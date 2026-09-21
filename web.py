@@ -34,6 +34,7 @@ import web_views as ui
 
 import zookeeper                                   # loads secrets; the click tree is zookeeper.cli
 from agentspace import audit, budget as budget_mod, builder, db, env as env_mod, logwatch, registry, runtimes, versioning
+from agentspace import results as results_mod
 
 PORT = int(os.environ.get("AGENTSPACE_WEB_PORT", 7788))   # override for a second worktree; the service uses the default
 REPO = Path(__file__).resolve().parent
@@ -394,7 +395,7 @@ class Handler(BaseHTTPRequestHandler):
         self._dispatch(self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "replace"))
 
     def reply(self, code, body, ctype=TEXT):
-        data = body.encode()
+        data = body if isinstance(body, bytes) else body.encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
@@ -425,6 +426,33 @@ class Handler(BaseHTTPRequestHandler):
 
     def route(self, seg, q, f, body):
         m = self.command
+        if m == "GET" and len(seg) >= 2 and seg[0] == "results":
+            if why := demo_denied("results show"):
+                return self.reply(403, why)
+            try:
+                results_mod.environment(seg[1])
+                if len(seg) == 2:
+                    return self.reply(200, ui.results_page(seg[1]), HTML)
+                if len(seg) == 3 and seg[2] == "status":
+                    return self.reply(200, json.dumps(results_mod.completion(results_mod.capture(seg[1], agents=False))), JSON)
+                if len(seg) == 4 and seg[2] == "view":
+                    content, manifest = results_mod.artifact(seg[1], seg[3])
+                    return self.reply(200, ui.result_file_page(seg[1], seg[3], content, manifest,
+                        full=q.get("full") == ["1"], source=q.get("source") == ["1"]), HTML)
+                if len(seg) == 4 and seg[2] == "files":
+                    content = results_mod.download(seg[1], seg[3])
+                    filename = seg[1] + ".zip" if seg[3] == "all.zip" else results_mod.validate_name(seg[3])
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/zip" if seg[3] == "all.zip" else "application/octet-stream")
+                    self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+            except ValueError as err:
+                return self.reply(400, str(err))
+            return self.reply(404, "No such results route")
         if m == "GET" and not seg:
             return self.reply(200, console_page(), HTML)
         if m == "GET" and seg == ["scenarios"]:

@@ -26,6 +26,8 @@ def run(api, params):
         state = engine.new_state(b, roles, params, random.getrandbits(32))
         api.save_state(state)
         glog("start", f"npcs={sorted(state['npcs'])} reserves={state['reserves']} params={params}", 0)
+    state["player"]["inventory"] = engine.names(state["player"]["inventory"])  # heal pre-fix state
+    state["player"]["inventory"] = engine.names(state["player"]["inventory"])  # heal pre-fix state
     log = lambda kind, text: glog(kind, text, state["turn"])
     player, gm = state["player"]["agent"], state["gm"]
     max_turns = int(params["max_turns"])
@@ -55,10 +57,17 @@ def run(api, params):
         action = None if state["turn"] == 0 else api.collect(player, default="")
         log("player_in", action or "")
         parsed = ask_gm(engine.gm_context(state, b, action, params))
+        engine.apply_move(state, parsed.pop("move", None), log)   # before talk: presence is judged at the destination
         lines = []
         for t in parsed.get("talk") or []:
-            n = t.get("npc")
-            if n in engine.present(state) and t.get("hears"):
+            n = engine.resolve_npc(state, t.get("npc", ""))
+            if n is None:
+                engine.notice(state, f"talk to {t.get('npc')!r} ignored: no such person exists. Only WORLD people can speak; "
+                                     f"assign a reserve to give a new character a voice, or keep them silent.")
+            elif n not in engine.present(state):
+                engine.notice(state, f"talk to {n!r} ignored: they are at {state['npcs'][n]['loc']}, not here "
+                                     f"({state['player']['loc']}). Use move_npc to bring them, or move the player.")
+            elif t.get("hears"):
                 npc = state["npcs"][n]
                 api.wake(npc["agent"], engine.npc_payload(state, n, t["hears"]))
                 line = api.collect(npc["agent"], default="(says nothing)")
@@ -69,7 +78,11 @@ def run(api, params):
                 log("npc", f"{n}: {line}")
         if lines:
             parsed = ask_gm(engine.gm_context(state, b, action, params, npc_lines=lines))
-        narration = engine.apply(state, parsed, log, b["quests"]["ends"])
+        narration = engine.apply(state, parsed, log, b)
+        for n in engine.voiced_without_talk(state, narration, [x for x, _ in lines]):
+            engine.notice(state, f"your narration gave {state['npcs'][n]['def']['name']} lines to say, but you did not `talk` "
+                                 f"to {n!r}. WORLD people speak only through `talk`; never write their words yourself.")
+            log("voiced", n)
         state["turn"] += 1
         engine.unlock(state, log)
         for i, s in engine.due_schedules(state, b):
@@ -78,12 +91,14 @@ def run(api, params):
             api.wake(npc["agent"], engine.npc_payload(state, s["npc"], s["hears"]))
             line = api.collect(npc["agent"], default="(acts silently)")
             api.roll_session(npc["agent"])
+            npc["met"] = True
+            npc["notes"] += [f"heard: {s['hears'][:300]}", f"you said: {line[:300]}"]
             log("schedule", f"{s['npc']}: {line}")
             patch = ask_gm(engine.gm_context(
                 state, b, "(continue the scene)", params,
                 scheduled=f"{s['npc']} says/does: {line}. {s['gm_note']} Narrate only what "
                           f"the player perceives now, as a short addition."))
-            narration += "\n\n" + engine.apply(state, patch, log, b["quests"]["ends"])
+            narration += "\n\n" + engine.apply(state, patch, log, b)
         engine.check_end(state, b, log)
         state["transcript"].append({"turn": state["turn"], "in": action, "out": narration})
         state["pending_out"] = narration

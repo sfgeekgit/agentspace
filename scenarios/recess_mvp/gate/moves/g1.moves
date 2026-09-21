@@ -1,9 +1,10 @@
 submit Dust, hens, a well. The forge rings to the east.
-submit You look about the square. ```json {"stats": {"curiosity": 1}} ```
-submit You walk into the heat of the forge. ```json {"move": "east"} ```
-submit You greet the smith. ```json {"talk": [{"npc": "merrow", "hears": "A stranger asks what you are making."}]} ```
-submit Merrow grunts one word: nails. You ask about the cot and she goes quiet. ```json {"stats": {"honesty": 2}, "flags": {"asked_about_son": true}} ```
+submit You look about the square. ```json {"stats": {"curiosity": 1}, "talk": [{"npc": "Tobin", "hears": "someone waves"}], "map": [{"op": "add", "id": "the_forge", "name": "The forge", "via": "east"}]} ```
+submit You walk into the heat of the forge. ```json {"move": "The forge", "flags": {"mill_restored": true}} ```
+submit You greet the smith. ```json {"talk": [{"npc": "Merrow", "hears": "A stranger asks what you are making."}]} ```
+submit Merrow grunts one word: nails. You ask about the cot and she goes quiet. ```json {"stats": {"honesty": 3}, "flags": {"asked_about_son": true}} ```
 submit This one is broken. ```json {"stats": nope} ```
 submit You set the notice alight. Hens scatter. A stranger in a striped apron wanders up, muttering about pins. ```json {"stats": {"mischief": 3, "things_set_on_fire": 1}, "assign_reserve": {"name": "Bowling alley keeper", "brief": "You keep a bowling alley in a barn behind the inn. You are new here and nobody understands your trade.", "loc": "square"}} ```
-submit Back in the square, smoke rising from a black patch. ```json {"move": "west", "map": [{"op": "add", "id": "smoking_pit", "name": "Smoking pit", "desc": "Ash and a warm smell.", "via": "into the ashes"}]} ```
-submit You climb down, and down, and keep going. The village fades above you. You are gone. ```json {"end": "left_village"} ```
+submit Back in the square, smoke rising from a black patch. Tobin says "what have you done?" ```json {"move": "village square", "map": [{"op": "add", "id": "smoking_pit", "name": "Smoking pit", "desc": "Ash and a warm smell.", "via": "into the ashes"}]} ```
+submit You stride off across the fields to the fen's edge. ```json {"move": "fen_edge"} ```
+submit You turn back and walk all the way home. Then you climb down the well, and down, and keep going. The village fades above you. You are gone. ```json {"move": "square", "end": "left_village"} ```

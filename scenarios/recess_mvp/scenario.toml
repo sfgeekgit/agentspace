@@ -18,7 +18,7 @@ max_tokens = 8192
 name = "max_turns"
 type = "int"
 label = "Turn cap (one turn = one player action + one reply)"
-default = 150
+default = 80
 min = 10
 max = 500
 

@@ -49,6 +49,7 @@ STATE_DIR (mode 0700) — unreadable by agents by kernel permission bits.
 import json
 import math
 import os
+import shutil
 import pwd
 import socket
 import struct
@@ -799,10 +800,12 @@ def op_dispatch_roll_session(pr, req):
     if os.path.isdir(sess):
         arch = os.path.join(sess, "archive")
         os.makedirs(arch, exist_ok=True)
+        sysp = os.path.join(sess, ".sysprompt")
         for n in os.listdir(sess):
             if n.endswith(".jsonl"):
+                if os.path.exists(sysp):
+                    shutil.copyfile(sysp, os.path.join(arch, n[:-6] + ".sysprompt"))
                 os.replace(os.path.join(sess, n), os.path.join(arch, n))
-        sysp = os.path.join(sess, ".sysprompt")
         if os.path.exists(sysp):
             os.remove(sysp)
         subprocess.run(["chown", "-R", USER_PREFIX + agent, sess], check=False)

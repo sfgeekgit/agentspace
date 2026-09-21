@@ -477,6 +477,35 @@ def scen_env_shell(scen_name):
 
 
 # ================================================================================
+@cli.group()
+def results():
+    """Generate, inspect and publish Recess run results."""
+
+
+@results.command("generate")
+@click.argument("name")
+def results_generate(name):
+    """Export player context, prompts, report and data (partial runs are labeled)."""
+    from agentspace import results as results_mod
+    results_mod.cmd_generate(name)
+
+
+@results.command("show")
+@click.argument("name")
+def results_show(name):
+    """Read game completion status without waking or stopping agents."""
+    from agentspace import results as results_mod
+    results_mod.cmd_show(name)
+
+
+@results.command("publish")
+@click.argument("name")
+def results_publish(name):
+    """Upload the last generated bundle to the separate results Git repository."""
+    from agentspace import results as results_mod
+    results_mod.cmd_publish(name)
+
+
 # INTERACTIVE MENU
 # ================================================================================
 #
@@ -1226,6 +1255,25 @@ def menu_scen():
             _show_error(e)
 
 
+def menu_results():
+    from agentspace import results as results_mod
+    try:
+        choice = _ask(lambda: questionary.select("Results:", choices=["Generate", "Show status", "Publish to results repository", "← Back"]).ask())
+        if choice == "← Back":
+            return
+        name = _pick_env()
+        if not name:
+            return
+        if choice == "Generate":
+            results_mod.cmd_generate(name)
+        elif choice == "Show status":
+            results_mod.cmd_show(name)
+        else:
+            results_mod.cmd_publish(name)
+    except _Cancelled:
+        return
+
+
 def launch_menu():
     """Interactive menu — launched when zookeeper.py is called with no arguments.
 
@@ -1249,6 +1297,7 @@ def launch_menu():
                     "Snaps     — manage frozen images; fork one to start an env",
                     "Envs      — manage running world containers",
                     "Budget    — OpenRouter credit limits",
+                    "Results   — reports, full prompts and results publishing",
                     questionary.Separator(),
                     "Quit",
                 ],
@@ -1274,6 +1323,8 @@ def launch_menu():
                 menu_env()
             elif choice.startswith("Budget"):
                 menu_budget()
+            elif choice.startswith("Results"):
+                menu_results()
         except _Cancelled:
             print("  (cancelled)")
             continue

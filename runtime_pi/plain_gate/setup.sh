@@ -4,7 +4,7 @@
 set -euo pipefail
 mkdir -p /runtime_pi /run/svc
 cp /repo/runtime_pi/pi_gateway.py /repo/runtime_pi/pi_gateway_client.py \
-   /repo/runtime_pi/agentd.py /repo/runtime_pi/dispatchd.py /runtime_pi/
+   /repo/runtime_pi/agentd.py /repo/runtime_pi/dispatchd.py /repo/runtime_pi/prompt_capture.mjs /runtime_pi/
 cp /repo/agentspace/dispatchlib.py /runtime_pi/dispatchlib.py
 cp /repo/runtime_pi/plain_gate/fake_pi.py /runtime_pi/fake_pi.py; chmod 0755 /runtime_pi/fake_pi.py
 cp /repo/runtime_pi/shims/gateway /repo/runtime_pi/shims/submit /usr/local/bin/; chmod 0755 /usr/local/bin/gateway /usr/local/bin/submit

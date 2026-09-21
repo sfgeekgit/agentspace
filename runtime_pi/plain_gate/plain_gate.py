@@ -25,6 +25,8 @@ calls = [json.loads(l) for l in open("/agents/a1/fake_pi.jsonl")]
 check("two Pi turns", len(calls) == 2, str(len(calls)))
 argv = calls[0]["argv"]
 check("--no-tools passed", "--no-tools" in argv, str(argv))
+check("prompt recording extension passed", "--extension" in argv and "/runtime_pi/prompt_capture.mjs" in argv)
+check("machine-readable completion marker", json.load(open("/dispatch/run_status.json"))["status"] == "complete")
 sp = argv[argv.index("--system-prompt") + 1]
 check("system prompt = md files only (no preamble/norms/scratchpad)",
       "How your world works" not in sp and "scratch" not in sp and "gateway" not in sp

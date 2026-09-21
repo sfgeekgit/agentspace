@@ -9,7 +9,7 @@ s = registry.load_scen('recess_mvp')
 print(s['source_image'] or runtimes.get(s['runtime']).BASE_IMAGE)")}"
 docker image inspect "$IMG" >/dev/null 2>&1 || docker pull "$IMG"
 SECRETS='{"roles": {"p1": "player", "g1": "gm", "n1": "npc_merrow", "n2": "npc_tobin", "r1": "reserve"}}'
-WJ='{"has_dispatch": true, "params": {"max_turns": 7, "attributes": "honesty,curiosity", "npcs": "merrow,tobin"}}'
+WJ='{"has_dispatch": true, "params": {"max_turns": 9, "attributes": "honesty,curiosity", "npcs": "merrow,tobin"}}'
 docker run --rm --network none --user 0:0 -v /opt/agentspace-ctl:/repo:ro "$IMG" \
     bash -c "bash /repo/runtime_pi/dispatch_gate/setup_world.sh \
                  scenarios/recess_mvp/dispatch/main.py '$WJ' scenarios/recess_mvp/gate/moves '$SECRETS' \

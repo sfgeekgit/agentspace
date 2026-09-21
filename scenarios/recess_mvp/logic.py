@@ -1,5 +1,6 @@
 """recess_mvp build hooks: fixed player + gm, chosen NPC roles, reserves."""
 import json
+import sys
 from pathlib import Path
 
 NPC_DIR = Path(__file__).parent / "dispatch" / "world" / "npcs"
@@ -37,9 +38,16 @@ def assign_roles(n, params, rng):
 def fill_briefing(briefing, agent_id, ids_roles, params, rng):
     if ids_roles[agent_id] != "gm":
         return briefing
-    desc = json.loads((NPC_DIR.parent / "attributes.json").read_text())
+    world = NPC_DIR.parent
+    desc = json.loads((world / "attributes.json").read_text())
     lines = [f"- {a}: {desc.get(a, '(no description)')}" for a in _split(params["attributes"])]
-    return briefing.replace("{attributes}", "\n".join(lines))
+    ends = json.loads((world / "quests.json").read_text()).get("ends", {})
+    endings = [f"- {e}: {q['gm_note']}" for e, q in ends.items()]
+    sys.path.insert(0, str(world.parent))
+    import engine   # the reply format is the engine's; bake it once instead of sending it every turn
+    return (briefing.replace("{attributes}", "\n".join(lines))
+            .replace("{endings}", "\n".join(endings))
+            .replace("{format}", engine.FORMAT))
 
 
 def dispatch_secrets(ids_roles, params, rng):

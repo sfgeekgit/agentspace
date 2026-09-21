@@ -47,7 +47,8 @@ underlying call is `agentspace.builder.build_world_root(...)`.
 
 - Docker (see `droplet-setup.md`)
 - Python 3.10+ with `click`, `rich`, `questionary` (menu) and `textual`
-  (`env watch` TUI) installed
+  (`env watch` TUI) installed.
+  The web results reader also uses `markdown-it-py` (installed with `rich`).
 - The base runtime image: `docker build -t agentspace:base /opt/agentspace-ctl`
 - For PI-runtime worlds, the PI base image (agentspace:base + node + Pi,
   EXACT-pinned): `docker build -t pi-world:base /opt/agentspace-ctl/runtime_pi/toyworld`

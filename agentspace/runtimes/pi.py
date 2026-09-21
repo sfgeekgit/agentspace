@@ -50,7 +50,7 @@ DEFAULT_KICK = ""
 RUNTIME_SRC = Path(__file__).resolve().parents[2] / "runtime_pi"
 # dispatchd.py is the dispatcher launcher/adapter; dispatchlib.py (the runtime-neutral dispatcher library)
 # is copied from agentspace/ so the in-container scen `import dispatchlib` resolves.
-RUNTIME_FILES = ("pi_gateway.py", "pi_gateway_client.py", "agentd.py", "dispatchd.py")
+RUNTIME_FILES = ("pi_gateway.py", "pi_gateway_client.py", "agentd.py", "dispatchd.py", "prompt_capture.mjs")
 DISPATCHLIB_SRC = Path(__file__).resolve().parents[1] / "dispatchlib.py"  # agentspace/dispatchlib.py
 # Agent-facing CLI shims (real files, single source of truth — the toy-world
 # setup script copies the same ones); land in /usr/local/bin, mode 0755.
@@ -375,6 +375,10 @@ def roll_sessions(host, container, agent_ids):
             f'H=/agents/{shlex.quote(aid)}; '
             'if [ -d "$H/sessions" ]; then '
             '  mkdir -p "$H/sessions/archive"; '
+            '  for f in "$H"/sessions/*.jsonl; do '
+            '    [ -f "$f" ] && [ -f "$H/sessions/.sysprompt" ] && '
+            '      cp "$H/sessions/.sysprompt" "$H/sessions/archive/$(basename "$f" .jsonl).sysprompt"; '
+            '  done; '
             '  mv "$H"/sessions/*.jsonl "$H/sessions/archive/" 2>/dev/null; '
             '  rm -f "$H/sessions/.sysprompt"; '
             f'  chown -R "u_{aid}" "$H/sessions"; '

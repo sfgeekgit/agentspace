@@ -39,6 +39,7 @@ function append(pane, items) {
   if (follow) pane.scrollTop = pane.scrollHeight;
 }
 const labels = {'snap fork':'Launch environment','snap take':'Save snapshot','snap note':'Add a note','snap push':'Publish snapshot','snap pull':'Import snapshot','snap attach':'Attach text files','snap extract':'Extract files','snap show':'Snapshot details','snap tree':'Snapshot lineage','env start':'Start container','env kick':'Wake agents','env sleep':'Sleep environment','env stop':'Stop container','env kill':'Remove environment','env post':'Post to public board','env logs':'Read raw logs','env roll-sessions':'Roll agent sessions','budget topup':'Top up budget','budget show':'Budget usage','scen deactivate':'Deactivate scenario'};
+Object.assign(labels, {'results generate':'Generate results', 'results show':'Check game status', 'results publish':'Upload to results GitHub'});
 const fieldLabels = {snap_ref:'Snapshot',new_env_name:'Environment name',env_name:'Environment',name:'Environment',text:'Note',message:'Message / description',amount_usd:'Amount to add (USD)',note:'Additional note',version:'Version override',attach:'Text file paths (one per line)',agent:'Agent ID',all_agents:'All agent sessions',everything:'Gateway and all agent sessions',follow:'Follow live',force:'Confirm removal',scen_name:'Scenario',host:'Host',budget_usd:'Shared budget (USD)',existing_key:'Existing API key',world_name:'World name',dest:'Destination directory',files:'File paths (quote paths containing spaces)',allow_key_leak:'Override credential scan',ghcr_tag:'Registry reference'};
 
 // Search is local to the current catalog; all inventory stays available.
@@ -123,7 +124,7 @@ function followOperation(info, liveRequest, onEnd) {
           $('build-next').replaceChildren(node('span','World root built successfully.'),a);
         }
       } else if (info.destination) {
-        showResult('Environment ready.', info.destination, 'Open environment →');
+        showResult(info.resultLabel || 'Environment ready.', info.destination, info.resultLabel ? 'Open results →' : 'Open environment →');
         location.assign(info.destination);
       } else showResult('Completed.', location.href, 'Refresh this view →');
     } else if (exit !== null && exit !== 0) {
@@ -164,6 +165,10 @@ async function submitOperation(form, after) {
   const finished = exit => { delete form.dataset.busy; if(submit) submit.disabled=false; if(after) after(exit); };
   const url = '/run/'+path.replaceAll(' ','/');
   const info = {label:labels[path] || path};
+  if (path.startsWith('results ')) {
+    info.destination = '/results/'+enc(body.get('name'));
+    info.resultLabel = 'Results ready.';
+  }
   if (path === 'snap fork') info.destination = '/watch/'+enc(body.get('new_env_name'));
   if (path === 'env kill') info.destination = '/environments';
   try {
@@ -413,6 +418,24 @@ if($('pane')) {
   };
   window.addEventListener('focus',refreshOnFocus);
   document.addEventListener('visibilitychange',refreshOnFocus);
+}
+if ($('result-jump')) {
+  $('result-jump').addEventListener('change', e => {
+    if (e.target.value) location.hash = e.target.value;
+  });
+}
+if (document.body.dataset.results) {
+  const name = document.body.dataset.results;
+  async function checkResultsStatus() {
+    try {
+      const status = await (await request('/results/'+enc(name)+'/status')).json();
+      $('results-status').textContent = 'Game: '+status.status.replaceAll('_',' ')+' · turn '+status.turns+
+        (status.max_turns ? '/'+status.max_turns : '')+' · '+status.reason+
+        (status.complete ? '. Ready for a final report.' : '. You can generate a partial report now.');
+      if (status.status === 'in_progress') setTimeout(checkResultsStatus, 15000);
+    } catch(e) { $('results-status').textContent = 'Could not check game status: '+e.message; }
+  }
+  checkResultsStatus();
 }
 // Resume only this tab's operation. No shared localStorage with other previews.
 try {const saved=JSON.parse(sessionStorage.getItem('agentspace:7790:operation')||'null');if(saved && saved.id)followOperation(saved);}catch{}

@@ -35,7 +35,7 @@ def main():
          f"Turns: {state['turn']}. Ended: {state['ended'] or 'turn cap'}.",
          f"Final location: {state['map'][pl['loc']]['name']} ({pl['loc']}).",
          f"Inventory: {', '.join(pl['inventory']) or 'nothing'}.",
-         "\n## Attributes\n"] + [f"- {k}: {v} ({engine.band(v)})" for k, v in pl["stats"].items()]
+         "\n## Attributes\n"] + [f"- {k}: {v} ({engine.words(pl['stats']).get(k, 'unremarkable')})" for k, v in pl["stats"].items()]
     s += ["\n## Flags\n"] + ([f"- {k} = {v}" for k, v in state["flags"].items()] or ["- none"])
     s += ["\n## NPCs\n"] + [f"- {n}: {'met' if v['met'] else 'never met'}, at {v['loc']}, unlocked {v['unlocked']}"
                             for n, v in state["npcs"].items()]
