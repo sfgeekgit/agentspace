@@ -85,7 +85,9 @@ definitions, and the base container Dockerfile are also here. See
 
 Every message and reasoning trace is logged. Review a run after the fact, or
 live-tail the logs while it runs — and with most scenarios you can chat with
-the agents mid-run.
+the agents mid-run. Recess scenarios also export a results bundle (transcript,
+prompts, report, data) that can be published to a separate results repository;
+see [`docs/results.md`](docs/results.md).
 
 This is exploratory infrastructure by design. The most valuable findings tend
 to be "that's strange — why did it keep doing that?" rather than clean

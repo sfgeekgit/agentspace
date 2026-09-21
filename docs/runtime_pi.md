@@ -500,10 +500,13 @@ what you touched.**
 | Plain mode | `runtime_pi/plain_gate/run_plain_gate.sh` | world.json `plain`: real agentd with a fake Pi — bare system prompt (md files only), mail-only user prompt, `--no-tools`, reply text spooled as `submit`, no MEMORY.md scaffold (~seconds) | agentd prompt assembly, plain mode, submit cap |
 | Key | `python3 runtime_pi/key_gate.py` | keys-never-in-snaps invariant with a FAKE key: tmpfs delivery, committed image clean in fs + `.Config`, scanner positive control (host-side, ~15s) | key delivery/injection, container start paths, take/push scanner |
 | Front ends | `python3 scripts/check_frontends.py` | every library `cmd_*` verb is wired into both the click CLI and the menu in zookeeper.py, and every click leaf has a web form or a `web.SPECIAL` entry (instant) | zookeeper.py, any `cmd_*`, web.py |
-| Web | `python3 runtime_pi/web_gate.py` | every verb has a web form; argv rules; runs stream, survive or die as specified; watch, chat, wizard, models and workspace routes answer against a stopped env; the demo policy refuses and renders as specified (host-side, ~10s) | web.py, check_frontends.py |
+| Web | `python3 runtime_pi/web_gate.py` | every verb has a web form; argv rules; runs stream, survive or die as specified; watch, chat, wizard, models and workspace routes answer against a stopped env; the demo policy refuses and renders as specified, including alternate snapshot spellings, agent ids, persona names and the container cap (host-side, ~10s) | web.py, web_views.py, web.js, web_gate fixtures |
+| Results | `python3 runtime_pi/results_gate.py` | results generate/show/publish against fixtures: bundle manifest and hashes, completion status, publication to a local bare repo; no model calls (not in run_engine_gates.sh) | agentspace/results.py, result_view.py, scenario results adapters |
+| Prompt capture | `docker run --rm --network none -v /opt/agentspace-ctl:/repo:ro pi-world:base python3 /repo/runtime_pi/prompt_capture_gate.py` | real installed Pi + agentd with a local fake provider: system/developer prompts are recorded as `results.md` describes; no network (not in run_engine_gates.sh) | runtime_pi/prompt_capture.mjs, agentd.py |
 
-`runtime_pi/run_engine_gates.sh` runs all seven (a few minutes) — for
+`runtime_pi/run_engine_gates.sh` runs the first eight (a few minutes) — for
 gateway/dispatchlib/builder-wide changes; otherwise run just the relevant row.
+The results and prompt-capture gates run by hand, as `results.md` shows.
 
 Checklist details: real `su` credentials prove PM round-trip + auto-wake + no
 ack ping-pong; public chat wakes nobody; 0700 homes hold; gateway state

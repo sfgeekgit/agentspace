@@ -163,6 +163,19 @@ scen env build <scen>                      # docker build the scen's env.Dockerf
 Env images are tagged `env-<scen>-<n>` in the same ghcr repo as snaps; the
 snap index ignores them (`org.agentspace.kind=scen-environment`).
 
+### results
+
+```bash
+agentspace results generate <env>   # export player context, prompts, report and data (partial runs are labeled)
+agentspace results show <env>       # completion status, without waking or stopping agents
+agentspace results publish <env>    # upload the last generated bundle to the separate results Git repository
+```
+
+Recess scenarios only (each ships a results adapter). Bundles land in
+`$AGENTSPACE_RESULTS_DIR/<env>/` (default `/opt/agentspace-results`); the web
+UI's Results page reads the same bundle. Details, prompt provenance and the
+results repository configuration: `results.md`.
+
 ---
 
 ## Typical workflow
@@ -412,14 +425,21 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
     registry.py                ← discover scens / personas / modules (scan git dirs)
     builder.py                 ← build a World Root from a scen + roster
     scen.py                    ← scen env freeze / build (source_image producers)
-    dispatchlib.py                   ← the dispatcher's API (runtime_pi.md §4b)
+    dispatchlib.py             ← the dispatcher's API (runtime_pi.md §4b)
+    results.py                 ← results verbs: bundle generation, status, publication (results.md)
+    result_view.py             ← the web's results reader (markdown, JSON, JSONL previews)
     logwatch.py                ← log views + streamer (env watch, env logs --all, the web watch page)
     watch_tui.py               ← the Textual TUI for env watch
     runtimes/__init__.py       ← dispatch on snap.runtime label
     runtimes/openclaw.py       ← openclaw flag→config translate + render_config, soul, gateway, kick
     runtimes/pi.py             ← the PI runtime (runtime_pi.md)
-  runtime_pi/                  ← in-container PI runtime (gateway, agentd, dispatchd) + the gates
+  runtime_pi/                  ← in-container PI runtime (gateway, agentd, dispatchd, prompt_capture.mjs)
+                                 + the gates (checklist/, dispatch_gate/, plain_gate/, key, web, results, prompt capture)
   scripts/check_frontends.py   ← every cmd_* is wired into CLI, menu and web
+  scripts/check_web_workspace.cjs, check_results_reader.cjs, check_results_workspace.cjs
+                               ← optional Playwright browser passes (web_ui.md §7)
+  scripts/make_result.py       ← result.json for a finished game run (pre-results-verb exporter)
+  scripts/build_scenario.sh    ← scenario image build helper
   deploy/                      ← the web service unit
 ```
 

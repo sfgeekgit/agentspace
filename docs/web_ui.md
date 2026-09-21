@@ -31,6 +31,7 @@ or a throwaway test copy.
 | Create a world | `/new` → `/new/<scen>` → `/new/<scen>/roster` → `POST /new/<scen>/build` | the menu's New-world wizard: scenario, settings and agent count, per-agent model and persona, modules, name, build |
 | Advanced tools | `/tools` | a generated form for every remaining CLI verb, grouped; terminal-only verbs listed with their command; recent operations |
 | Help | `/help` | the field guide |
+| Results | `/results/<env>`, `/results/<env>/status`, `/results/<env>/files/<name>` | Recess environments only: generate a results bundle, read completion status, preview and download its files (`all.zip` for everything), publish to the results repository (`results.md`) |
 
 Ids in URLs are snapshot ids (32 hex chars) and env names. Search boxes
 filter the current page only.
@@ -125,7 +126,23 @@ the server (`snap attach`, `snap take --attach`, `snap extract`, `snap fork
 (no ownership yet, so nobody can delete the featured environments), `budget
 topup`, `scen deactivate`, `scen env build`, and the terminal-only verbs.
 A fork is also refused for a snapshot whose `feature_flags` request
-`fs_isolation=sandbox`, because that mode mounts the docker socket.
+`fs_isolation=sandbox`, because that mode mounts the docker socket. The
+policy resolves the snapshot with the launcher's own resolver, so every
+spelling of a reference (scenario:version, id prefix, short or full ghcr
+tag) is checked, and a reference that does not resolve is refused rather
+than passed on. The container cap counts `running` rows too (a fork records
+its env as `running` until the status is next refreshed), and the budget
+must be above zero.
+
+Two checks that protect every front end, not just the demo, live in the
+library: `env logs --agent` accepts only ids made of letters, digits,
+underscore and hyphen, because the id is spliced into a shell line inside
+the container; and persona names must be a plain stem that resolves inside
+`personas/`.
+
+The Results page (`results show`) is operator-only on the demo today:
+`results show` is not in `DEMO_VERBS`, and the public host's Caddy allowlist
+does not include `/results/`.
 
 A new verb is refused on the demo until it is added to `DEMO_VERBS`.
 
@@ -198,12 +215,13 @@ tunnel keeps working.
   and `npx playwright install chromium`; run with
   `NODE_PATH=.preview-tools/node_modules node scripts/check_web_workspace.cjs`
   against a running instance (`AGENTSPACE_PREVIEW_URL`, default 7790).
+- `scripts/check_results_reader.cjs` and `scripts/check_results_workspace.cjs`:
+  the same kind of browser pass for the Results pages (read-only document
+  checks, and one authorized regeneration with publication intercepted).
+- `python3 runtime_pi/results_gate.py`: the results verbs against fixtures,
+  no model calls. See `results.md`.
 
 ## 8. Adding a verb
-
-Recess environments also have a **Results** page for generation, completion
-status, ZIP/individual downloads, and publishing to the separate results
-repository. See [results.md](results.md) for prompt provenance and configuration.
 
 Library `cmd_*` function, click command, menu branch, as in
 `agentspace_cli.md`. The web form appears by itself. Decide whether the
