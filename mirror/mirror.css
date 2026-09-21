@@ -1,0 +1,14 @@
+/* The mirror's own few rules; everything else is the app's web.css. */
+.mirror{margin:0}.mirror .brand{font-size:17px;padding:0}.mirror .topbar button,.mirror-asof button{padding:5px 10px}
+.mirror-asof{font-size:11px;color:#5d685a;display:flex;align-items:center;gap:10px}
+.board-row{display:grid;grid-template-columns:96px minmax(0,1fr);gap:4px 16px;padding:20px 24px;border-bottom:1px solid #eef0e9}.board-row:last-child{border:0}
+.board-row .row-title{font-size:14px;display:inline}.board-row .board-head{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline}
+.board-row .board-line{grid-column:2;font:11px/1.7 var(--mono);color:#5d6854;overflow-wrap:anywhere}.board-row .button-row{grid-column:2;margin-top:8px}
+.board-row .button-row .button{padding:6px 12px;font-size:11px}
+.lineage{display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:10px;font:11px/1.6 var(--mono);color:#65725c}.lineage b{font-weight:600;color:var(--text)}.lineage i{font-style:normal;color:#7b8672}
+.mirror-coverage{font-size:11px;margin:8px 0 0}.mirror-coverage.stale{color:#856128}
+.mirror-inline{flex-direction:row;align-items:center;gap:6px;margin:0;font-size:11px;white-space:nowrap}.mirror-inline select,.mirror-inline input{width:64px;padding:3px 6px;font-size:11px}
+#seek{flex:1;min-width:80px;padding:0}.mirror-downloads{font-size:11px;color:#5d6854}
+.mirror-side{margin-top:28px}.mirror-side button{display:block;text-align:left;white-space:normal;overflow-wrap:anywhere}.mirror-side small{display:block;color:#64705d;font-size:10px}
+#pane pre.document{margin:0 18px;max-height:none}
+@media(max-width:780px){.board-row{grid-template-columns:1fr;padding:16px}.board-row .board-line,.board-row .button-row{grid-column:1}}

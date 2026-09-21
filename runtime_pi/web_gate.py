@@ -243,6 +243,7 @@ P = {**H, "X-Agentspace-Public": "1"}
 before = len(web.RUNS)
 for verb, data in (("env/kill", "name=gate_env"), ("snap/attach", "snap_ref=gate:1.0&files=/etc/passwd"),
                    ("budget/topup", "env_name=gate_env&amount_usd=1"), ("scen/deactivate", "scen_name=pd"),
+                   ("mirror/publish", "manifest="),
                    ("snap/fork", "snap_ref=gate:1.0&new_env_name=d1&budget_usd=1&souls=a=/etc/passwd"),
                    ("snap/fork", "snap_ref=gate:1.0&new_env_name=d1&budget_usd=1&host=other-box"),
                    ("snap/fork", "snap_ref=gate:1.0&new_env_name=d1&budget_usd=50"),

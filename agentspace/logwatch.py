@@ -252,15 +252,18 @@ def parse_declared(w: dict):
     return parse
 
 
-def scen_views(host, container) -> list[View]:
-    out = docker_host.exec_(host, container, "cat", "/world/world.json", check=False)
+def declared_views(world_json: str) -> list[View]:
     try:
-        entries = json.loads(out).get("watch", [])
+        entries = json.loads(world_json).get("watch", [])
     except ValueError:
         return []
     return [View(str(w["name"]), [str(w["file"])], parse_declared(w))
             for w in entries
             if isinstance(w, dict) and w.get("name") and w.get("file")]
+
+
+def scen_views(host, container) -> list[View]:
+    return declared_views(docker_host.exec_(host, container, "cat", "/world/world.json", check=False))
 
 
 # ---- view registry ----
@@ -275,6 +278,11 @@ def view_tree(host, container) -> list[tuple[View, list[View]]]:
     (node, children). World and scenario views are leaves (no children); each
     agent is one node whose view is its combined session ('everything') and
     whose children are its per-facet views. views_for() is this flattened."""
+    return tree(scen_views(host, container), agent_ids(host, container))
+
+
+def tree(scen: list[View], aids: list[str]) -> list[tuple[View, list[View]]]:
+    """view_tree from its two inputs, no docker: the mirror builds it from an extracted log tree."""
     audit, board = "/data/gateway/audit.jsonl", "/data/gateway/public.jsonl"
     nodes: list[tuple[View, list[View]]] = [
         (View("feed", [audit], parse_audit_feed), []),
@@ -283,8 +291,8 @@ def view_tree(host, container) -> list[tuple[View, list[View]]]:
         (View("budget", ["/data/gateway/budget.jsonl"], parse_budget), []),
         (View("raw", [audit], parse_audit_raw), []),
     ]
-    nodes += [(v, []) for v in scen_views(host, container)]
-    for aid in agent_ids(host, container):
+    nodes += [(v, []) for v in scen]
+    for aid in aids:
         sess = [f"/agents/{aid}/sessions/*.jsonl"]
         nodes.append((View(aid, sess, parse_session("everything")), [
             View(f"{aid}:thoughts", sess, parse_session("thoughts")),

@@ -1,0 +1,27 @@
+# The public mirror's manifest. Copy to /var/agentspace-ctl/mirror.toml and edit; only what is
+# listed here is published, to a site with no password. `python3 zookeeper.py mirror publish`
+# builds it, `mirror show` says what is up. See docs/mirror.md.
+
+title = "Agent World Maker"
+min_refresh_seconds = 20        # the public Refresh button will not publish more often than this
+keep_builds = 3                 # old builds pruned after a successful swap
+
+[[run]]
+id = "mafia-11"                 # public id and URL slug: lowercase letters, digits, hyphens; keep it for the run's life
+env = "mafia_11_demo"           # the environment on this box
+title = "Mafia with eleven agents"
+blurb = "Six villagers, three mafia, a doctor and a detective. Dispatch runs the days."
+views = ["feed", "board", "announcements", "budget", "game log (GM, spoilers)"]   # exact view names; default feed, board, announcements
+agents = true                   # each agent's own view: what it said
+thoughts = true                 # ...upgraded to its whole session plus thoughts / says / messages / scratchpad
+results = false                 # copy the generated results bundle, if one exists
+budget = true                   # one OpenRouter lookup per publish, so the board can show spend
+# container = "8f45cfbfd489"    # pin a container id prefix when the env name has been reused
+
+[[run]]
+id = "support-desk-3"
+env = "desk3"
+title = "Support desk, run 3"
+views = ["feed", "board", "budget"]
+agents = true
+results = true

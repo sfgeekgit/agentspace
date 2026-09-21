@@ -506,6 +506,27 @@ def results_publish(name):
     results_mod.cmd_publish(name)
 
 
+# ================================================================================
+@cli.group()
+def mirror():
+    """The public static mirror: publish the manifest's runs, show the current build."""
+
+
+@mirror.command("publish")
+@click.option("--manifest", default=None, help="Manifest path. Default /var/agentspace-ctl/mirror.toml.")
+def mirror_publish(manifest):
+    """Export the runs listed in the manifest and swap the new build in. Reads only."""
+    from agentspace import mirror as mirror_mod
+    mirror_mod.cmd_publish(manifest)
+
+
+@mirror.command("show")
+def mirror_show():
+    """The current build: its stamp, and each run's as-of time, staleness and event count."""
+    from agentspace import mirror as mirror_mod
+    mirror_mod.cmd_show()
+
+
 # INTERACTIVE MENU
 # ================================================================================
 #
@@ -1274,6 +1295,18 @@ def menu_results():
         return
 
 
+def menu_mirror():
+    from agentspace import mirror as mirror_mod
+    try:
+        choice = _ask(lambda: questionary.select("Public mirror:", choices=["Publish", "Show current build", "← Back"]).ask())
+    except _Cancelled:
+        return
+    if choice == "Publish":
+        mirror_mod.cmd_publish()
+    elif choice == "Show current build":
+        mirror_mod.cmd_show()
+
+
 def launch_menu():
     """Interactive menu — launched when zookeeper.py is called with no arguments.
 
@@ -1298,6 +1331,7 @@ def launch_menu():
                     "Envs      — manage running world containers",
                     "Budget    — OpenRouter credit limits",
                     "Results   — reports, full prompts and results publishing",
+                    "Mirror    — publish the public static mirror",
                     questionary.Separator(),
                     "Quit",
                 ],
@@ -1325,6 +1359,8 @@ def launch_menu():
                 menu_budget()
             elif choice.startswith("Results"):
                 menu_results()
+            elif choice.startswith("Mirror"):
+                menu_mirror()
         except _Cancelled:
             print("  (cancelled)")
             continue

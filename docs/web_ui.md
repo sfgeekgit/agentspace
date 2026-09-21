@@ -18,6 +18,12 @@ Two ways in:
 `AGENTSPACE_WEB_PORT` runs a second instance on another port, for a worktree
 or a throwaway test copy.
 
+There is a third, separate tier that is not this app at all: the **public
+mirror** at `/publicview/` on the demo's hostname, no password. It is a
+directory of static files written by `zookeeper.py mirror publish` from an
+operator-owned manifest and served by Caddy's `file_server`; nothing a
+visitor sends reaches this process. See [mirror.md](mirror.md).
+
 ## 1. Pages
 
 | Page | Route | What it shows |
@@ -140,9 +146,11 @@ underscore and hyphen, because the id is spliced into a shell line inside
 the container; and persona names must be a plain stem that resolves inside
 `personas/`.
 
-The Results page (`results show`) is operator-only on the demo today:
-`results show` is not in `DEMO_VERBS`, and the public host's Caddy allowlist
-does not include `/results/`.
+Password holders can open the Results page: `results show` is in
+`DEMO_VERBS` and the demo host's Caddy allowlist includes `/results/<env>`
+with its `status`, `view/<file>` and `files/<file>` routes. `results
+generate` and `results publish` stay operator-only (they write to the results
+directory and push to a git repository).
 
 A new verb is refused on the demo until it is added to `DEMO_VERBS`.
 
@@ -177,7 +185,7 @@ block is in the operator's deployment notes; the shape is:
 demo.example.com {
 	basic_auth { demo <bcrypt hash> }
 	request_body { max_size 1MB }
-	@ok path_regexp ^/(|help|scenarios|worlds|environments|tools|new|models|runs|web\.css|web\.js)$|^/(scenarios|new)/[a-z0-9_]+(/(roster|build))?$|^/(worlds|snapshots|fork)/[0-9a-f]{32}$|^/(watch|views|info|budget)/[A-Za-z0-9_.-]+$|^/stream/[A-Za-z0-9_.-]+/[A-Za-z0-9_:.-]+$|^/chat/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$|^/(run|form)/[a-z_]+(/[a-z_-]+){1,2}$|^/runs/[0-9a-f]{8}(/stop)?$
+	@ok path_regexp ^/(|help|scenarios|worlds|environments|tools|new|models|runs|web\.css|web\.js)$|^/(scenarios|new)/[a-z0-9_]+(/(roster|build))?$|^/(worlds|snapshots|fork)/[0-9a-f]{32}$|^/(watch|views|info|budget)/[A-Za-z0-9_.-]+$|^/stream/[A-Za-z0-9_.-]+/[^/]+$|^/chat/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$|^/(run|form)/[a-z_]+(/[a-z_-]+){1,2}$|^/runs/[0-9a-f]{8}(/stop)?$|^/results/[A-Za-z0-9_.-]+(/(status|(files|view)/[A-Za-z0-9_.-]+))?$
 	handle @ok {
 		reverse_proxy 127.0.0.1:7788 {
 			header_up X-Agentspace-Public 1
