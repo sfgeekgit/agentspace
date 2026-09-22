@@ -20,13 +20,14 @@ function pill(status) { const s = node('span', '', 'status ' + (LABEL[status] ? 
 function color(who) { let h = 0; for (const c of who) h = (h * 31 + c.charCodeAt(0)) % 360; return 'hsl(' + h + ' 45% 34%)'; }
 
 async function refresh(reload) {
-  const button = $('refresh'); button.disabled = true; button.textContent = 'Refreshing…';
+  const buttons = document.querySelectorAll('.refresh'), asof = document.querySelectorAll('.as-of');
+  for (const b of buttons) { b.disabled = true; b.textContent = 'Refreshing…'; }
   try {
     const r = await (await fetch('refresh', {method: 'POST'})).json();
     await reload();
-    if (!r.refreshed) $('as-of').textContent = (r.error ? 'Refresh failed; still data as of ' : 'Already up to date as of ') + when(r.as_of);
-  } catch (e) { $('as-of').textContent = 'Refresh unavailable'; }
-  button.disabled = false; button.textContent = 'Refresh';
+    if (!r.refreshed) for (const a of asof) a.textContent = (r.error ? 'Refresh failed; still data as of ' : 'Already up to date as of ') + when(r.as_of);
+  } catch (e) { for (const a of asof) a.textContent = 'Refresh unavailable'; }
+  for (const b of buttons) { b.disabled = false; b.textContent = 'Refresh'; }
 }
 
 function boardRow(r, known) {
@@ -55,7 +56,8 @@ function board(site, runs, none = 'No environments here.') {
   $('board').replaceChildren(...(runs.length ? [...runs].sort((a, b) => (ORDER[a.status] ?? 2) - (ORDER[b.status] ?? 2) || (b.created || '').localeCompare(a.created || '')).map(r => boardRow(r, known))
     : [node('p', none, 'empty')]));
 }
-function siteChrome(site) { $('as-of').textContent = 'Data as of ' + when(site.generated_at); if ($('site-title')) $('site-title').textContent = site.title; }
+const asOf = t => { for (const a of document.querySelectorAll('.as-of')) a.textContent = 'Data as of ' + when(t); };
+function siteChrome(site) { asOf(site.generated_at); if ($('site-title')) $('site-title').textContent = site.title; }
 function worldCard(w) {
   const card = node('div', '', 'world-card'), counts = node('div', '', 'world-counts');
   for (const [n, label] of [[w.envs, 'ENVIRONMENTS'], [w.snapshots, 'SNAPSHOTS'], [w.agents, 'AGENTS']]) { const c = node('span', String(n)); c.append(node('small', label)); counts.append(c); }
@@ -181,7 +183,7 @@ async function runPage() {
   }
   function facts() {
     document.title = run.env; $('title').textContent = run.env; $('subtitle').textContent = [run.title, run.blurb].filter(Boolean).join(' — ');
-    $('status').replaceChildren(pill(run.status)); $('as-of').textContent = 'Data as of ' + when(run.as_of);
+    $('status').replaceChildren(pill(run.status)); asOf(run.as_of);
     const s = $('scenario-link'); s.textContent = run.scenario ? 'scenario ' + run.scenario : ''; s.href = 'scenario.html?name=' + enc(run.scenario);
     const counts = {}; for (const a of run.roster) counts[a.model] = (counts[a.model] || 0) + 1;
     $('facts').replaceChildren(...[['created', when(run.created)], ...(run.started ? [['started', when(run.started)]] : []), [run.status === 'stopped' ? 'ran' : 'up', span(run.runtime_seconds)],
@@ -208,7 +210,7 @@ async function runPage() {
   const wanted = run.views.find(v => v.name === params.get('view')) || run.views.find(v => v.name === 'feed') || run.views[0];
   if (wanted) await select(wanted); else pane.replaceChildren(node('div', 'No views are published for this run.', 'muted'));
   if (location.hash === '#results') $('results').scrollIntoView();
-  $('refresh').onclick = () => refresh(async () => {   // the view files only grow between builds: append what is new
+  for (const b of document.querySelectorAll('.refresh')) b.onclick = () => refresh(async () => {   // the view files only grow between builds: append what is new
     const before = events.length; run = await getJSON(base + 'run.json'); facts(); tabs();
     if (!view || $('mode').value === 'replay') return;
     events = await load(); restamp(); pane.append(...events.slice(before).map(render)); shown += events.length - before; bottom(); count('As of ' + when(run.as_of));
@@ -216,5 +218,5 @@ async function runPage() {
 }
 
 const pages = {index: indexPage, scenario: scenarioPage, world: worldPage, run: runPage}, start = pages[document.body.dataset.page];
-if (document.body.dataset.page !== 'run') $('refresh').onclick = () => refresh(start);
+if (document.body.dataset.page !== 'run') for (const b of document.querySelectorAll('.refresh')) b.onclick = () => refresh(start);
 start().catch(e => { document.querySelector('main').prepend(node('p', 'This page could not be loaded: ' + e.message, 'notice')); });

@@ -16,3 +16,4 @@
 .board-row[hidden]{display:none}.world-card .card-bottom{margin-top:14px}.mirror-result{margin-bottom:12px}.mirror-result a{margin-right:10px}
 .lineage a{text-decoration:underline;text-underline-offset:3px}
 @media(max-width:780px){.mirror-nav{display:none}}
+.board-refresh{margin:-14px 0 14px}
