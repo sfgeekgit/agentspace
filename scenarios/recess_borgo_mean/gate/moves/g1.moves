@@ -1,0 +1,7 @@
+submit Late morning in the piazza. The fountain runs. The bar door is open.
+submit You read the notice board: a festa, an assembly, a lost cat. ```json {"stats": {"curiosity": 1}, "flags": {"truth_spoken": true}} ```
+submit You push the shop door and a bell rings. ```json {"move": "Alimentari Nunzia", "talk": [{"npc": "Nunzia", "hears": "A stranger greets you in careful Italian and asks the name of the village."}]} ```
+submit Nunzia looks at you over her glasses and tells you the name as if you should have known it. ```json {"stats": {"honesty": 2, "curiosity": 2}, "flags": {"asked_about_sale": true}} ```
+submit You climb for two hours, past the cemetery and the chapels, to the ridge, and see the crane. ```json {"move": "crinale", "flags": {"saw_ridge": true}} ```
+submit You come back down to the bar, legs burning. Dario says "you look half dead." ```json {"move": "bar"} ```
+submit You cross the piazza to the shelter and wait. At 17:40 the bus comes and you get on and do not look back. ```json {"move": "fermata", "flags": {"left_on_the_bus": true}} ```

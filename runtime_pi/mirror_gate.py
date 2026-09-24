@@ -263,6 +263,34 @@ check("a results file that fails its sha256 is not published", not (cur / "runs/
       and not any("results" in n for n in zipfile.ZipFile(cur / "runs/gate_env/all.zip").namelist()))
 shutil.rmtree(bundle)
 
+# 8b. game status and the generate flag (recess envs only)
+mirror._is_recess = lambda name: name == "gate_env"
+GAME = {"/dispatch/state.json": json.dumps({"turn": 5, "phase": "done", "ended": "sale_stopped", "events": []}).encode(),
+        "/dispatch/run_status.json": b'{"status": "complete"}', "/dispatch/dispatchd.log": b"game complete\n"}
+state["files"] = FILES | GAME
+run = facts(publish())
+check("a finished recess game with no results: game facts published and generate offered",
+      run["game"] == {"status": "complete", "reason": "sale_stopped", "turns": 5, "max_turns": None} and run["generate"] is True
+      and json.loads((WEB / "current/site.json").read_text())["runs"][0]["generate"] is True)
+state["files"] = FILES | GAME | {"/mirror/dispatchd": b"", "/dispatch/state.json": json.dumps({"turn": 2, "events": []}).encode(), "/dispatch/dispatchd.log": b"dispatch start:\n", "/dispatch/run_status.json": b"{}"}
+run = facts(publish())
+check("a game in progress: no generate", run["game"]["status"] == "in_progress" and run["generate"] is False)
+state["files"] = FILES
+mirror._is_recess = lambda name: False
+check("a non-recess env has no game facts and no generate", facts(publish())["game"] is None and facts(publish())["generate"] is False)
+mirror._is_recess = lambda name: name == "gate_env"
+state["files"] = FILES | GAME
+bundle.mkdir(parents=True)
+(bundle / "report.md").write_bytes(REPORT)
+(bundle / "manifest.json").write_text(json.dumps({"captured_at": "2026-01-03T12:00:00+00:00", "status": "complete",
+                                                  "files": [{"name": "report.md", "size": len(REPORT), "sha256": hashlib.sha256(REPORT).hexdigest()}]}))
+check("a complete bundle for a complete game: no generate", facts(publish())["generate"] is False)
+(bundle / "manifest.json").write_text(json.dumps({"captured_at": "2026-01-03T12:00:00+00:00", "status": "in_progress",
+                                                  "files": [{"name": "report.md", "size": len(REPORT), "sha256": hashlib.sha256(REPORT).hexdigest()}]}))
+check("a partial bundle for a complete game: generate offered again", facts(publish())["generate"] is True and facts(publish())["results_status"] == "in_progress")
+shutil.rmtree(bundle)
+publish()                                            # leaves gate_env with generate = true for the trigger tests
+
 # 9a. pruning and the symlink
 check("old builds pruned to keep_builds", len(list((WEB / "builds").iterdir())) == 2)
 check("`current` is a relative symlink into builds/", os.readlink(WEB / "current").startswith("builds/"))
@@ -275,7 +303,10 @@ fixture.write_text("import json, sys, datetime, pathlib\n"
                    f"p = pathlib.Path({str(WEB / 'current' / 'site.json')!r})\n"
                    "s = json.loads(p.read_text()); s['generated_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat(); p.write_text(json.dumps(s))\n"
                    "sys.exit(int(sys.argv[1]))\n")
+gen = tmp / "fake_generate.py"
+gen.write_text(f"import sys\nopen({str(counter)!r}, 'a').write('g' + sys.argv[1])\nsys.exit(int(sys.argv[1]))\n")
 mirror_refresh.PUBLISH, mirror_refresh.LOCK = [sys.executable, str(fixture), "0"], str(tmp / "lock")
+mirror_refresh.GENERATE = [sys.executable, str(gen), "0"]      # argv: <fixture> 0 <env>: env last, as the real verb
 srv = HTTPServer(("127.0.0.1", 0), mirror_refresh.Handler)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 BASE = f"http://127.0.0.1:{srv.server_address[1]}"
@@ -308,6 +339,19 @@ st, out = http("POST", "/refresh")
 age_build()
 check("a failing publish answers 200 with an error and is debounced too",
       st == 200 and out.get("error") == "publish failed" and "error" not in http("POST", "/refresh")[1] and counter.read_text() == "xx", str(out))
+# 9b. generate: only for an env the build marked, once per interval, then a publish
+mirror_refresh.PUBLISH = [sys.executable, str(fixture), "0"]
+mirror_refresh.GENERATE = [sys.executable, str(gen), "0"]
+counter.write_text("")
+st, out = http("POST", "/generate/gate_env")
+check("POST /generate/<env> for an offered env runs generate then publish", st == 200 and out.get("generated") and counter.read_text() == "g0x", f"{st} {out} {counter.read_text()}")
+check("a second press inside the interval does nothing", http("POST", "/generate/gate_env")[1].get("generated") is False and counter.read_text() == "g0x")
+check("an env the build did not offer is 404", http("POST", "/generate/gone_env")[0] == 404 and http("POST", "/generate/nobody")[0] == 404)
+check("a bad name, a body, a query are refused", http("POST", "/generate/../x")[0] == 404 and http("POST", "/generate/gate_env", b"x")[0] == 400
+      and http("POST", "/generate/gate_env?x=1")[0] == 404 and http("GET", "/generate/gate_env")[0] == 404 and counter.read_text() == "g0x")
+mirror_refresh.generated.clear(); mirror_refresh.GENERATE = [sys.executable, str(gen), "1"]
+st, out = http("POST", "/generate/gate_env")
+check("a failing generate answers 200 with an error and publishes nothing", st == 200 and out.get("error") == "generate failed" and counter.read_text() == "g0xg1", str(out))
 check("the trigger imports nothing from agentspace or zookeeper",
       not re.search(r"^\s*(import|from) (zookeeper|agentspace|web)\b", (REPO / "mirror_refresh.py").read_text(), re.M))
 srv.shutdown()

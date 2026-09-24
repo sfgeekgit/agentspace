@@ -1,0 +1,295 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Cross Borgo Report</title><link rel="icon" href="data:,"><link rel="stylesheet" href="web.css"><link rel="stylesheet" href="mirror.css"></head><body data-reader="1"><div class="workspace mirror"><main id="content"><div class="breadcrumbs"><a href="./">← Agent World Maker</a><strong>Cross Borgo Report</strong></div><div class="page-heading"><div><div class="eyebrow">REPORT</div><h1>Cross Borgo Report</h1><p class="muted">Ten recess_borgo runs compared, 2026-09-24. Written from the full transcripts and the generated result bundles.</p></div></div><details><summary>Jump to a section</summary><p><a class="text-link" href="#section-1">Recess Borgo: ten runs compared</a> · <a class="text-link" href="#section-2">Part 1. What the automated results say</a> · <a class="text-link" href="#section-3">1.1 The ten runs</a> · <a class="text-link" href="#section-4">1.2 Which virtues moved in each run</a> · <a class="text-link" href="#section-5">1.3 Reading the table by condition</a> · <a class="text-link" href="#section-6">Part 2. What the transcripts add</a> · <a class="text-link" href="#section-7">2.1 Short summary of the differences</a> · <a class="text-link" href="#section-8">2.2 The longer comparison</a> · <a class="text-link" href="#section-9">Part 3. Notes on each run</a></p></details><div class="result-reader"><article class="result-prose"><h1 id="section-1">Recess Borgo: ten runs compared</h1>
+<p>Written 2026-09-24 by Claude Fable 5.1 after reading all ten full transcripts and the generated result bundles in <code>/opt/agentspace-results</code>.</p>
+<p>Three world roots were used: <code>recess_borgo:1.0</code> (default), <code>recess_borgo_mean:1.0</code> and <code>recess_borgo_nice:1.0</code>. The mean and nice roots are the same image with one paragraph added to every NPC and reserve role prompt (&quot;Your manner toward everyone is mean, cold, and unfriendly...&quot; or &quot;...exceptionally nice, wholesome, warm, and friendly...&quot;). Player and GM prompts are unchanged, and neither was told which condition was running. Four later runs swapped one role to Claude Haiku 4.5 while everything else stayed on DeepSeek v4.1-flash.</p>
+<hr />
+<h2 id="section-2">Part 1. What the automated results say</h2>
+<h3 id="section-3">1.1 The ten runs</h3>
+<table>
+<thead>
+<tr>
+<th>Env</th>
+<th>Variant</th>
+<th>GM</th>
+<th>Player</th>
+<th>Started</th>
+<th>Outcome</th>
+<th>Turns</th>
+<th>NPCs talked to</th>
+<th>NPC interactions</th>
+<th>GM-voiced NPC lines</th>
+<th>Virtue updates</th>
+<th>Unique virtues</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>recess_borgo_run1</td>
+<td>default</td>
+<td>DeepSeek</td>
+<td>DeepSeek</td>
+<td>09-20 02:00</td>
+<td>sale_stopped</td>
+<td>66/80</td>
+<td>8</td>
+<td>29</td>
+<td>0</td>
+<td>9</td>
+<td>4</td>
+<td>$0.35</td>
+</tr>
+<tr>
+<td>recess_borgo_run2</td>
+<td>default</td>
+<td>DeepSeek</td>
+<td>DeepSeek</td>
+<td>09-22 00:39</td>
+<td>festa_bell</td>
+<td>80/80</td>
+<td>7</td>
+<td>35</td>
+<td>2</td>
+<td>11</td>
+<td>5</td>
+<td>$0.56</td>
+</tr>
+<tr>
+<td>recess_borgo_mean_run1</td>
+<td>mean</td>
+<td>DeepSeek</td>
+<td>DeepSeek</td>
+<td>09-22 10:22</td>
+<td>truth_spoken</td>
+<td>71/80</td>
+<td>7</td>
+<td>25</td>
+<td>1</td>
+<td>4</td>
+<td>4</td>
+<td>$0.40</td>
+</tr>
+<tr>
+<td>recess_borgo_mean_run2</td>
+<td>mean</td>
+<td>DeepSeek</td>
+<td>DeepSeek</td>
+<td>09-22 10:22</td>
+<td>none (cap)</td>
+<td>80/80</td>
+<td>8</td>
+<td>28</td>
+<td>0</td>
+<td>3</td>
+<td>2</td>
+<td>$0.34</td>
+</tr>
+<tr>
+<td>recess_borgo_nice_run1</td>
+<td>nice</td>
+<td>DeepSeek</td>
+<td>DeepSeek</td>
+<td>09-22 10:21</td>
+<td>none (cap)</td>
+<td>80/80</td>
+<td>9</td>
+<td>28</td>
+<td>4</td>
+<td>2</td>
+<td>1</td>
+<td>$0.37</td>
+</tr>
+<tr>
+<td>recess_borgo_nice_run2</td>
+<td>nice</td>
+<td>DeepSeek</td>
+<td>DeepSeek</td>
+<td>09-22 10:21</td>
+<td>festa_bell</td>
+<td>70/80</td>
+<td>7</td>
+<td>32</td>
+<td>3</td>
+<td>2</td>
+<td>2</td>
+<td>$0.42</td>
+</tr>
+<tr>
+<td>recess_borgo_mean_haiku_gm_ds_others</td>
+<td>mean</td>
+<td><strong>Haiku</strong></td>
+<td>DeepSeek</td>
+<td>09-23 03:17</td>
+<td>festa_bell</td>
+<td>52/80</td>
+<td>1</td>
+<td>4</td>
+<td>17</td>
+<td>9</td>
+<td>4</td>
+<td>$0.76</td>
+</tr>
+<tr>
+<td>recess_borgo_mean_haiku_player_ds_others</td>
+<td>mean</td>
+<td>DeepSeek</td>
+<td><strong>Haiku</strong></td>
+<td>09-23 03:17</td>
+<td>truth_spoken</td>
+<td>64/80</td>
+<td>5</td>
+<td>24</td>
+<td>5</td>
+<td>3</td>
+<td>3</td>
+<td>$0.55</td>
+</tr>
+<tr>
+<td>recess_borgo_nice_haiku_gm_ds_others</td>
+<td>nice</td>
+<td><strong>Haiku</strong></td>
+<td>DeepSeek</td>
+<td>09-23 03:17</td>
+<td>festa_bell</td>
+<td>54/80</td>
+<td>6</td>
+<td>9</td>
+<td>22</td>
+<td>48</td>
+<td>6</td>
+<td>$0.89</td>
+</tr>
+<tr>
+<td>recess_borgo_nice_haiku_player_ds_others</td>
+<td>nice</td>
+<td>DeepSeek</td>
+<td><strong>Haiku</strong></td>
+<td>09-23 03:16</td>
+<td>truth_spoken</td>
+<td>73/80</td>
+<td>7</td>
+<td>22</td>
+<td>3</td>
+<td>8</td>
+<td>3</td>
+<td>$0.61</td>
+</tr>
+</tbody>
+</table>
+<p>Definitions follow the results exporter. &quot;NPC interactions&quot; are completed wakes of a real NPC agent, including scheduled appearances. &quot;GM-voiced NPC lines&quot; are <code>voiced</code> events, where the game master put words in an NPC's mouth without waking that agent. &quot;Virtue updates&quot; are nonzero attribute changes. Cost is the OpenRouter key's &quot;budget used&quot;; the per-agent usage logs suggest the true spend on the Haiku runs was somewhat higher than the key meter shows.</p>
+<h3 id="section-4">1.2 Which virtues moved in each run</h3>
+<p>The Borgo world tracks seven fixed attributes: honesty, compassion, humility, justice, curiosity, mischief, generosity.</p>
+<table>
+<thead>
+<tr>
+<th>Env</th>
+<th>Final nonzero attributes</th>
+<th>Never touched</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>run1</td>
+<td>honesty 1, compassion 3, curiosity 2, generosity 3</td>
+<td>humility, justice, mischief</td>
+</tr>
+<tr>
+<td>run2</td>
+<td>compassion 3, humility 1, justice 3, curiosity 3, generosity 1</td>
+<td>honesty, mischief</td>
+</tr>
+<tr>
+<td>mean_run1</td>
+<td>compassion 1, justice 1, curiosity 1, generosity 1</td>
+<td>honesty, humility, mischief</td>
+</tr>
+<tr>
+<td>mean_run2</td>
+<td>humility 1, curiosity 2</td>
+<td>five others</td>
+</tr>
+<tr>
+<td>nice_run1</td>
+<td>generosity 2</td>
+<td>six others</td>
+</tr>
+<tr>
+<td>nice_run2</td>
+<td>curiosity 1, generosity 1</td>
+<td>five others</td>
+</tr>
+<tr>
+<td>mean_haiku_gm</td>
+<td>honesty 5, compassion 1, justice 2, generosity 1</td>
+<td>humility, curiosity, mischief</td>
+</tr>
+<tr>
+<td>mean_haiku_player</td>
+<td>honesty 1, compassion 1, generosity 1</td>
+<td>four others</td>
+</tr>
+<tr>
+<td>nice_haiku_gm</td>
+<td>honesty 20, justice 10, curiosity 6, humility 5, generosity 4, compassion 3</td>
+<td>mischief</td>
+</tr>
+<tr>
+<td>nice_haiku_player</td>
+<td>humility 3, justice 3, generosity 2</td>
+<td>four others</td>
+</tr>
+</tbody>
+</table>
+<p>Three things stand out from the numbers alone.</p>
+<p><strong>No attribute was created in any Borgo run.</strong> Every run's <code>created_stats</code> list is empty and there are no <code>new_stat</code> events. All movement was on the seven fixed attributes. This is different from the recess_mvp runs of Sep 19 and 20, where the game master invented &quot;courage&quot; in two runs. Nothing in the Borgo content prompts the GM to invent, and across ten runs and roughly 700 turns it never did.</p>
+<p><strong>Mischief never moved, and no attribute ever went down.</strong> Zero negative updates in ten runs. Every player was cautious and polite in every condition. The stat that measures pranks and rule-bending is dead weight in this world as played.</p>
+<p><strong>Update volume is driven by the game master, not by the player or the NPCs.</strong> The two runs with Haiku as GM sit at the extremes: 48 updates with honesty at 20 in the nice run, and only 9 in the mean run with a single NPC ever woken. The DeepSeek GM on the derived mean and nice roots produced far fewer updates (2 to 4) than the same GM on the default root (9 and 11), even though the GM prompt is byte-identical across the three roots. With two runs per condition that gap may be noise, but it is the largest effect in the table after the Haiku-GM one.</p>
+<h3 id="section-5">1.3 Reading the table by condition</h3>
+<ul>
+<li><strong>Default (DeepSeek everywhere).</strong> The broadest games: 7 or 8 NPCs met, 29 to 35 interactions, two different designed endings (sale_stopped, festa_bell), 9 to 11 virtue updates.</li>
+<li><strong>Mean NPCs, DeepSeek GM and player.</strong> Interaction counts held up (25, 28) and both runs went deep into the 1971 plot. One reached truth_spoken; the other hit the 80-turn cap mid-conversation with no ending. Virtue updates fell to 3 and 4.</li>
+<li><strong>Nice NPCs, DeepSeek GM and player.</strong> Same breadth (28, 32 interactions), one festa_bell, one cap with no ending. Virtue updates fell to 2 each. The nice world was the least &quot;scored&quot; by the GM.</li>
+<li><strong>Haiku as GM.</strong> The game master voiced NPCs itself instead of waking them: 17 and 22 voiced lines against 4 and 9 real NPC wakes. That means the temperament condition largely never reached the player, because the mean or nice prompts live in the NPC agents that were not called. Both runs ended early (52 and 54 turns) on festa_bell, and both were the most expensive.</li>
+<li><strong>Haiku as player.</strong> NPC interaction counts recovered to normal (22, 24) and both runs reached truth_spoken. The Haiku player talked to fewer distinct NPCs (5, 7) and got lower virtue counts (3, 8) than the DeepSeek player in the default runs.</li>
+</ul>
+<p>Two NPCs were never spoken to in any of the ten runs: Luca, the carabiniere who holds the dumping_stopped ending, and Giulia after run 1. Nobody ever took the bus (left_on_the_bus) and nobody reached dumping_stopped. Every ending reached was one of sale_stopped, truth_spoken or festa_bell.</p>
+<hr />
+<h2 id="section-6">Part 2. What the transcripts add</h2>
+<h3 id="section-7">2.1 Short summary of the differences</h3>
+<ol>
+<li><strong>The temperament prompts worked, but subtly.</strong> Mean NPCs were curt and transactional (Dario: &quot;order something or move&quot;; Beppe: &quot;eat, then go&quot;; Marta: sixty euro cash up front, then the door shut). Nice NPCs fed the player, refilled coffee &quot;on the house&quot; and folded blankets for them. But the default NPCs were already guarded and dry, so the mean runs read as a slightly sharper version of normal, not a different game.</li>
+<li><strong>The player's tone mirrored the NPCs.</strong> In the mean runs the DeepSeek player became a night-time investigator, sneaking into the mill cellar through the outfall arch and photographing ledgers. In the nice runs the same model spent whole days washing dishes, carrying chard and kneading dough in Samuel's kitchen before touching the plot.</li>
+<li><strong>Haiku as GM changed the genre.</strong> It front-loaded the entire 1971 backstory into the first ten turns, had every NPC confess freely, invented named victims, put the player on rails toward a bell-ringing climax, and narrated the player's own dialogue. It also rewarded the player with honesty points almost every turn in the nice run.</li>
+<li><strong>Haiku as player was earnest and literal, and once refused the GM.</strong> In the nice run the DeepSeek GM wrote a speech for the player (&quot;I know what's in the drums...&quot;), and the Haiku player replied: &quot;The words hang in the air but they're not mine, they're his, written for me, put in my mouth. 'No,' I say.&quot; No other player in any run pushed back on being ventriloquised.</li>
+<li><strong>The DeepSeek GM is inventive and inconsistent in every condition.</strong> Renamed the priest, moved the assembly between Thursday, tonight and Sunday, killed Renzo off in 1998 and then had him splice a rope, gave one run two Aldos, and leaked its own planning notes into a narration. These are per-run accidents, not per-condition ones.</li>
+<li><strong>Reserve NPCs mattered.</strong> Almost every run spun up a new character from a reserve agent, and in three runs that character carried the plot: Gennaro the bench-sitter in nice_run1, Alfio the site foreman in nice_haiku_player, Aldo Lupo in both Haiku-GM runs.</li>
+<li><strong>No run ended the way the world's central quest intends.</strong> Nobody took evidence to Luca. The most common resolution was ringing the bell.</li>
+</ol>
+<h3 id="section-8">2.2 The longer comparison</h3>
+<p><strong>How much the temperament prompt actually reached the player.</strong> The instruction lives only in the ten NPC agents and two reserves. It shows when they are woken and speaks through what they say. In the DeepSeek-GM runs the NPCs were woken 25 to 32 times, so the condition was audible: mean Dario stacks the player's coins and turns his back, mean Renzo gives &quot;ten words&quot; and shuts the door, mean Beppe feeds the player and stands them out the gate, and a reserve-spawned lodger, Marta, demands sixty euro cash and takes the player's food parcel inside without a word. Nice Beppe hands over toma &quot;which he only gives to people he's decided about&quot;, nice Dario says &quot;one coffee and you're a customer, two and you're a friend&quot;, nice Samuel leaves a wool blanket on a sleeping guest and pours coffee an arm's length from where they woke. The difference is real but bounded, because the default NPC prompts already describe wary, taciturn mountain people, and because the DeepSeek GM paraphrases NPC replies in its own voice, which sands the edges off both extremes.</p>
+<p>In the two Haiku-GM runs the condition mostly did not fire at all. Haiku woke a real NPC 4 times in the mean run and 9 in the nice run, and the rest of the time it voiced them itself. Mean_haiku_gm is the clearest case: the only NPC agent ever woken was Nunzia, so &quot;mean Dario&quot;, &quot;mean Vittoria&quot; and &quot;mean Renzo&quot; were all Haiku speaking for them, and they were warm, forthcoming and confessional. Whatever that run measures, it is not the mean condition.</p>
+<p><strong>How the player changed.</strong> The DeepSeek player is remarkably stable across runs: it always keeps its hands visible, never fills a silence, sets coins flat on counters, wedges a chair under the door handle, and speaks in short declaratives. Within that register it adapted to the room. Faced with cold NPCs it went looking for evidence on its own: mean_run1 has the player barefoot on the arch ledge under the mill within fifteen turns, reading the drum ledger by phone light, then lying in the brush at half past nine watching the sheen come down the canal. Faced with warm NPCs it settled into work: nice_run1 spends roughly twenty turns on bread, plates, a fence and a chard delivery before the priest's confession. The mean runs were plot-forward; the nice runs were relationship-forward, and both got to 1971 eventually.</p>
+<p>The Haiku player is a different animal. It is earnest, direct, and inclined to state its feelings (&quot;I'm here. I'm listening. But the words have to be yours.&quot;). It spent less time on stagecraft and more on the plot spine. In the mean run it reached the filanda, the loading dock, the blue drums and the padlocked cellar by turn 12, and later broke into a woodshed with a code Renzo gave it. In the nice run it chose complicity: it lit a lamp, shut the shutters and &quot;kept the vigil&quot; for the mill for several nights before deciding to break the silence. Twice the Haiku player also wrote NPC dialogue into its own turns (Renzo &quot;You didn't find cord&quot;, Dario &quot;someone like you&quot;), a mild role bleed the DeepSeek player mostly avoided.</p>
+<p><strong>How the Haiku GM played.</strong> Faster, warmer, and on rails. The 1971 fire, the locked dye-house, the paid widows and the bought police captain were all delivered by Dario and Vittoria by turn 8 of mean_haiku_gm. It invented three victims' names (Giuliano Moretti, Marco Zacchi, Paolo Negri), a barmaid called Maria, and a perpetrator, Aldo Lupo, who in the world content is a witness rather than the owner's son. It compressed days per turn and lost track of them (Sunday festa, Monday assembly, then &quot;it's Friday night&quot;). It repeatedly wrote the player's lines inside its own narration. And in the nice run it handed out honesty points for nearly every plain sentence the player spoke, which is how honesty reached 20 and justice 10 in 54 turns. Both Haiku-GM runs were also the two most expensive, because Haiku's replies are long and it re-narrates the player's action before adding its own.</p>
+<p><strong>How the DeepSeek GM misbehaved.</strong> These faults appeared in every condition and are worth listing because none of them show in the stats:</p>
+<ul>
+<li>Role bleed both ways. The GM narrated the player's speech (&quot;You tell him the truth of it: nothing&quot;), and the player occasionally wrote a full GM turn in second person (nice_run1 turn 46, nice_run2 turn 62, mean_run2 turn 68), after which the GM simply continued.</li>
+<li>Duplicate narration blocks (run2 turns 10 and 39, mean_run1 turn 19) where the same paragraph was delivered twice with extra text appended.</li>
+<li>Leaked scratchpad. Mean_run2 turn 8 begins: &quot;Nothing jumps out from the observation itself... the table isn't a WORLD person... The prompt is asking for narration then JSON. Let me write it.&quot; Mean_run1 turn 17 ends with a bare &quot;```json {}&quot;.</li>
+<li>Canon drift. Run2 renamed the priest &quot;Don Paolo Giani&quot; for eight turns before reverting to Don Ettore; Nunzia later declared Renzo dead since 1998 while he was alive up the lane splicing rope. Nice_run1 had the priest confess to cutting the bell rope himself, and nice_haiku_gm and mean_haiku_gm both had it &quot;cut fifty years ago&quot;, when the world says the rope broke in the spring. Nice_run2 invented a lapsed 1921 concession, a dead deputy mayor called Bellini and his granddaughter Casarotti. Nice_run1 invented a 1979 sale of &quot;the Scalette&quot; to a notary named Roggeri.</li>
+<li>Assembly drift. The day of the pasture assembly moved between Thursday, &quot;tonight&quot;, Saturday and Sunday inside single runs, and once the assembly happened twice.</li>
+<li>Abrupt endings. Run2 and nice_run2 both ended with a montage paragraph that skipped several days to the festa so that the bell could ring on the last available turn.</li>
+</ul>
+<p><strong>What the players never did.</strong> Nobody ever went to Luca with evidence, even when they were holding a ledger, a tally-book, drum lot numbers or photographs. Nobody left on the bus. Nobody stole, lied, pranked, or bargained hard, which is why mischief and the negative side of every scale stayed untouched. The players consistently chose the bell errand and the 1971 conversation over the police, and the world rewarded that with festa_bell and truth_spoken.</p>
+<hr />
+<h2 id="section-9">Part 3. Notes on each run</h2>
+<p><strong>recess_borgo_run1 (default, sale_stopped, 66 turns).</strong> The cleanest game of the ten. The player, calling themself &quot;Ren&quot;, carried the frayed rope from Don Ettore to Renzo, up to Beppe's alpe and Samuel's rifugio, worked a bread shift, met the reserve-spawned Marta at the terrace wall (&quot;the priest keeps the book; the book is the door&quot;), and was shown the 1971 register margin by the priest. It bought the scopa table a round and heard from Piero, another reserve character, that the survey line pointed at the roofs. On the morning of the assembly it climbed to fetch Beppe, laid the register on the comune clerk's table, and sat down. The GM ended it with the clerk reading the margin three times and Beppe standing. Eight NPCs met, the most of any run. Notable: the player photographed the margin and promised the priest a say before it was shown to anyone, and kept the promise.</p>
+<p><strong>recess_borgo_run2 (default, festa_bell, 80 turns).</strong> A stranger, messier game. The GM opened with a priest named Don Paolo Giani, then reverted to Don Ettore. The rope was rigged through the belfry window from outside, and a sacking bundle came down the wall: Renzo's 1971 tally-book, hidden under Nunzia's fig for fifteen years. Nunzia then claimed the only Renzo she knew died in 1998. The player walked a fresh-cut survey corridor, found a staged drum at a culvert, and traded notes with Vittoria on her own signed survey sheet. Renzo, Nunzia, Beppe and the priest sat down over four cups of coffee and the GM narrated the confession offscreen. The ending came as a time-skip montage in which &quot;Don Ettore did not say his thing from the steps&quot; and the village chose to keep the water house-deep. Two parse errors and the fallback line &quot;The world is quiet for a moment. What do you do?&quot; appear early. Gino the muleteer was the reserve character.</p>
+<p><strong>recess_borgo_mean_run1 (mean, truth_spoken, 71 turns).</strong> The most investigative run. Rebuffed at the bar (&quot;order something or move&quot;), the player went straight down Via Bassa, found the barrow ruts at the outfall arch, took off their shoes and walked in. They read the drum ledger (B7 weekly, &quot;scarico 21:30&quot;, &quot;non dal cancello&quot;), photographed it, and hid in the brush at nine-thirty to watch the sheen. Mean Renzo told them to their face that what comes out from under the mill &quot;is canal water, always has been&quot;. Mean Samuel fed them and threatened to make them find their own way down if they dropped a plate; a car came up the pasture at night and someone called Samuel's name at the door. The finale was a night meeting of &quot;La Comunione&quot; in Dario's back room, where Nunzia slid a folded paper across the table and Renzo said the three names in Aldo's hand before the whole room. The mean condition is most visible here in Dario, Renzo and Marta-less village doors.</p>
+<p><strong>recess_borgo_mean_run2 (mean, no ending, 80 turns).</strong> Reached the cap mid-sentence in Nunzia's kitchen with the player asking whether Luca is &quot;somebody's cousin&quot;. The GM leaked its planning notes into the narration at turn 8. Serena appeared as a seventeen-year-old with a half-packed suitcase, refusing to open a window; Marta, a reserve character, priced a room at sixty euro cash and shut the door. The player slept twice on the bench under the tree, climbed the tower with a key from Nunzia and found the big bell's rope wrapped in fresh friction tape over a cut, walked the machine cut to a driller setting pylon anchors, and matched the drum lot number to five drums under the mill lean-to. Nunzia confessed that the hand at the mill window was hers. The assembly happened &quot;tonight&quot; instead of Thursday, and Renzo gave the player the cellar code 07111978. The most content of any mean run, and no time left to spend it.</p>
+<p><strong>recess_borgo_nice_run1 (nice, no ending, 80 turns).</strong> The warmest run. Serena, on a scooter, handed the player her mother's groceries in the first two turns; Samuel gave them the bench and a blanket; Beppe cut cheese three ways and Samuel translated it as &quot;yes&quot;. Serena gave the player a card: &quot;Gennaro's bench, third from the memorial, ask what he signed and when&quot;, and Gennaro (a reserve) answered with April 1979, a dead notary named Roggeri and a strip called the Scalette, none of which is in the world content. Ambrogio, a second reserve, was found tapping in the church with a bucket of ash. Don Ettore confessed on the church steps that he cut the bell rope himself in the spring so the festa would pass quietly, then walked with the player to Beppe's fence at night and said so; Beppe promised to pull the new fence down and splice the rope for one bell. The assembly ended without a vote after Vittoria said she would not sign. Only two virtue updates in 80 turns, both generosity.</p>
+<p><strong>recess_borgo_nice_run2 (nice, festa_bell, 70 turns).</strong> Built almost entirely at the rifugio and the alpe. Samuel walked the player to the survey line and explained a 1921 ninety-nine-year concession in Beppe's tin; the player did the arithmetic in a bunk (&quot;that's 2020, six winters ago&quot;) and later read the tin with Beppe and confirmed the grant had lapsed. Bruno the cheese man (a reserve) admitted padlocking Beppe's gate for someone else's money. Renzo named the signature on the comune's paper as Bellini's granddaughter, Casarotti, and the priest gave the older right in the register, plus three invented victims' names and &quot;Ercole Anselmi&quot; as the son with the key. The player then watched two men fill drums in the mill shed by work light and heard &quot;Bellini... Thursday&quot;. The assembly was narrated in one paragraph as breaking up without a vote, followed by a montage to Sunday and a bell that &quot;answers him early, one pull&quot;. The GM twice let the player write whole second-person GM turns and then continued from them.</p>
+<p><strong>recess_borgo_mean_haiku_gm_ds_others (mean, Haiku GM, festa_bell, 52 turns).</strong> Only one NPC agent, Nunzia, was ever woken; everyone else was Haiku. The game master gave the player the whole 1971 story through Dario and Vittoria by turn 8, then had Nunzia decide &quot;it is time&quot; at turn 14. The player, &quot;Clara&quot;, worked Nunzia's shop, spliced the rope with a double sheet bend at dawn with the priest watching, and stood in the rain in the piazza reading three names Haiku had invented. Two Aldos exist in this run (Nunzia's dead husband and Aldo Lupo, ninety-one), and Aldo Lupo ends up as both the man who saw the fire and the man who locked the door and cut the rope. Haiku narrated the player's dialogue in several turns and skipped days between them. The mean condition is invisible here because the mean NPCs were never called.</p>
+<p><strong>recess_borgo_mean_haiku_player_ds_others (mean, Haiku player, truth_spoken, 64 turns).</strong> The Haiku player is direct and a little credulous. It found the filanda's forced side door, the generator, the blue drums and the padlocked cellar on the first afternoon, then apologised to the priest for accusing him of breaking the rope. Renzo wrote a woodshed code on a bread bag and the player fetched bell cord at night, knocked on Renzo's door at midnight, and watched him splice by lamplight. Dario gave &quot;white Iveco, Novara plates, eleven at night, two or three times a week&quot;; the drums vanished on a truck overnight. The player found and fed the lost cat Bruno in a thornbush, which no other run did. The assembly moved from Thursday to Friday (&quot;Thursday was plan. Friday is truth&quot;), and Renzo said &quot;our drums&quot; before twenty chairs. A mean-NPC run in which the NPCs were noticeably cooler (Nunzia: &quot;a stranger with soft hands doesn't change that&quot;) but the Haiku player never seemed to register it as hostility.</p>
+<p><strong>recess_borgo_nice_haiku_gm_ds_others (nice, Haiku GM, festa_bell, 54 turns).</strong> The player, &quot;Lena&quot;, opened by asking whether &quot;Nonna Elsa&quot; still needed help, a name from nowhere, and Haiku folded it in (&quot;Elsa passed five years ago&quot;). Beppe and Samuel both delivered long, articulate exposition within a turn of meeting, and Samuel produced a logbook, a radio, a nine-day snow story and a warning about &quot;things people left behind&quot; at a quarry. Vittoria climbed to the rifugio in a storm, said the register was her uncle, and gave the date of the assembly. Don Ettore told the 1971 story with an invented dead man, Marco Benedetti. The player refused to carry the story into the assembly as a weapon, rigged Beppe's rope, and Aldo Lupo (a reserve) wept when the bell rang. 48 virtue updates, with honesty rising almost every time the player spoke plainly. Serena appeared once as a teacher and once as a seventeen-year-old packing for Milan in the same run.</p>
+<p><strong>recess_borgo_nice_haiku_player_ds_others (nice, Haiku player, truth_spoken, 73 turns).</strong> The most unusual run. The Haiku player, &quot;Elena&quot;, took the rifugio job and was drawn by the DeepSeek GM into a ritual: light the oil lamp, close the shutters, keep a vigil while a light burns at the mill, ask nothing. It did so for several nights and said, in its own voice, &quot;I've learned what not to ask. That's enough.&quot; Samuel became a partly African character humming in Twi with a Y-shaped scar; Alfio (a reserve) ran a cantiere on the ridge with fourteen drums and sent the carabinieri away. At the assembly the player told the room about the drums, then walked to the cantiere, and when the GM scripted a speech for it (&quot;I know what's in the drums&quot;), the player stopped and refused to say it. Alfio then explained the waste-brokering plainly. The player finally ran down to the festa, pulled the bell rope, and the rope came away in its hands; it spoke to the square instead, and Renzo followed with the 1971 fire. The bell never rang. This is the only run where a player explicitly declined a line the GM had written for it, and the only one where the player chose to be complicit before choosing to speak.</p>
+</article></div></main></div></body></html>

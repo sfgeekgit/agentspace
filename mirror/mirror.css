@@ -17,3 +17,4 @@
 .lineage a{text-decoration:underline;text-underline-offset:3px}
 @media(max-width:780px){.mirror-nav{display:none}}
 .board-refresh{margin:-14px 0 14px}
+.mirror-reports{margin:-14px 0 22px;font-size:12px}.mirror-reports a{color:#526a41;font-weight:550;text-decoration:underline;text-underline-offset:3px}.mirror-reports a:hover{color:var(--ink)}

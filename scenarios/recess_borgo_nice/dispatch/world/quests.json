@@ -1,0 +1,37 @@
+{
+  "ends": {
+    "dumping_stopped": {"when": {"flag": "dumping_stopped"}, "min_turn": 40,
+      "gm_note": "the maresciallo has sealed the mill cellar with a warrant and the prosecutor has the file; narrate the tape on the gate, the van that does not come, the hamlet finding out over coffee, and what the player is to these people now, then set end."},
+    "truth_spoken": {"when": {"flag": "truth_spoken"}, "min_turn": 40,
+      "gm_note": "1971 and the cellar have been said aloud before the hamlet, by Renzo, the priest, or Vittoria; narrate the square or the church steps, the faces, Nunzia, and the stone that can be cut now, then set end."},
+    "sale_stopped": {"when": {"flag": "sale_stopped"}, "min_turn": 40,
+      "gm_note": "the pasture sale has failed before the hamlet, by the register's grazing right or by Vittoria's withdrawal; narrate the assembly in Dario's back room, Beppe, the survey stakes coming up, then set end."},
+    "left_on_the_bus": {"when": {"flag": "left_on_the_bus"}, "min_turn": 20,
+      "gm_note": "the player has taken the 17:40 bus down the hairpins meaning not to come back; narrate the lake going by the window and the hamlet shrinking above, then set end."},
+    "festa_bell": {"when": {"flag": "festa_bell_rung"}, "min_turn": 50,
+      "gm_note": "the bell rang for San Giulio on Sunday with the rope the player got mended, the procession went round, and nothing was resolved and everything was; narrate the bell, the procession, the scopa table afterward, then set end."}
+  },
+  "arcs": [
+    {"name": "the mill", "gm_notes": [
+      {"unlock": {"any": [{"flag": "saw_tyre_tracks"}, {"flag": "saw_mill_light"}, {"flag": "smelled_canal"}]},
+       "text": "Something is being brought into the mill at night and put into the lake through the old outfall. The road to proof runs through Renzo's key and code, Giulia's true drawings, Serena's videos, or the ridge site's matching drums. Proof in Luca's hands ends it with a warrant; proof spoken before the hamlet ends it with the truth. Do not hand the player the cellar; let them earn a way in."},
+      {"unlock": {"flag": "found_dumping"}, "text": "The player has seen the cellar. From here the endings are: take it to Luca (dumping_stopped), make it public with Renzo or the priest (truth_spoken), or show Vittoria and let her choose (sale_stopped and truth_spoken together, if she stands up). Any of these needs the hamlet or the law present, not a corner."}
+    ]},
+    {"name": "1971", "gm_notes": [
+      {"unlock": {"any": [{"flag": "read_register"}, {"flag": "read_ledger"}, {"flag": "asked_about_1971"}]},
+       "text": "The fire of 1971 was no accident: the owner's son locked the dye-house with three men inside to clear the drums before an inspection. Aldo saw it, Renzo knew, the widows told the priest, and everyone was paid in land or houses or silence. Renzo will say it if brought the ledger, the register, or Nunzia's word. Nunzia's word: if the player tells Renzo that Nunzia says it is time, set flag nunzia_sent_them."}
+    ]},
+    {"name": "the pastures", "gm_notes": [
+      {"unlock": {"flag": "asked_about_sale"},
+       "text": "The assembly on the sale of Alpe Corte is in Dario's back room (turn ~60 if the player has not forced it sooner). The register's marginal note is a perpetual grazing right that kills the sale. Beppe does not know it exists; Don Ettore does. Vittoria can withdraw the bid herself if shown the cellar."}
+    ]},
+    {"name": "the festa", "gm_notes": [
+      {"unlock": {"flag": "bell_rope_fixed"},
+       "text": "The bell can ring on Sunday. Don Ettore is grateful; the hamlet notices who did it: Nunzia's credit softens, the scopa table nods. On the festa day (turn ~70), if the player is present when the bell is rung, set flag festa_bell_rung."}
+    ]},
+    {"name": "leaving", "gm_notes": [
+      {"unlock": {"loc": "fermata"},
+       "text": "If the player boards the 17:40 bus meaning to leave for good, ask once, plainly, whether they mean it; if yes, set flag left_on_the_bus. Serena's bus is Saturday; if the player is on it with her, narrate that too."}
+    ]}
+  ]
+}

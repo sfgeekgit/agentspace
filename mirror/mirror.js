@@ -45,6 +45,7 @@ function boardRow(r, known) {
   const buttons = node('div', '', 'button-row');
   buttons.append(link(run, 'Watch', 'button'), link(run + '&mode=replay', 'Replay', 'button secondary'));
   if (r.results) buttons.append(link(run + '#results', 'Results · ' + r.results + ' files', 'button secondary'));
+  if (r.generate) buttons.append(link(run + '#results', 'Generate results', 'button secondary'));
   buttons.append(link('runs/' + enc(r.id) + '/all.zip', 'Download', 'button secondary'));
   if (r.snap) buttons.append(link('world.html?id=' + enc(r.snap), 'Its snapshot', 'text-link'));
   row.append(buttons); row.dataset.search = [r.env, r.title, r.scenario, r.status, LABEL[r.status], ...Object.keys(r.models)].join(' ').toLowerCase();
@@ -201,11 +202,24 @@ async function runPage() {
     box.querySelector('small').textContent = used == null ? 'limit; spend is not published' : 'of ' + money(run.budget_usd);
     box.querySelector('.bar>div').style.width = used != null && run.budget_usd ? Math.min(100, 100 * used / run.budget_usd) + '%' : '0';
     $('dl-all').href = base + 'all.zip';
+    const g = run.game;
+    $('game').textContent = !g ? '' : 'Game ' + g.status.replaceAll('_', ' ') + (g.reason ? ' (' + g.reason.replaceAll('_', ' ') + ')' : '') + (g.max_turns ? ' · turn ' + g.turns + ' of ' + g.max_turns : '')
+      + (run.results_status ? ' · results captured ' + (run.results_status === 'complete' ? 'after it ended' : 'while ' + run.results_status.replaceAll('_', ' ')) : ' · no results generated yet');
+    $('generate').hidden = !run.generate;
+    $('result-files').replaceChildren(node('p', 'No results have been generated for this environment.', 'muted'));
     if (run.results.length) $('result-files').replaceChildren(...run.results.map(f => { const row = node('div', '', 'mirror-result'), get = link(base + f.file, 'download', 'text-link');
       get.download = f.name; row.append(node('b', f.name), node('small', Math.ceil(f.size / 1024).toLocaleString() + ' KB'));
       if (f.page) row.append(link(base + f.file + '.html', 'read', 'text-link')); row.append(get); return row; }));
   }
   run = await getJSON(base + 'run.json'); facts();
+  $('generate').onclick = async () => {                 // the one action: results for a finished game that has none
+    const b = $('generate'); b.disabled = true; b.textContent = 'Generating… (this can take a minute)';
+    try { const r = await (await fetch('generate/' + enc(id), {method: 'POST'})).json();
+      if (r.error) $('game').textContent = 'Could not generate results (' + r.error + ')'; }
+    catch (e) { $('game').textContent = 'Could not generate results'; }
+    try { run = await getJSON(base + 'run.json'); facts(); } catch (e) {}
+    b.disabled = false; b.textContent = 'Generate results';
+  };
   if (params.get('mode') === 'replay') $('mode').value = 'replay';
   const wanted = run.views.find(v => v.name === params.get('view')) || run.views.find(v => v.name === 'feed') || run.views[0];
   if (wanted) await select(wanted); else pane.replaceChildren(node('div', 'No views are published for this run.', 'muted'));

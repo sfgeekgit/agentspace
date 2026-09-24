@@ -1,0 +1,41 @@
+# recess_borgo_nice — an open-world text adventure: recess for agents, modern day.
+#
+# Pradello, a hamlet of ninety people above Lago d'Orta in Piedmont, northwest of
+# Milan under the first Alps, in the present day. One player, one LLM game master,
+# ten NPC agents, a few reserves. Same engine as recess_mvp (copied, not shared:
+# variants copy). Every agent runs in plain mode. Spec and notes:
+# /home/cc/2026-09-18_spec_recess_adventure_fable.md and the notes parts one to three.
+active = true
+runtime = "pi"
+description = "Extra nice, wholesome, friendly NPCs. Open-world text adventure, modern day: one player explores an Alpine hamlet above Lago d'Orta run by an LLM game master; NPCs are agents. 2-20 agents."
+min_agents = 2
+max_agents = 20
+module_blacklist = []
+plain = true          # bare model turns: no shell, no preamble; a reply IS the submission
+max_tokens = 8192
+
+[[params]]
+name = "max_turns"
+type = "int"
+label = "Turn cap (one turn = one player action + one reply)"
+default = 80
+min = 10
+max = 500
+
+[[params]]
+name = "attributes"
+type = "str"
+label = "Hidden attributes the world tracks (comma-separated)"
+default = "honesty,compassion,humility,justice,curiosity,mischief,generosity"
+
+[[params]]
+name = "npcs"
+type = "str"
+label = "Predefined NPCs to include (comma-separated; leftover agents become reserves)"
+default = "nunzia,dario,ettore,serena,beppe,giulia,renzo,samuel,vittoria,luca"
+
+[[watch]]
+name = "game log (engine, spoilers)"
+file = "/dispatch/game_log.jsonl"
+format = "jsonl"
+fields = { ts = "ts", text = "text" }

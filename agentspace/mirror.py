@@ -46,26 +46,32 @@ DEFAULTS = {"title": "", "blurb": "", "views": None, "agents": True, "thoughts":
             "budget": False, "container": ""}
 TEXT = (".md", ".txt", ".json", ".jsonl", ".log")    # results files that get a reader page
 LOG_PATTERNS = ["/data/gateway/*.jsonl", "/agents/*/sessions/*.jsonl", "/agents/*/scratch/*.md"]
+DISPATCH = ["/dispatch/state.json", "/dispatch/run_status.json", "/dispatch/dispatchd.log"]   # what results.completion reads
 GITHUB = "https://github.com/sfgeekgit/agentspace/tree/main/scenarios/"
 
 # Runs in the container, the only command the publisher ever runs there: exactly the files the
 # views read (logwatch.tree's patterns plus the scenario's declared files), as a tar on stdout.
-# mirror/gateway is a marker for "the gateway is up" (pi.agent_state's probe, folded in).
+# mirror/gateway and mirror/dispatchd are markers for "that process is up" (pi.agent_state's probe, folded in).
 EXTRACTOR = r"""
 import glob, io, json, os, sys, tarfile
-pats = ["/world/world.json", "/agents/*", "/data/gateway/*.jsonl", "/agents/*/sessions/*.jsonl", "/agents/*/scratch/*.md"]
+pats = ["/world/world.json", "/agents/*", "/data/gateway/*.jsonl", "/agents/*/sessions/*.jsonl", "/agents/*/scratch/*.md",
+        "/dispatch/state.json", "/dispatch/run_status.json", "/dispatch/dispatchd.log"]
 try:
     pats += [str(w["file"]) for w in json.load(open("/world/world.json")).get("watch", []) if isinstance(w, dict) and w.get("file")]
 except (OSError, ValueError):
     pass
-def gateway(p):
-    try:
-        return b"pi_gateway.py" in open(p, "rb").read()
-    except OSError:
-        return False
+def running(name):
+    for p in glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            if p != "/proc/%d/cmdline" % os.getpid() and name in open(p, "rb").read():
+                return True
+        except OSError:
+            pass
+    return False
 with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as t:
-    if any(gateway(p) for p in glob.glob("/proc/[0-9]*/cmdline") if p != "/proc/%d/cmdline" % os.getpid()):
-        t.addfile(tarfile.TarInfo("mirror/gateway"), io.BytesIO())
+    for name, marker in ((b"pi_gateway.py", "mirror/gateway"), (b"dispatchd.py", "mirror/dispatchd")):
+        if running(name):
+            t.addfile(tarfile.TarInfo(marker), io.BytesIO())
     for p in sorted({f for pat in pats for f in glob.glob(pat)}):
         t.add(p, recursive=False)
 """
@@ -145,9 +151,9 @@ def extract_stopped(env: dict) -> dict[str, bytes]:
             proc.wait()
     cp("/world/world.json")
     declared = [v.patterns[0] for v in logwatch.declared_views(files.get("/world/world.json", b"").decode("utf-8", "replace"))]
-    for path in ["/data/gateway", "/agents", *(p for p in declared if p.startswith("/") and "*" not in p)]:
+    for path in ["/data/gateway", "/agents", *DISPATCH, *(p for p in declared if p.startswith("/") and "*" not in p)]:
         cp(path)
-    keep = [*LOG_PATTERNS, "/world/world.json", "/agents/*", *declared]       # glob semantics: * does not cross a /
+    keep = [*LOG_PATTERNS, *DISPATCH, "/world/world.json", "/agents/*", *declared]       # glob semantics: * does not cross a /
     return {p: d for p, d in files.items() if any(p.count("/") == pat.count("/") and fnmatch(p, pat) for pat in keep)}
 
 
@@ -274,12 +280,12 @@ def _results(env: dict, opts: dict, dest: Path, old: Path | None) -> list[dict]:
     results.download does) with a reader page per text file. An unchanged bundle is carried over
     from the previous build instead of being rendered again."""
     if not opts["results"]:
-        return []
+        return [], None
     try:
         with results.locked():
             bundle = results.bundle_files(env["name"])
     except ValueError:
-        return []
+        return [], None
     secret = (env.get("openrouter_key") or "").encode()
     if old and (old / "results/manifest.json").is_file() and (old / "results/manifest.json").read_bytes() == bundle["manifest.json"]:
         shutil.copytree(old / "results", dest / "results", copy_function=os.link)
@@ -292,7 +298,32 @@ def _results(env: dict, opts: dict, dest: Path, old: Path | None) -> list[dict]:
             if name.endswith(TEXT) and len(data) <= result_view.FULL_VIEW_LIMIT:
                 _write(dest / "results" / f"{name}.html", _reader(env["name"], name, data, note))
     return [{"name": n, "size": (dest / "results" / n).stat().st_size, "file": f"results/{n}", "page": (dest / "results" / f"{n}.html").is_file()}
-            for n in bundle]
+            for n in bundle], json.loads(bundle["manifest.json"]).get("status")
+
+
+def _is_recess(name: str) -> bool:
+    try:
+        results.environment(name)
+        return True
+    except ValueError:
+        return False
+
+
+def _game(env: dict, files: dict[str, bytes], now: str) -> dict | None:
+    """The game's completion as `results show` reports it, judged on the host from the extracted
+    dispatcher files (recess environments only; None otherwise)."""
+    if not _is_recess(env["name"]) or not files.get(DISPATCH[0]):
+        return None
+    try:
+        state, world, runtime = (json.loads(files.get(p) or b"{}") for p in (DISPATCH[0], "/world/world.json", DISPATCH[1]))
+        events = state.get("events")
+        if events is None:
+            events = [json.loads(l) for l in files.get("/dispatch/game_log.jsonl", b"").splitlines() if l.strip()]
+        c = results.completion({"state": state, "events": events, "world": world, "runtime": runtime, "captured_at": now,
+                                "dispatch_log": files.get(DISPATCH[2], b"").decode("utf-8", "replace"), "dispatcher_running": "/mirror/dispatchd" in files})
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return {k: c[k] for k in ("status", "reason", "turns", "max_turns")}
 
 
 def _publish_run(env: dict, opts: dict, fetched, dest: Path, old: Path | None, old_run: dict | None, snaps: dict, timing: dict, now: str) -> dict | None:
@@ -348,9 +379,11 @@ def _publish_run(env: dict, opts: dict, fetched, dest: Path, old: Path | None, o
                         {"kind": "env", "ref": rid, "id": None, "message": ""}],
             "roster": [{"id": r["id"], "role": r.get("role") or "", "persona": r.get("persona") or "",
                         "model": (world.get("models") or {}).get(r["id"]) or r.get("model") or world.get("model") or snap.get("model") or ""} for r in roster],
-            "views": views,
+            "views": views, "game": _game(env, files, now),
         }
-    facts["results"] = _results(env, opts, dest, old)
+    facts["results"], facts["results_status"] = _results(env, opts, dest, old)
+    # The one action the public may ask for: results for a finished game that has none (or only a partial capture).
+    facts["generate"] = bool(facts.get("game") and facts["game"]["status"] == "complete" and facts["results_status"] != "complete" and opts["results"])
     linked = lambda d: all(f.stat().st_nlink > 1 for f in (dest / d).rglob("*") if f.is_file())
     if old_run and (old / "all.zip").is_file() and linked("views") and linked("results") and facts["results"] == old_run.get("results"):
         os.link(old / "all.zip", dest / "all.zip")               # nothing in it changed
@@ -371,7 +404,8 @@ def _row(f: dict) -> dict:
     world = [v for v in f["views"] if not v["agent"]] or f["views"]
     return {k: f[k] for k in ("id", "env", "title", "blurb", "scenario", "status", "started", "created", "runtime_seconds",
                               "budget_used", "budget_usd", "as_of", "stale")} | {
-        "agents": len(f["roster"]), "models": models, "results": len(f["results"]),
+        "agents": len(f["roster"]), "models": models, "results": len(f["results"]), "results_status": f.get("results_status"),
+        "game": f.get("game"), "generate": f.get("generate", False),
         "events": max((v["events"] for v in world), default=0),
         "last_event_ts": max((v["last_ts"] for v in f["views"] if v["last_ts"]), default=None),
         "views": [v["name"] for v in f["views"] if not v["agent"]],

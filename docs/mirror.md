@@ -6,7 +6,8 @@ and downloads; every world root and snapshot; every scenario. It is a
 **mirror**: a directory of static files that a publisher writes and Caddy
 serves. No Python, docker, database or credential is reachable from the public
 internet. The one thing a visitor can make the box do is "publish again", with
-no arguments, at most once per minimum interval.
+no arguments, at most once per minimum interval; and, for a finished recess
+game whose results were never generated, "generate its results", once.
 
 The rule is: **publish as much as possible that is not a security problem.**
 Everything is public unless the operator's manifest says otherwise. That
@@ -30,7 +31,7 @@ path staying unknown.
 ```
 agentspace/mirror.py                       the publisher: cmd_publish(), cmd_show()
 zookeeper.py                               `mirror publish [--manifest PATH]`, `mirror show`, the menu's Mirror branch
-mirror/                                    the viewer: index, run, world and scenario pages, mirror.js, mirror.css
+mirror/                                    the viewer: index, run, world and scenario pages, mirror.js, mirror.css; any other file here (a report page, say) is copied into every build
 mirror_refresh.py                          the refresh trigger, 127.0.0.1:7787
 deploy/agentspace-mirror-refresh.service   its unit (user cc, MemoryMax=300M)
 mirror.toml.example                        a sample manifest
@@ -153,6 +154,23 @@ A failing publish answers `"error": "publish failed"` with the details in the
 journal only, and is debounced like a successful one. So a flood of presses
 costs one publish per interval, and a site nobody opens runs nothing.
 
+**Generate results.** The one action beyond a refresh. Each recess
+environment's `run.json` carries `game` (the completion `results show`
+reports, judged on the host from the extracted dispatcher files: `state.json`,
+`run_status.json`, `dispatchd.log`, and whether `dispatchd` is running) and
+`results_status` (the published bundle's status, if any). When the game is
+`complete` and the bundle is missing or was captured before the end, the
+build marks the run `generate: true` and the run page shows a "Generate
+results" button. It posts to `generate/<env>`, which Caddy proxies to the
+trigger. The trigger accepts the name only if the *current build* marks that
+env `generate` (anything else is 404; a body is 400), allows one attempt per
+env per `min_refresh_seconds`, runs `zookeeper.py results generate <env>`
+(a read of the container, five minutes max), then a publish. So nothing a
+visitor sends is an argument the mirror did not write first, a game in
+progress or one with current results cannot be captured, and the worst a
+crowd can do is one unneeded capture of a finished game per interval. This is
+the one deliberate exception to "a visitor can only read and refresh".
+
 ```
 sudo cp deploy/agentspace-mirror-refresh.service /etc/systemd/system/
 sudo systemctl enable --now agentspace-mirror-refresh
@@ -204,6 +222,14 @@ Inside the demo's site block, before the demo's own directives:
 		rewrite * /refresh
 		reverse_proxy 127.0.0.1:7787
 	}
+	@mirror_generate {
+		method POST
+		path /publicview/generate/*
+	}
+	handle @mirror_generate {
+		uri strip_prefix /publicview
+		reverse_proxy 127.0.0.1:7787
+	}
 	handle_path /publicview/* {
 		root * /srv/agentworldmaker-public/current
 		header Cache-Control "no-cache"
@@ -224,8 +250,10 @@ job instead. The webroot is owned by `cc`, directories 0755 and files 0644.
 
 ## 7. Security properties
 
-- A visitor can read files and ask for a republish. Nothing they send is ever
-  an argument to anything.
+- A visitor can read files, ask for a republish, and ask for the results of a
+  finished game that has none. The only thing they send that reaches a
+  command is that game's environment name, and only after the mirror itself
+  published it as eligible.
 - The publisher's inputs are the manifest, the db, the repo's scenarios, the
   results directory, and the containers' log files. Names that become file
   names or URL parameters (env names, snapshot ids, scenario names, results
@@ -247,13 +275,13 @@ job instead. The webroot is owned by `cc`, directories 0755 and files 0644.
 
 ## 8. Tests
 
-`python3 runtime_pi/mirror_gate.py` (62 checks): the publisher and the
+`python3 runtime_pi/mirror_gate.py` (72 checks): the publisher and the
 trigger against a fresh state directory, a fixture env row and a fixture log
 tree in place of the container. No docker, no tokens, a few seconds. It covers
 manifest validation, publish-by-default, view derivation against `logwatch`
 event for event, the four-field event, key redaction, the library, per-env
 settings and `exclude`, hard-linked reuse of unchanged runs, the atomic swap,
 gone / unreadable / stopped / replaced / pinned containers, results hashes and
-the escaped reader pages, pruning, the trigger's debounce and refusals, and
-the viewer's no-HTML rule. The web gate checks that the demo cannot run
+the escaped reader pages, pruning, game status and the `generate` flag, the trigger's debounce and
+refusals for both routes, and the viewer's no-HTML rule. The web gate checks that the demo cannot run
 `mirror publish`.
