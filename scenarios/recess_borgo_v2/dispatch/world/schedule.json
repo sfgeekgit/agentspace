@@ -1,0 +1,11 @@
+[
+  {"turn": 25, "unless": {"any": [{"flag": "met_vittoria"}, {"flag": "left_on_the_bus"}]}, "npc": "vittoria",
+   "hears": "You have come looking for the stranger everyone at Dario's is talking about, wherever they are. You want to know, pleasantly and precisely, who they are and whether they are press, and you offer them a coffee and a lift down the valley whenever they want one.",
+   "gm_note": "Vittoria has sought the player out (move her to the player's location with move_npc). Set flag met_vittoria."},
+  {"turn": 60, "unless": {"any": [{"flag": "sale_stopped"}, {"flag": "left_on_the_bus"}, {"flag": "truth_spoken"}]}, "npc": "dario",
+   "hears": "It is the evening of the assembly on the pasture sale. You are setting out chairs in the back room and the whole hamlet is coming. You tell whoever is before you that it starts in an hour and that they should be there, and you ask them, low, which way they think it will go.",
+   "gm_note": "The assembly is tonight in Dario's back room: everyone will be there, which makes it the natural moment for anything public. Vittoria presents; Beppe objects; the comune votes. Without the register or the cellar, the sale passes."},
+  {"turn": 70, "unless": {"any": [{"flag": "left_on_the_bus"}, {"flag": "truth_spoken"}]}, "npc": "ettore",
+   "hears": "It is Sunday morning, the festa of San Giulio. You are in your vestments sending word round that the procession forms on the church steps at ten. You say so to whoever is before you, and you say whether the bell will ring or whether you will have to use the handbell.",
+   "gm_note": "The festa is today: procession at ten from the church steps, everyone present. If bell_rope_fixed, the bell rings and festa_bell_rung may be set when it does; otherwise Don Ettore uses a handbell and the hamlet notices."}
+]

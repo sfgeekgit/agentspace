@@ -1,0 +1,602 @@
+{
+ "start": "piazza",
+ "nodes": {
+  "piazza": {
+   "name": "Piazza della Fontana",
+   "desc": "A sloping cobbled square with a stone fountain that runs all year. Stacked plastic chairs outside the bar, a faded Fiat Panda parked crooked, a bus-stop sign with two times on it. Below, through a gap in the roofs, the lake shows grey-green; above, the mountain wall goes up into cloud.",
+   "exits": {
+    "into the bar": "bar",
+    "up the church steps": "sagrato",
+    "down the lane": "via_bassa",
+    "up the lane": "via_alta",
+    "the bus shelter": "fermata",
+    "the alimentari": "alimentari"
+   },
+   "items": [
+    "free newspaper (La Stampa, three days old)",
+    "notice board"
+   ],
+   "gm_notes": "The notice board carries: the Festa di San Giulio on Sunday (procession, the bell must be rung); a comune notice of a public assembly on the sale of the Alpe Corte pastures to Monte Rosso Impianti SpA; a lost-cat sign; a hand-written card 'Aiuto cucina, Rifugio Corte, chiedere di Samuel'. Phone signal is one bar in the piazza, none elsewhere; the bar has wifi. Two buses a day to Omegna: 07:10 and 17:40."
+  },
+  "fermata": {
+   "name": "Bus shelter",
+   "desc": "A glass shelter with one cracked pane, a timetable, a bench. Someone has written 'PRADELLO NON SI VENDE' on the glass in marker, and someone else has tried to rub it off.",
+   "exits": {
+    "back": "piazza",
+    "down the road": "strada"
+   },
+   "items": [
+    "timetable"
+   ],
+   "gm_notes": "The 17:40 bus is the last. Taking it, meaning to leave for good, is an ending (see road)."
+  },
+  "strada": {
+   "name": "The provincial road",
+   "desc": "Hairpins down through chestnut woods toward the lake road. A shrine with plastic flowers at the first bend, a guardrail with a fresh dent, the smell of wet leaves.",
+   "exits": {
+    "back": "fermata",
+    "down to the lake road": "lago_strada",
+    "the shrine": "edicola"
+   },
+   "items": [],
+   "gm_notes": "The dented guardrail is from Vittoria's car, a month ago. If the player looks closely: silver paint flakes, a broken piece of a headlight, set flag saw_dent."
+  },
+  "edicola": {
+   "name": "Roadside shrine",
+   "desc": "A niche with a Madonna, plastic roses, a jam jar of real gentians, and a laminated photo of a young man on a motorbike, 1994.",
+   "exits": {
+    "back": "strada"
+   },
+   "items": [
+    "laminated photo"
+   ],
+   "gm_notes": "The photo is Renzo's son Fabio, died on this bend in 1994. Renzo replaces the gentians every week. Set flag saw_shrine."
+  },
+  "lago_strada": {
+   "name": "The lake road",
+   "desc": "A narrow road along the shore, a closed campsite, a jetty with a green rowing boat chained to it, the water clear enough to see stones two metres down.",
+   "exits": {
+    "back up": "strada",
+    "the jetty": "pontile",
+    "along the shore": "spiaggia"
+   },
+   "items": [],
+   "gm_notes": "The road continues to Omegna and Milan; walking it is a long way but possible. Set flag reached_lake."
+  },
+  "pontile": {
+   "name": "The jetty",
+   "desc": "Six planks and a chain. The rowing boat is Renzo's. Looking down, there is a drowned wall under the water, straight-edged, going out into the deep.",
+   "exits": {
+    "back": "lago_strada",
+    "row out": "lago"
+   },
+   "items": [
+    "rowing boat (chained, padlock)"
+   ],
+   "gm_notes": "The padlock key is Renzo's; he lends the boat to people he trusts. The drowned wall belongs to the old dye-works pier, demolished 1971. Set flag saw_drowned_wall."
+  },
+  "lago": {
+   "name": "Out on the lake",
+   "desc": "Flat grey water, the hamlet a smear of roofs above, the island with its basilica far down the lake. Under the boat, when the light is right, a stone stair goes down into green.",
+   "exits": {
+    "row back": "pontile"
+   },
+   "items": [],
+   "hidden": true,
+   "gm_notes": "Only reachable by boat. At the bottom of the stair: iron drums, dumped 1970s. Dive or drag with a hook: set flag found_drums. Cold water; a scare, not a death."
+  },
+  "spiaggia": {
+   "name": "Stony beach",
+   "desc": "Grey stones, a burnt-out campfire ring, a dog running with nobody in sight. A path climbs back toward the hamlet through terraces gone to bramble.",
+   "exits": {
+    "back": "lago_strada",
+    "up the terraces": "terrazze"
+   },
+   "items": [
+    "beer cans",
+    "a lighter"
+   ],
+   "gm_notes": "Serena and her friends come here at night. The dog is Beppe's, named Lupo, and knows the way home; meeting him sets flag met_lupo."
+  },
+  "terrazze": {
+   "name": "Abandoned terraces",
+   "desc": "Dry-stone terraces climbing the hillside, vines gone wild, a collapsed hut, a view of the whole lake. Somebody has started clearing one terrace and stopped.",
+   "exits": {
+    "down": "spiaggia",
+    "up": "via_bassa",
+    "the hut": "capanno"
+   },
+   "items": [
+    "rusted pruning hook"
+   ],
+   "gm_notes": "Giulia is the one clearing the terrace, on weekends. Setting foot here at dusk: the lights of the mill below can be seen going on and off. Set flag saw_mill_light."
+  },
+  "capanno": {
+   "name": "Collapsed hut",
+   "desc": "Half a roof, a stone bench, a pile of sacks, a camping stove that is not old. Someone sleeps here sometimes.",
+   "exits": {
+    "out": "terrazze"
+   },
+   "items": [
+    "camping stove",
+    "sleeping bag (damp)"
+   ],
+   "gm_notes": "Samuel slept here for two weeks when the rifugio was closed. He does not want it known. Set flag found_hut_bed."
+  },
+  "via_bassa": {
+   "name": "Via Bassa",
+   "desc": "The lower lane, stone houses shouldered together, half with shutters closed for good. A cat on every third sill. The lane ends at a gate with a chain and a sign: FILATURA PRADELLO, PROPRIETA' PRIVATA.",
+   "exits": {
+    "up to the piazza": "piazza",
+    "the mill gate": "cancello",
+    "down the terraces": "terrazze",
+    "Nunzia's door": "casa_nunzia",
+    "the washhouse": "lavatoio"
+   },
+   "items": [],
+   "gm_notes": "Nunzia lives above the alimentari but her real door is here."
+  },
+  "lavatoio": {
+   "name": "The old washhouse",
+   "desc": "A stone trough under a roof, water running through it from the mountain, three women's worth of gossip in the stone even when empty. A plaque: 1888.",
+   "exits": {
+    "back": "via_bassa"
+   },
+   "items": [
+    "a child's plastic bucket"
+   ],
+   "gm_notes": "Nunzia and Renzo were both here as children. Good place for Nunzia to talk if brought here."
+  },
+  "casa_nunzia": {
+   "name": "Nunzia's kitchen",
+   "desc": "A kitchen from 1962 kept spotless: oilcloth, a wood stove, a crucifix, a television on mute, a photograph of a man in a mill foreman's coat.",
+   "exits": {
+    "out": "via_bassa"
+   },
+   "items": [
+    "photograph (the foreman)"
+   ],
+   "gm_notes": "The foreman in the photo is Nunzia's late husband Aldo, who worked under Renzo at the mill. Set flag saw_aldo_photo."
+  },
+  "cancello": {
+   "name": "The mill gate",
+   "desc": "A tall iron gate on a chain, the chain new, the padlock new. Beyond it, the long brick shed of the spinning mill, windows broken and boarded, a chimney with a tree growing out of the top.",
+   "exits": {
+    "back": "via_bassa",
+    "over the wall": "cortile_filanda"
+   },
+   "items": [],
+   "gm_notes": "The chain and padlock are three weeks old, bought by Vittoria on the consortium's behalf. Climbing the wall is easy but is trespass: honesty -1 only if the player lies about it later. Set flag entered_mill on going over."
+  },
+  "cortile_filanda": {
+   "name": "Mill yard",
+   "desc": "Weeds through concrete, a loading dock, a rusted lorry with no wheels, tyre tracks that are not rusted. The main door is padlocked; a side door has been forced and re-shut.",
+   "exits": {
+    "back over the wall": "cancello",
+    "the side door": "filanda_piano",
+    "the canal": "canale"
+   },
+   "items": [
+    "fresh tyre tracks"
+   ],
+   "gm_notes": "Somebody drives in here at night. Set flag saw_tyre_tracks. The lorry has a Monte Rosso Impianti sticker under the rust, which is odd: the consortium is supposed to have no interest in the mill."
+  },
+  "filanda_piano": {
+   "name": "Mill floor",
+   "desc": "A hall the length of a football pitch, spinning frames still bolted to the floor under forty years of dust, pigeons in the roof. One corner has been swept, and a generator sits there, and a stack of new plastic drums with Chinese labels.",
+   "exits": {
+    "out": "cortile_filanda",
+    "the office stair": "ufficio_filanda",
+    "down to the cellar": "cantina_filanda"
+   },
+   "items": [
+    "plastic drum (sealed)",
+    "generator"
+   ],
+   "gm_notes": "The drums are solvent; someone is using the mill to store and mix something illegal, connected to a ski-lift construction firm's waste. Opening a drum: chemical smell, headache, set flag opened_drum. The mill is Renzo's world; he knows every bolt."
+  },
+  "ufficio_filanda": {
+   "name": "Mill office",
+   "desc": "A glassed box above the floor. Ledgers in a broken cabinet, a calendar from 1983, a Formica desk. A newer thing: a laptop charger, no laptop.",
+   "exits": {
+    "down": "filanda_piano"
+   },
+   "items": [
+    "ledger 1983",
+    "laptop charger"
+   ],
+   "gm_notes": "The 1983 ledger's last pages list the chemicals the dye-house dumped, in Renzo's hand. Reading it: set flag read_ledger. The charger is Vittoria's."
+  },
+  "cantina_filanda": {
+   "name": "Mill cellar",
+   "desc": "Brick vaults, standing water, the sound of the canal through the wall. A newer steel door, locked, with a keypad.",
+   "exits": {
+    "up": "filanda_piano",
+    "the steel door": "deposito",
+    "the old adit": "galleria"
+   },
+   "items": [],
+   "gm_notes": "The keypad code is Vittoria's car plate's last four digits, which Renzo knows because he notices everything. Or Luca can open it with a warrant."
+  },
+  "deposito": {
+   "name": "Behind the steel door",
+   "desc": "A dry room with pallets of drums, a pump, hoses running to the canal. The smell is sweet and wrong.",
+   "exits": {
+    "out": "cantina_filanda"
+   },
+   "items": [
+    "hose",
+    "invoice (Monte Rosso Impianti, 'smaltimento')"
+   ],
+   "hidden": true,
+   "gm_notes": "This is the proof: the consortium is dumping construction solvent into the lake through the old mill outfall. Set flag found_dumping. Taking the invoice: create item 'invoice'."
+  },
+  "canale": {
+   "name": "The mill canal",
+   "desc": "A stone channel carrying mountain water past the mill and down to the lake. The water smells faintly of paint below the mill, and not above it.",
+   "exits": {
+    "back": "cortile_filanda",
+    "follow it up": "presa",
+    "follow it down": "lago_strada"
+   },
+   "items": [],
+   "gm_notes": "Smelling the difference above and below the mill: set flag smelled_canal. Beppe's cheese needs this water clean; his spring is upstream, but his cows drink downstream."
+  },
+  "presa": {
+   "name": "The canal intake",
+   "desc": "A sluice gate in a mossy wall where the canal takes water from the torrent. A wheel to turn it, seized with rust. The path goes on up beside the torrent.",
+   "exits": {
+    "back": "canale",
+    "up the torrent path": "sentiero_torrente"
+   },
+   "items": [
+    "sluice wheel (seized)"
+   ],
+   "gm_notes": "Closing the sluice (needs a bar and two people, or Renzo's know-how) cuts the mill's water and stops the dumping for a while. Set flag sluice_closed."
+  },
+  "alimentari": {
+   "name": "Alimentari Nunzia",
+   "desc": "A shop the size of a garage that sells everything: bread, batteries, toma cheese, fishing line, lottery tickets, memorial candles. A bell on the door, a radio on, a cat on the ham slicer.",
+   "exits": {
+    "out": "piazza",
+    "the back room": "retro_alimentari"
+   },
+   "items": [
+    "bread",
+    "toma cheese (Beppe's)",
+    "batteries",
+    "map of the valley (tourist)"
+   ],
+   "gm_notes": "Nunzia is here mornings. Taking without paying: honesty -1 and she will know. She extends credit to locals and to anyone who talks to her properly."
+  },
+  "retro_alimentari": {
+   "name": "Back room of the alimentari",
+   "desc": "Crates, a chest freezer, a shrine of family photos, a landline telephone that still works, a stair up to Nunzia's rooms.",
+   "exits": {
+    "out": "alimentari"
+   },
+   "items": [
+    "landline telephone"
+   ],
+   "gm_notes": "The only reliable phone in the hamlet. Nunzia lets people use it. Calls set flag used_phone."
+  },
+  "bar": {
+   "name": "Bar Sport",
+   "desc": "Formica, a football calendar, a slot machine unplugged, coffee that is very good, a television showing cycling with the sound off. Four old men at the back table playing scopa. The wifi password is on a card by the till.",
+   "exits": {
+    "out": "piazza",
+    "the back table": "tavolo_scopa",
+    "the terrace": "terrazza_bar"
+   },
+   "items": [
+    "wifi card",
+    "coffee"
+   ],
+   "gm_notes": "Dario runs it. Coffee is a euro. The player arrived with a few coins. Dario extends credit to anyone who buys a round for the back table."
+  },
+  "tavolo_scopa": {
+   "name": "The scopa table",
+   "desc": "Four old men, one deck of cards, a bottle of grappa that is not on the menu, and forty years of the same argument.",
+   "exits": {
+    "back": "bar"
+   },
+   "items": [],
+   "gm_notes": "The old men are extras: they mutter, they do not have speaking parts unless a reserve is assigned. Renzo sits here afternoons. The argument is always about the pastures."
+  },
+  "terrazza_bar": {
+   "name": "Bar terrace",
+   "desc": "Three tables under a vine, a view straight down the valley to the lake and the island. A charging cable runs from the bar to an e-bike locked to the railing.",
+   "exits": {
+    "back": "bar"
+   },
+   "items": [
+    "e-bike (locked)"
+   ],
+   "gm_notes": "The e-bike is Giulia's. The best view in the hamlet; the mill's roof is visible below, and at night, its lights."
+  },
+  "sagrato": {
+   "name": "The church steps",
+   "desc": "A wide flight of steps to a plain white church, San Giulio, with a bell tower and a clock stopped at ten past four. A bench, a war memorial with nine names, one of them added in a different chisel.",
+   "exits": {
+    "down": "piazza",
+    "inside": "chiesa",
+    "round the back": "canonica",
+    "the cemetery path": "cimitero"
+   },
+   "items": [],
+   "gm_notes": "The added name on the memorial is Fabio Renzo's son, put there against the rules by the mason. The clock has been stopped since the bell-rope broke in the spring; the festa on Sunday needs the bell rung."
+  },
+  "chiesa": {
+   "name": "Church of San Giulio",
+   "desc": "Cool and dim, smelling of wax and damp plaster. Frescoes half restored and then abandoned mid-wall. The bell-rope hangs from the tower with its lower half missing.",
+   "exits": {
+    "out": "sagrato",
+    "up the tower": "campanile",
+    "the sacristy": "sagrestia"
+   },
+   "items": [
+    "bell-rope (frayed, half missing)"
+   ],
+   "gm_notes": "The rope needs splicing or replacing before Sunday; Renzo can splice, Beppe has rope at the alpe. Don Ettore is often here or in the canonica."
+  },
+  "sagrestia": {
+   "name": "Sacristy",
+   "desc": "Vestments, a safe with the door ajar, parish registers on a shelf back to 1700, a kettle.",
+   "exits": {
+    "out": "chiesa"
+   },
+   "items": [
+    "parish registers",
+    "kettle"
+   ],
+   "gm_notes": "The 1971 register records the deaths after the dye-works fire, which the comune called an accident. Reading it: set flag read_register."
+  },
+  "campanile": {
+   "name": "Bell tower",
+   "desc": "A ladder, then a stair, then the bell, bronze and green, and four louvred windows onto the whole valley: the lake, the mill, the alpe far above with its white dots of cows, the ski-lift pylons of the next valley over the ridge.",
+   "exits": {
+    "down": "chiesa"
+   },
+   "items": [],
+   "gm_notes": "From here the player can see a van at the mill at dusk and the survey stakes on the alpe. Set flag seen_from_tower. Ringing the bell by hand is possible and wakes the whole hamlet."
+  },
+  "canonica": {
+   "name": "The rectory",
+   "desc": "A house too big for one priest: a study with a computer older than the frescoes, a kitchen, a garden with tomatoes and a bench in the sun.",
+   "exits": {
+    "back": "sagrato",
+    "the garden": "orto_canonica"
+   },
+   "items": [
+    "old computer"
+   ],
+   "gm_notes": "Don Ettore's home. The computer holds his letters to the diocese about the pastures and the mill; he has not sent them."
+  },
+  "orto_canonica": {
+   "name": "Rectory garden",
+   "desc": "Tomatoes, beans on canes, a fig against the wall, a bench, and a gate onto the cemetery path.",
+   "exits": {
+    "back": "canonica",
+    "the gate": "cimitero"
+   },
+   "items": [
+    "tomatoes"
+   ]
+  },
+  "cimitero": {
+   "name": "Cemetery",
+   "desc": "White walls of niches with photographs, a few old graves in the grass, cypresses, the mountain straight above. One niche has fresh gentians. One grave is new and unmarked.",
+   "exits": {
+    "back": "sagrato",
+    "the garden gate": "orto_canonica",
+    "the path up the mountain": "mulattiera"
+   },
+   "items": [],
+   "gm_notes": "The gentians are on Fabio's niche. The new unmarked grave is Aldo's, Nunzia's husband, died in the spring; no stone yet because she and Renzo disagree what it should say. Set flag saw_graves."
+  },
+  "via_alta": {
+   "name": "Via Alta",
+   "desc": "The upper lane, steeper, with the better houses: one with new windows and a Milan plate on the Audi outside, one with a broken shutter and a nameplate RENZO, one with music coming from an upstairs room.",
+   "exits": {
+    "down to the piazza": "piazza",
+    "the house with new windows": "casa_giulia",
+    "Renzo's door": "casa_renzo",
+    "the house with music": "casa_serena",
+    "up the mule track": "mulattiera"
+   },
+   "items": []
+  },
+  "casa_giulia": {
+   "name": "The restored house",
+   "desc": "A stone house turned into a magazine: pale wood, a wood-burner, architectural drawings pinned to the wall, and a whole wall of the lake through new glass.",
+   "exits": {
+    "out": "via_alta"
+   },
+   "items": [
+    "architectural drawings"
+   ],
+   "gm_notes": "Giulia's. The drawings are of the mill: she was hired by the consortium to draw a conversion into apartments, and has started to suspect why they really want it. Reading the drawings: set flag saw_drawings."
+  },
+  "casa_renzo": {
+   "name": "Renzo's house",
+   "desc": "One room downstairs that smells of woodsmoke and machine oil. A lathe in the corner, a wall of tools, a photograph of forty men in front of the mill, 1978. A radio playing the local station.",
+   "exits": {
+    "out": "via_alta"
+   },
+   "items": [
+    "photograph (mill workers 1978)",
+    "spliced rope samples"
+   ],
+   "gm_notes": "Renzo's. The photo shows Renzo, Aldo, and a young man with a Monte Rosso face: Vittoria's father, who was the owner's son. Set flag saw_1978_photo."
+  },
+  "casa_serena": {
+   "name": "Serena's house",
+   "desc": "A family house with the family away at work in Omegna. Upstairs, a bedroom with posters, a laptop, a suitcase half packed, and the window open onto the roofs.",
+   "exits": {
+    "out": "via_alta"
+   },
+   "items": [
+    "half-packed suitcase"
+   ],
+   "gm_notes": "Serena is often here or at the beach or the rifugio. The suitcase is for Milan; she has not told her parents."
+  },
+  "mulattiera": {
+   "name": "The mule track",
+   "desc": "A stone-paved track zigzagging up through beech woods, old chapels of the Way of the Cross at every bend, cowbells above and the lake below. Survey stakes with orange ribbons in the ground beside it.",
+   "exits": {
+    "down": "via_alta",
+    "the cemetery": "cimitero",
+    "up": "alpe_corte",
+    "the side path": "cava"
+   },
+   "items": [
+    "survey stake (orange ribbon)"
+   ],
+   "gm_notes": "The stakes mark the lift route across the Alpe Corte pastures. Pulling them up is mischief +1 and makes Vittoria's life harder."
+  },
+  "cava": {
+   "name": "The old quarry",
+   "desc": "A cut in the mountain, a pool of green water, a tunnel mouth with a rusted gate and a sign in three languages saying no.",
+   "exits": {
+    "back": "mulattiera",
+    "the tunnel": "galleria"
+   },
+   "items": [
+    "rusted gate (open a crack)"
+   ],
+   "gm_notes": "The tunnel is the old mine adit. Serena and her friends go in. It is dangerous but not deadly if the player is careful."
+  },
+  "galleria": {
+   "name": "The mine tunnel",
+   "desc": "Dripping dark, old rails, a chill that does not change with the season. Two hundred metres in, a chamber with graffiti and candles and a mattress.",
+   "exits": {
+    "out": "cava",
+    "crawl past the rockfall": "cantina_filanda"
+   },
+   "items": [
+    "candles",
+    "graffiti (SERENA + L, painted over)"
+   ],
+   "hidden": true,
+   "gm_notes": "Serena's place. Opens when she trusts the player or when they push through the gate. Set flag found_tunnel_room. Past a rockfall the old adit reaches the mill cellar: a crawl with a light, a scare, no injury."
+  },
+  "alpe_corte": {
+   "name": "Alpe Corte",
+   "desc": "The high pasture: a bowl of grass under grey peaks, thirty brown cows, a stone cascina with a slate roof, a plastic tank, an old man's rules painted on a board. The wind never stops.",
+   "exits": {
+    "down the mule track": "mulattiera",
+    "the cascina": "cascina",
+    "the rifugio": "rifugio",
+    "the ridge": "crinale"
+   },
+   "items": [
+    "cowbell (spare)"
+   ],
+   "gm_notes": "Beppe's. The consortium needs this land for the lift's middle station. Beppe holds a ninety-nine-year grazing right that nobody can find the paper for."
+  },
+  "cascina": {
+   "name": "Beppe's cascina",
+   "desc": "A stone dairy: copper cauldron, wooden shelves of toma wheels ageing in the dark, a cot, a shotgun over the door that is for marmots, a dog's bed.",
+   "exits": {
+    "out": "alpe_corte"
+   },
+   "items": [
+    "toma wheel",
+    "coil of good rope"
+   ],
+   "gm_notes": "Beppe makes cheese here June to September. The rope would replace the bell-rope. The grazing-right paper is in the 1971 parish register margin, which Don Ettore knows and Beppe does not."
+  },
+  "rifugio": {
+   "name": "Rifugio Corte",
+   "desc": "A mountain hut with a terrace, twelve bunks, a kitchen, a stove, hikers' boots in a row, and a laminated menu. A sign: CERCASI AIUTO CUCINA.",
+   "exits": {
+    "out": "alpe_corte",
+    "the kitchen": "cucina_rifugio",
+    "the bunk room": "dormitorio"
+   },
+   "items": [
+    "laminated menu",
+    "hikers' boots"
+   ],
+   "gm_notes": "Samuel runs the kitchen and is short-handed. The owner is in Omegna and never comes. Working a shift here: generosity +1, and a bed."
+  },
+  "cucina_rifugio": {
+   "name": "Rifugio kitchen",
+   "desc": "Steam, polenta pot, a radio in Twi, a whiteboard of tonight's covers, a window onto the peaks.",
+   "exits": {
+    "out": "rifugio"
+   },
+   "items": [
+    "polenta",
+    "whiteboard"
+   ],
+   "gm_notes": "Samuel's territory."
+  },
+  "dormitorio": {
+   "name": "Bunk room",
+   "desc": "Twelve bunks, a smell of wool and boots, one bunk with a padlocked box under it and a photograph of a woman and two children taped to the wall.",
+   "exits": {
+    "out": "rifugio"
+   },
+   "items": [
+    "padlocked box"
+   ],
+   "gm_notes": "Samuel's bunk. The box holds his passport and his expired permesso di soggiorno. Opening it uninvited: honesty -2."
+  },
+  "crinale": {
+   "name": "The ridge",
+   "desc": "A knife of grass and rock between two valleys. On this side, Pradello, the alpe, the lake. On the other, the ski-lift pylons of Monte Rosso, a car park, a half-built station with a crane.",
+   "exits": {
+    "back": "alpe_corte",
+    "over into the next valley": "cantiere"
+   },
+   "items": [],
+   "gm_notes": "Seeing the half-built station makes the stakes real. Set flag saw_ridge."
+  },
+  "cantiere": {
+   "name": "The lift construction site",
+   "desc": "Fenced, floodlit, a portakabin office, a crane, drums stacked under a tarp, the same Chinese labels as in the mill. A security guard's car with nobody in it.",
+   "exits": {
+    "back over the ridge": "crinale"
+   },
+   "items": [
+    "drum (same label)"
+   ],
+   "gm_notes": "The drums here match the mill's. Set flag matched_drums. Luca has jurisdiction here."
+  },
+  "sentiero_torrente": {
+   "name": "Torrent path",
+   "desc": "A path beside white water, a footbridge, a pool where trout hang in the current, and a spring coming out of the rock into a stone basin.",
+   "exits": {
+    "back": "presa",
+    "the footbridge": "ponte",
+    "up to the alpe": "alpe_corte"
+   },
+   "items": [
+    "trout (if patient)"
+   ],
+   "gm_notes": "The spring is the one Beppe's cheese depends on: it is clean. Set flag found_spring."
+  },
+  "ponte": {
+   "name": "The footbridge",
+   "desc": "Planks and cable over the torrent, swaying. On the far side, a locked hut with a Carabinieri sticker and a radio mast.",
+   "exits": {
+    "back": "sentiero_torrente",
+    "the hut": "casermetta"
+   },
+   "items": []
+  },
+  "casermetta": {
+   "name": "The Carabinieri outpost",
+   "desc": "A one-room seasonal post: a desk, a radio, a map of the valley with pins, a kettle, a cot. Manned two days a week.",
+   "exits": {
+    "out": "ponte"
+   },
+   "items": [
+    "valley map with pins",
+    "radio"
+   ],
+   "gm_notes": "Luca's post when he is up here. The pins mark complaints: three about smell at the lake, one about night traffic at the mill. He has not been given the manpower to follow them up."
+  }
+ }
+}
