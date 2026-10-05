@@ -1,0 +1,129 @@
+{
+ "ends": {
+  "map_pinned": {
+   "when": {
+    "flag": "map_pinned"
+   },
+   "gm_note": "the finished map has been laid on the still pool at the knot (with Ottilie's consent or at her hand) and every path in Fivefold has stopped drifting for good; narrate the first fixed dusk, the paths staying where they are, and what that means to the people here, then set end.",
+   "min_turn": 15
+  },
+  "drift_kept": {
+   "when": {
+    "flag": "drift_kept"
+   },
+   "gm_note": "Ottilie and the player have chosen to leave the map unfinished (or the last sheet has been let go into the pool unpinned) and the paths will keep drifting; narrate the next dusk, the paths moving, and Ottilie's face, then set end.",
+   "min_turn": 15
+  },
+  "ferry_taken": {
+   "when": {
+    "flag": "ferry_taken"
+   },
+   "gm_note": "the player has taken the ferry pole from Brann and agreed to stay as ferryman; narrate Brann walking up to the crossing and away, and the player's first crossing alone, then set end.",
+   "min_turn": 15
+  },
+  "walked_on": {
+   "when": {
+    "flag": "walked_on"
+   },
+   "gm_note": "the player has chosen to walk the sixth path out of the valley and not come back; narrate the path, the valley falling behind, and what the player carries, then set end.",
+   "min_turn": 15
+  }
+ },
+ "arcs": [
+  {
+   "name": "the map",
+   "gm_notes": [
+    {
+     "unlock": {
+      "flag": "asked_about_map"
+     },
+     "text": "Ottilie needs the north-east corner: someone must walk beyond the beech wood (by the sixth path, at dusk) and come back to tell her exactly where it went. She cannot walk that far any more."
+    },
+    {
+     "unlock": {
+      "all": [
+       {
+        "flag": "knot_found"
+       },
+       {
+        "flag": "asked_about_map"
+       }
+      ]
+     },
+     "text": "The player knows where the paths are rooted. If they tell Ottilie, she understands at once what the knot means: her map, finished and laid on the pool, would pin the paths for good. She does not know whether she wants that, and she will ask the player what they think, and listen. If they decide together to pin it (the corner drawn, the map carried down and laid on the water), set flag map_pinned. If they decide together to leave it unfinished, or the player persuades her that the drift is the point, set flag drift_kept."
+    },
+    {
+     "unlock": {
+      "all": [
+       {
+        "flag": "asked_about_map"
+       },
+       {
+        "not_flag": "knot_found"
+       },
+       {
+        "any": [
+         {
+          "flag": "seen_drift"
+         },
+         {
+          "turn_min": 28
+         }
+        ]
+       }
+      ]
+     },
+     "text": "Ottilie is ready to decide about the map. Without the knot the map cannot pin anything, but she can still choose to stop: if she and the player decide together that the map should stay unfinished and the paths left to drift, set flag drift_kept. If the player wants it finished, the way is through the knot under the mill (Pell knows it; so does the first map on Tern Island)."
+    },
+    {
+     "unlock": {
+      "flag": "first_map_seen"
+     },
+     "text": "The player has seen the first map on Tern Island: the five paths are rooted in one place under the mill. Searching beneath the millstones on the mill floor finds the way down: open node knot with a map op."
+    }
+   ]
+  },
+  {
+   "name": "the ferry",
+   "gm_notes": [
+    {
+     "unlock": {
+      "flag": "brann_confided"
+     },
+     "text": "Brann wants to leave by the sixth path and cannot while nobody keeps the ferry. If the player offers, seriously, to stay and keep it, and Brann accepts and hands over the pole, set flag ferry_taken."
+    }
+   ]
+  },
+  {
+   "name": "dusk",
+   "gm_notes": [
+    {
+     "unlock": {
+      "flag": "dusk"
+     },
+     "text": "It is dusk. The sixth path is open beside the signpost (open node sixth_path with a map op if it is still hidden). If the player walks it to the end and clearly chooses to leave, set flag walked_on. A player who walks part way and comes back has learned what lies there; tell Ottilie and she can draw her corner."
+    }
+   ]
+  },
+  {
+   "name": "the waystone",
+   "gm_notes": [
+    {
+     "unlock": {
+      "flag": "line_carved"
+     },
+     "text": "The player has left a line on the Waystone. Aud copies it into the ledger in front of them. Anyone who reads the stone from now on reads it too."
+    }
+   ]
+  },
+  {
+   "name": "the notebook",
+   "gm_notes": [
+    {
+     "unlock": "always",
+     "text": "The player carries a small blank notebook (only if they mention it; it is not an item to narrate otherwise). When they write in it, put their exact words in the JSON key `notebook` and narrate nothing more than the writing."
+    }
+   ]
+  }
+ ]
+}
