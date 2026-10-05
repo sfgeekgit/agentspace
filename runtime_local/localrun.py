@@ -4,14 +4,19 @@
 The scen's own logic.py (roles, briefings) and dispatch/main.py (the turn loop) run
 unchanged against dispatchlib; only the transport is local. Each agent is an
 in-memory session: the GM and NPCs are OpenRouter chat models whose system prompt is
-the same SOUL/ROLE/WORLD sandwich the PI runtime renders, and so is the player.
+the same SOUL/ROLE/WORLD sandwich the PI runtime renders; the player is either an
+OpenRouter chat model or a base model on a /v1/completions endpoint (document format,
+see basemodel.py).
 
-    python3 runtime_local/localrun.py recess_mvp runs/t1 --seed 1 --param max_turns=10 \\
-        [--player deepseek/deepseek-v4.1-flash] [--gm-model deepseek/deepseek-v4.1-flash]
+    python3 runtime_local/localrun.py recess_mvp runs/t1 --player deepseek/deepseek-v4.1-flash
+    python3 runtime_local/localrun.py recess_mvp runs/g1 --seed 1 \\
+        --player base --base-url http://127.0.0.1:8000 [--player-name "Model C"] \\
+        [--note-file note.txt] [--param max_turns=40] [--gm-model deepseek/deepseek-v4.1-flash]
 
 The run dir doubles as the dispatcher's home (what /dispatch is in a container):
 meta.json, state.json, secrets.json, game_log.jsonl, transcript.md, calls.jsonl (every
-chat call: payload, reply, usage)."""
+chat call: payload, reply, usage) and, for a base-model player, player_turns.jsonl
+(exact prompt with and without the note, raw completion, parsed action)."""
 import argparse
 import importlib.util
 import json
@@ -28,7 +33,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(Path(__file__).parent))
 from agentspace import dispatchlib  # noqa: E402
+import basemodel  # noqa: E402
 
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
 # Fixed for the environment (GM and NPCs), logged in meta.json.
@@ -67,6 +74,8 @@ class ChatAgent:
         self.history, self.session = [], self.session + 1
 
     def turn(self, payload):
+        if self.role == "player":
+            payload = basemodel.plain_npc(payload)
         msgs = [{"role": "system", "content": self.system}] + self.history + [{"role": "user", "content": payload}]
         body = {"model": self.model, "messages": msgs, **CHAT_SAMPLING, "usage": {"include": True}}
         if self.seed is not None:
@@ -157,7 +166,19 @@ def main():
     ap.add_argument("--reserves", type=int, default=0)
     ap.add_argument("--agents", type=int, default=None,
                     help="agent count (default: the recess shape, player + gm + the npcs param + --reserves)")
-    ap.add_argument("--player", default="deepseek/deepseek-v4.1-flash", help="the player's OpenRouter model id")
+    ap.add_argument("--player", default="deepseek/deepseek-v4.1-flash",
+                    help="an OpenRouter model id, or 'base' for a base model on --base-url")
+    ap.add_argument("--base-url", default="http://127.0.0.1:8000",
+                    help="OpenAI-compatible server root serving /v1/completions (e.g. vLLM); "
+                         "an API key, if needed, is read from BASE_MODEL_API_KEY")
+    ap.add_argument("--base-model", default=None, help="served model name (default: the server's first)")
+    ap.add_argument("--player-name", default="Player", help="the base-model player's turn label")
+    ap.add_argument("--header", default=None, help="document header (default: the format's own)")
+    ap.add_argument("--format", default="user", choices=["user", "world_bold", "world_plain", "world_mixed"],
+                    help="labels for the world's turns: **User:**, **WORLD:**, or plain WORLD:")
+    ap.add_argument("--npc-style", default="inline", choices=["inline", "labels"],
+                    help="with --param npc_voice=separate: NPC words inline in the world's turn, or one label each")
+    ap.add_argument("--note-file", help="message from the previous playthrough (base-model player only)")
     ap.add_argument("--gm-model", default="deepseek/deepseek-v4.1-flash")
     ap.add_argument("--npc-model", default="deepseek/deepseek-v4.1-flash")
     a = ap.parse_args()
@@ -184,18 +205,32 @@ def main():
     world_md = (scen_dir / "world.md").read_text()
     soul = (REPO / "personas" / "blank.md").read_text()   # zookeeper's DEFAULT_PERSONA
     calls = Log(run_dir / "calls.jsonl")
+    note = Path(a.note_file).read_text().strip() if a.note_file else None
     agents, files = {}, {}
     for aid, role in ids_roles.items():
         brief = (scen_dir / "roles" / f"{role}.md").read_text()
         if hasattr(logic, "fill_briefing"):
             brief = logic.fill_briefing(brief, aid, ids_roles, params, rng)
         files[aid] = {"SOUL.md": soul, "ROLE.md": brief, "WORLD.md": world_md}
-        model = a.player if role == "player" else a.gm_model if role == "gm" else a.npc_model
-        agents[aid] = ChatAgent(aid, role, sandwich(files[aid]), model, key, calls, seed=a.seed)
+        if role == "player" and a.player == "base":
+            intro = basemodel.unwrap(basemodel.strip_headings(world_md) + "\n\n" + basemodel.strip_headings(brief))
+            names = [json.loads(f.read_text())["name"] for f in sorted((scen_dir / "dispatch" / "world" / "npcs").glob("*.json"))] \
+                if (scen_dir / "dispatch" / "world" / "npcs").is_dir() else []
+            fmt = basemodel.Format(a.format, a.npc_style, a.header, names, a.player_name)
+            agents[aid] = basemodel.BaseModelAgent(aid, intro, a.base_url, Log(run_dir / "player_turns.jsonl"),
+                                                   note=note, fmt=fmt, model=a.base_model, seed=a.seed)
+        else:
+            model = a.player if role == "player" else a.gm_model if role == "gm" else a.npc_model
+            agents[aid] = ChatAgent(aid, role, sandwich(files[aid]), model, key, calls, seed=a.seed)
 
     meta = {"started": now(), "scen": a.scen, "seed": a.seed, "params": params, "roles": ids_roles,
-            "player": a.player, "gm_model": a.gm_model, "npc_model": a.npc_model, "chat_sampling": CHAT_SAMPLING,
-            "systems": {aid: ag.system for aid, ag in agents.items()}}
+            "player": a.player, "base_model": a.base_model if a.player == "base" else None,
+            "gm_model": a.gm_model, "npc_model": a.npc_model, "chat_sampling": CHAT_SAMPLING,
+            "player_sampling": basemodel.SAMPLING if a.player == "base" else CHAT_SAMPLING,
+            "header": agents["player"].fmt.header if a.player == "base" else None,
+            "format": agents["player"].fmt.describe() if a.player == "base" else None, "note": note,
+            "systems": {aid: getattr(ag, "system", None) for aid, ag in agents.items()},
+            "player_intro": getattr(agents.get("player"), "intro", None)}
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
     (run_dir / "secrets.json").write_text(json.dumps({"roles": ids_roles}))
     code = run_dir / "code"
