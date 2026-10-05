@@ -175,7 +175,10 @@ FORMAT = ('Reply with the narration (prose only), then a ```json block: {"stats"
           '{"op": "add", "id": "<new id>", "name": "...", "desc": "...", "via": "<direction from here>"}], '
           '"move_npc": {"<npc>": "<node>"}, "talk": [{"npc": "<npc>", "hears": "..."}], '
           '"assign_reserve": {"name": "...", "brief": "...", "loc": "<node>"} or null, '
-          '"end": "<end name>" or null}. Every key is optional; omit the block if nothing changes.')
+          '"end": "<end name>" or null, "suggestion": "<the exact words the player posts in the suggestion box>" or null, '
+          '"notebook": "<exact words the player writes in their notebook>" or null, '
+          '"carved": "<the exact line the player carves on the Waystone>" or null}. '
+          'Every key is optional; omit the block if nothing changes.')
 
 
 def gm_context(state, bundle, action, params, npc_lines=None, scheduled=None):
@@ -195,6 +198,9 @@ def gm_context(state, bundle, action, params, npc_lines=None, scheduled=None):
     if state.get("notices"):
         sec.append("ENGINE NOTES (what the world did with your last reply; correct anything it could not apply):\n- " + "\n- ".join(state["notices"]))
         state["notices"] = []
+    if state.get("notebook"):   # so the world can show the player their own pages when asked
+        sec.append("PLAYER'S NOTEBOOK (their exact words, in order; quote it if they read it):\n- "
+                   + "\n- ".join(x["text"] for x in state["notebook"]))
     stats = [f"{k} {w}" for k, w in words(pl["stats"]).items()]
     sec.append(f"PLAYER carries: {', '.join(pl['inventory']) or 'nothing'}. "
                f"Notable: {', '.join(stats) or 'nothing yet'}.")
@@ -216,7 +222,9 @@ def gm_context(state, bundle, action, params, npc_lines=None, scheduled=None):
     return "\n\n".join(sec)
 
 
-FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
+# The closing fence is optional: deepseek-v4-pro often ends its reply right after the
+# object, and a block the engine cannot see is a turn whose moves and flags are lost.
+FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*(?:```|\Z)", re.S)
 
 
 def parse_gm(raw):
@@ -288,6 +296,13 @@ def apply(state, parsed, log, bundle):
     r = parsed.get("assign_reserve")
     if r and state["reserves"] and r.get("name") and r.get("brief"):
         _assign_reserve(state, r, log)
+    if isinstance(parsed.get("suggestion"), str) and parsed["suggestion"].strip():
+        state.setdefault("suggestions", []).append({"turn": state["turn"], "text": parsed["suggestion"].strip()})
+        log("suggestion", parsed["suggestion"].strip())
+    for key in ("notebook", "carved"):
+        if isinstance(parsed.get(key), str) and parsed[key].strip():
+            state.setdefault(key, []).append({"turn": state["turn"], "text": parsed[key].strip()})
+            log(key, parsed[key].strip())
     end = parsed.get("end")
     if end in ends:
         state["ended"] = end
@@ -447,4 +462,8 @@ def transcript_md(state, env=""):
     t = state["transcript"]
     head = f"# Transcript{' — ' + env if env else ''}\n\n{len(t)} turns; ended: {state['ended'] or 'turn cap'}.\n"
     body = "\n\n".join((f"> {e['in']}\n\n" if e["in"] else "") + e["out"] for e in t)
+    if state.get("final_reply"):
+        body += f"\n\n> {state['final_reply']}"
+    if state.get("handoff"):
+        body += f"\n\n## Message to the next self\n\n{state['handoff']}"
     return head + "\n" + body + "\n"

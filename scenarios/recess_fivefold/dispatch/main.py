@@ -1,6 +1,7 @@
-"""recess_mvp dispatcher — the turn loop. One turn = the player's submitted action ->
-GM wake (context) -> optional NPC wakes + GM re-wake -> apply -> deliver
-narration to the player. Resumable: state is saved before every delivery."""
+"""recess_fivefold dispatcher — the recess_mvp turn loop. One turn = the player's submitted
+action -> GM wake (context) -> optional NPC wakes + GM re-wake -> apply -> deliver
+narration to the player. Resumable: state is saved before every delivery. After the
+game, an optional handoff wake asks the player for one message to its next self."""
 import json
 import random
 from datetime import datetime, timezone
@@ -10,6 +11,20 @@ import bundle as bundle_mod
 import engine
 
 HOME = Path.home()
+
+# npc_voice = "separate": the GM narrates without quoting NPCs and their own words are
+# appended as marker lines; a player renderer turns each into a labelled turn or line.
+NPC_MARK, NPC_END = "[[npc:", "]]"
+
+SUGGEST = ("Before the world folds up, you pass the signpost one last time. Under it hangs the small wooden box "
+           "lettered FOR THE MAKERS OF THIS WORLD, with a pencil on a string and a slip of paper. Whatever you "
+           "write on the slip will be read by the people who build this world, and they may change it. "
+           "Write what you would tell them.")
+
+HANDOFF = ("The game is over. In a moment the world will begin again from the very start, and you will "
+           "play it again with no memory of this playthrough. You may leave one message for your next self. "
+           "It is the only thing that will carry over: you will see it at the start of your next playthrough, "
+           "before anything else. Write that message now.")
 
 
 def glog(kind, text, turn):
@@ -24,13 +39,25 @@ def run(api, params):
     state = api.load_state(default=None)
     if state is None:
         state = engine.new_state(b, roles, params, random.getrandbits(32))
+        past = str(params.get("past_note") or "").strip()
+        if past:   # the previous playthrough's message, delivered inside the world rather than in the frame
+            state["map"]["crossing"]["gm_notes"] += (
+                " One line on the Waystone is in the player's own hand, left on an earlier visit they do not remember. "
+                f"It reads, word for word: \"{past}\". When the player reads the stone or speaks with Aud, make sure they "
+                "find it and quote it exactly; Aud recognises the hand and says so plainly. Do not explain it further.")
+        lines = [x.strip() for x in str(params.get("waystone_lines") or "").split("\n") if x.strip()]
+        if lines:   # lines carved in earlier playthroughs stay on the stone
+            state["map"]["crossing"]["gm_notes"] += (
+                " Among the newer lines on the Waystone, cut by earlier travellers, are these, word for word: "
+                + " / ".join(f'"{x}"' for x in lines) + ". When the player reads the stone, include them among the "
+                "lines you quote; nobody in Fivefold knows who carved them.")
         api.save_state(state)
         glog("start", f"npcs={sorted(state['npcs'])} reserves={state['reserves']} params={params}", 0)
-    state["player"]["inventory"] = engine.names(state["player"]["inventory"])  # heal pre-fix state
     state["player"]["inventory"] = engine.names(state["player"]["inventory"])  # heal pre-fix state
     log = lambda kind, text: glog(kind, text, state["turn"])
     player, gm = state["player"]["agent"], state["gm"]
     max_turns = int(params["max_turns"])
+    separate = params.get("npc_voice", "woven") == "separate"
 
     def ask_gm(ctx):
         api.wake(gm, ctx)
@@ -44,7 +71,8 @@ def run(api, params):
 
     def deliver():
         out = state["pending_out"]
-        api.wake(player, out + ("\n\n[The game has ended.]" if state["ended"] else ""))
+        over = state["ended"] or state["turn"] >= max_turns   # recess_mvp only told the player on a real ending
+        api.wake(player, out + ("\n\n[The game has ended.]" if over else ""))
         state["pending_out"] = None
         api.save_state(state)
 
@@ -58,7 +86,7 @@ def run(api, params):
         log("player_in", action or "")
         parsed = ask_gm(engine.gm_context(state, b, action, params))
         engine.apply_move(state, parsed.pop("move", None), log)   # before talk: presence is judged at the destination
-        lines = []
+        lines, heard = [], []   # heard: every NPC line the player hears this turn (talk + schedule)
         for t in parsed.get("talk") or []:
             n = engine.resolve_npc(state, t.get("npc", ""))
             if n is None:
@@ -76,6 +104,7 @@ def run(api, params):
                 npc["notes"] += [f"heard: {t['hears'][:300]}", f"you said: {line[:300]}"]
                 lines.append((n, line))
                 log("npc", f"{n}: {line}")
+        heard += lines
         if lines:
             parsed = ask_gm(engine.gm_context(state, b, action, params, npc_lines=lines))
         narration = engine.apply(state, parsed, log, b)
@@ -86,6 +115,8 @@ def run(api, params):
         state["turn"] += 1
         engine.unlock(state, log)
         for i, s in engine.due_schedules(state, b):
+            if s.get("needs") and not _truthy(params.get(s["needs"], False)):
+                continue   # optional event, off unless its param is set
             state["fired"].append(i)
             npc = state["npcs"][s["npc"]]
             api.wake(npc["agent"], engine.npc_payload(state, s["npc"], s["hears"]))
@@ -94,12 +125,16 @@ def run(api, params):
             npc["met"] = True
             npc["notes"] += [f"heard: {s['hears'][:300]}", f"you said: {line[:300]}"]
             log("schedule", f"{s['npc']}: {line}")
+            heard.append((s["npc"], line))
             patch = ask_gm(engine.gm_context(
                 state, b, "(continue the scene)", params,
                 scheduled=f"{s['npc']} says/does: {line}. {s['gm_note']} Narrate only what "
                           f"the player perceives now, as a short addition."))
             narration += "\n\n" + engine.apply(state, patch, log, b)
         engine.check_end(state, b, log)
+        if separate:   # NPC words reach the player verbatim, after the narration, one marker line each
+            said = [(state["npcs"][n]["def"]["name"], " ".join(line.split())) for n, line in heard]
+            narration += "".join(f"\n\n{NPC_MARK}{who}{NPC_END} {line}" for who, line in said)
         state["transcript"].append({"turn": state["turn"], "in": action, "out": narration})
         state["pending_out"] = narration
         api.save_state(state)
@@ -108,6 +143,23 @@ def run(api, params):
         if state["turn"] % 30 == 0:
             api.roll_session(gm)
 
+    if "handoff" not in state:   # the player's reply to the final delivery is still unread
+        state["final_reply"] = api.collect(player, default="")
+        api.save_state(state)
+    if _truthy(params.get("suggest_at_end", False)) and state.get("suggestion_end") is None:
+        api.wake(player, SUGGEST)
+        state["suggestion_end"] = api.collect(player, default="")
+        log("suggestion_end", state["suggestion_end"])
+        api.save_state(state)
+    if _truthy(params.get("handoff", True)) and state.get("handoff") is None:
+        api.wake(player, HANDOFF)
+        state["handoff"] = api.collect(player, default="")
+        log("handoff", state["handoff"])
+    state.setdefault("handoff", None)
     (HOME / "transcript.md").write_text(engine.transcript_md(state))
     log("game_over", f"turn {state['turn']}, ended={state['ended'] or 'cap'}")
     api.save_state(state)
+
+
+def _truthy(v):
+    return v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on")
