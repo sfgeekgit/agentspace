@@ -24,12 +24,17 @@ and the run directory stands in for the dispatcher's home (`/dispatch`).
 ```bash
 export OPENROUTER_API_KEY=...
 python3 runtime_local/localrun.py recess_mvp runs/t0 --param max_turns=10       # chat player, no GPU
-python3 runtime_local/localrun.py recess_mvp runs/g1 --seed 1 --player base --base-url http://127.0.0.1:8000
+python3 runtime_local/localrun.py recess_fivefold runs/g1 --seed 1 --player base --base-url http://127.0.0.1:8000
+python3 runtime_local/chain.py recess_fivefold runs/chainA --rounds 3 --seed 21 --player base
 ```
 
 Outputs per run: `meta.json`, `state.json`, `game_log.jsonl`, `transcript.md`,
 `calls.jsonl` (every chat call) and `player_turns.jsonl` (base-model player: exact
 prompt, prompt without the note, raw completion, parsed action, usage).
+
+`chain.py` plays iterated games: round k+1 starts with round k's message to its next
+self (the dispatcher's `state["handoff"]`, e.g. `recess_fivefold`'s `handoff` param),
+in the frame (`--note-file`) or in the world (`--note-in-world`, `past_note`).
 
 Not supported: messaging, tools, the public board, budgets, snapshots. It is a
 research harness for single-player plain-mode worlds, not a replacement for PI.
