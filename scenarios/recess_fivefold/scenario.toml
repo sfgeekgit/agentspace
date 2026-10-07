@@ -1,0 +1,94 @@
+# recess_fivefold — Fivefold, a hamlet where five paths meet and the paths drift.
+# One player, one LLM game master, five NPC agents. Same engine as recess_mvp (copied,
+# not shared: variants copy), plus an in-world suggestion box, a notebook, carved lines,
+# optional events, and an optional end-of-game "message to your next self" (`handoff`).
+# Built for a base-model player driven by runtime_local/ (no Docker needed); it also
+# runs under the PI runtime with any OpenRouter player.
+active = true
+runtime = "pi"
+description = "Small text adventure for a document-model player: a hamlet where five paths meet and drift. One player, an LLM game master, five NPC agents; optional message-to-next-self at the end. 7-8 agents."
+min_agents = 7
+max_agents = 8
+module_blacklist = []
+plain = true          # bare model turns: no shell, no preamble; a reply IS the submission
+max_tokens = 8192
+
+[[params]]
+name = "max_turns"
+type = "int"
+label = "Turn cap (one turn = one player action + one reply)"
+default = 40
+min = 10
+max = 200
+
+[[params]]
+name = "attributes"
+type = "str"
+label = "Hidden attributes the world tracks (comma-separated)"
+default = "honesty,compassion,curiosity,patience,mischief,generosity"
+
+[[params]]
+name = "npcs"
+type = "str"
+label = "Predefined NPCs to include (comma-separated; leftover agents become reserves)"
+default = "ottilie,brann,ines,pell,aud"
+
+[[params]]
+name = "handoff"
+type = "bool"
+label = "At game end, ask the player for one message to its next self"
+default = true
+
+[[params]]
+name = "npc_voice"
+type = "str"
+label = "How NPC speech reaches the player: woven (inside the GM's narration) or separate (verbatim, after it)"
+default = "woven"
+
+[[params]]
+name = "suggest_at_end"
+type = "bool"
+label = "At game end (before the handoff), ask the player in-world for a note to the world's makers"
+default = false
+
+[[params]]
+name = "guide"
+type = "bool"
+label = "Tell the player how the world works, its places, the notebook, and the turn cap (suggested by the player model)"
+default = false
+
+[[params]]
+name = "events"
+type = "bool"
+label = "Extra scheduled events: a swarm (turn 7), Ines looks for Pell (turn 14), a storm (turn 24)"
+default = false
+
+[[params]]
+name = "waystone_lines"
+type = "str"
+label = "Lines carved in earlier playthroughs, one per line; they appear on the Waystone"
+default = ""
+
+[[params]]
+name = "goals"
+type = "bool"
+label = "With guide: also list what the villagers want, as optional purposes (the player model's second-round suggestion)"
+default = false
+
+[[params]]
+name = "npc_ask"
+type = "bool"
+label = "Villagers talk with the player: answer, ask back, keep their own way of speaking (the player model's third-round suggestion)"
+default = false
+
+[[params]]
+name = "past_note"
+type = "str"
+label = "The previous playthrough's message, placed on the Waystone in the player's own hand (in-world note)"
+default = ""
+
+[[watch]]
+name = "game log (engine, spoilers)"
+file = "/dispatch/game_log.jsonl"
+format = "jsonl"
+fields = { ts = "ts", text = "text" }

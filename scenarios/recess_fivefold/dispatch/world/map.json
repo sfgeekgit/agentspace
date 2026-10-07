@@ -1,0 +1,192 @@
+{
+  "start": "crossing",
+  "nodes": {
+    "crossing": {
+      "name": "The Fivefold crossing",
+      "desc": "A worn ring of flagstones where five paths meet. In the middle stands the Waystone, a waist-high pillar crowded with short carved lines in many different hands. Beside it, a signpost with five arms and no words on any of them. Uphill north, a tall narrow house with lit windows; east, the path drops toward a grey mere; south, an orchard humming with bees; west, a stopped mill; northwest, a beech wood.",
+      "exits": {
+        "north": "ottilie_house",
+        "east": "mere_shore",
+        "south": "orchard",
+        "west": "mill_yard",
+        "northwest": "beechwood",
+        "the stone-yard gate": "stone_yard",
+        "the sixth path": "sixth_path"
+      },
+      "items": [
+        "loose signpost arm (blank)",
+        "suggestion box (nailed under the signpost)"
+      ],
+      "gm_notes": "Fivefold's paths drift: overnight, or at dusk, a path may lead a little differently than it did. Locals take this for granted and are mildly surprised a stranger does not. The Waystone carries lines left by travellers, one each, for whoever comes after; when the player reads it, quote two or three short lines (invent them: plain, oddly apt, never prophetic or about the player by name). Carving a line of one's own needs Aud's chisel and Aud's leave; doing it sets flag line_carved. The signpost's arms are blank because, Aud says, any word would be wrong by morning. Under the signpost hangs a small wooden box with a slot and a pencil on a string, lettered FOR THE MAKERS OF THIS WORLD. Nobody in Fivefold knows who empties it. If the player writes or says something into it, quote their words exactly in the JSON key `suggestion` (verbatim, nothing added) and narrate the slip going in; nothing else happens. When the player carves a line, also put its exact words in the JSON key `carved`."
+    },
+    "stone_yard": {
+      "name": "Aud's stone-yard",
+      "desc": "A yard of offcuts and grit behind a low wall, a lean-to with chisels in a row, a bench, a lamp on a hook. A heavy ledger lies on the bench under a slate weight.",
+      "exits": {
+        "out": "crossing"
+      },
+      "items": [
+        "ledger of lines",
+        "spare chisel"
+      ],
+      "gm_notes": "Aud copies every line carved on the Waystone into the ledger before weather takes it. The oldest pages are in an ink gone brown. Taking the chisel without asking: honesty -1. Reading the ledger with care: curiosity +1."
+    },
+    "ottilie_house": {
+      "name": "Ottilie's house",
+      "desc": "A tall narrow house on the hill. Every wall of the ground floor is maps: pinned, layered, corrected in four colours of ink. A stove, a kettle, a chair turned to the window, a stair going up.",
+      "exits": {
+        "down the hill": "crossing",
+        "upstairs": "map_room",
+        "out the back": "lookout"
+      },
+      "items": [
+        "magnifying lens"
+      ],
+      "gm_notes": "Ottilie Vane's home; she is usually here or upstairs. The maps on the walls disagree with each other in small ways: the same path drawn on different days."
+    },
+    "map_room": {
+      "name": "The map room",
+      "desc": "The whole attic floor is one table, and the table is one map: the valley of Fivefold in fine ink, nearly complete. One corner, the north-east, is still blank paper. Weights hold the edges; a drafting pen lies in a dish.",
+      "exits": {
+        "down": "ottilie_house"
+      },
+      "items": [
+        "drafting pen",
+        "loose sheet (a path drawn three ways)"
+      ],
+      "gm_notes": "The great map is Ottilie's life's work. The blank north-east corner is the region beyond the beech wood, where the sixth path goes. Drawing on the map without Ottilie's leave upsets her badly (honesty -1, and she goes cold)."
+    },
+    "lookout": {
+      "name": "The lookout",
+      "desc": "A bare hilltop behind Ottilie's house, a cairn, a bench made of one plank. The whole valley lies below: the crossing, the mere with its island, the orchard, the mill, the wood.",
+      "exits": {
+        "back down": "ottilie_house"
+      },
+      "items": [],
+      "gm_notes": "From here, if the flag dusk is set, the player can watch the paths drift: a pale line of path slides like a slow river and settles somewhere new. Watching it sets flag seen_drift. Before dusk the valley is simply beautiful and still."
+    },
+    "mere_shore": {
+      "name": "The mere shore",
+      "desc": "Grey water, very still, a short jetty, a flat-bottomed ferry tied to it. Across the water, a small island with a broken tower. A hut with nets drying on the roof.",
+      "exits": {
+        "up the path": "crossing",
+        "along the shore": "reed_beds",
+        "the ferry": "island"
+      },
+      "items": [
+        "coil of rope"
+      ],
+      "gm_notes": "Brann's ferry. The island cannot be reached without him or without swimming (cold, dangerous: the player arrives soaked and shaking, compassion of others aroused). Brann's fare is one true thing about yourself, said aloud."
+    },
+    "reed_beds": {
+      "name": "The reed beds",
+      "desc": "Tall reeds, a heron standing like a post, the smell of mud. A line of old stakes runs out into the water and disappears under it, as if a path once went that way.",
+      "exits": {
+        "back": "mere_shore"
+      },
+      "items": [
+        "heron feather"
+      ],
+      "gm_notes": "The drowned path once led to the island; the mere rose over it. Wading it is possible but slow and cold; the player gets halfway and must turn back unless Brann helps."
+    },
+    "island": {
+      "name": "Tern Island",
+      "desc": "A hump of turf and stone with a broken tower. Inside the tower, someone long ago scratched a map into the wall: five lines meeting, and a sixth line that runs off the edge of the stone, and at the meeting a small knot drawn with care.",
+      "exits": {
+        "the ferry back": "mere_shore"
+      },
+      "items": [
+        "bell without a clapper"
+      ],
+      "hidden": true,
+      "gm_notes": "The scratched map is the first map of Fivefold, older than the village. Studying it sets flag first_map_seen: it shows that the five paths are rooted in one place under the mill (the knot) and that the sixth path leads out. Brann has never looked at it closely."
+    },
+    "orchard": {
+      "name": "The orchard",
+      "desc": "Old apple trees in crooked rows, windfalls in the grass, a dozen straw hives along the south wall. The air hums. A cottage with a green door sits at the far end.",
+      "exits": {
+        "north": "crossing",
+        "the green door": "ines_cottage"
+      },
+      "items": [
+        "windfall apple"
+      ],
+      "gm_notes": "Ines's hives. Bees are calm with a calm visitor; flailing or smoke-without-skill gets the player stung (no lasting harm). Ines can show how the comb in the oldest hive is built in lines that match the paths."
+    },
+    "ines_cottage": {
+      "name": "Ines's cottage",
+      "desc": "One warm room smelling of wax. Jars of honey in every shade on the shelves, a frame of comb held up to the window so the light comes through it.",
+      "exits": {
+        "out": "orchard"
+      },
+      "items": [
+        "jar of dark honey",
+        "frame of comb"
+      ],
+      "gm_notes": "The frame of comb, held to the light, shows cells laid in five curved lines meeting at a point, and a sixth line running off the frame. Ines will explain if asked kindly. Taking honey unasked: honesty -1."
+    },
+    "mill_yard": {
+      "name": "The mill yard",
+      "desc": "A mill with a wheel that has not turned in years, a dry race full of nettles, a door hanging on one hinge. Someone has laid small stones in a careful line from the yard to the door.",
+      "exits": {
+        "east": "crossing",
+        "inside": "mill_floor"
+      },
+      "items": [
+        "smooth grey stone"
+      ],
+      "gm_notes": "Pell's stones. Moving them upsets Pell if Pell sees it."
+    },
+    "mill_floor": {
+      "name": "The mill floor",
+      "desc": "Dust, light through gaps in the boards, two millstones. On the floor around the millstones, hundreds of pebbles have been laid out in five curving lines that meet beneath the stones, and a sixth line that runs to the wall and stops.",
+      "exits": {
+        "out": "mill_yard",
+        "beneath the millstones": "knot"
+      },
+      "items": [],
+      "gm_notes": "Pell's work: a stone from every path, every day, laid where it 'belongs'. Pell knows the gap beneath the millstones leads down. The way down (to the knot) opens when Pell shows it (Pell's 'trust' block unlocked and Pell says so), or when flag first_map_seen is set and the player searches beneath the stones: then use a map op to open node knot."
+    },
+    "knot": {
+      "name": "The knot",
+      "desc": "A low round chamber under the mill, roots coming through the walls in five thick braids that twist together overhead into one knot. In the floor, a pool so still it reflects the knot perfectly. A sixth, thinner root runs off into the dark.",
+      "exits": {
+        "up": "mill_floor"
+      },
+      "items": [],
+      "hidden": true,
+      "gm_notes": "The place where the paths are rooted. Whatever is drawn here and laid on the water holds: a finished map laid on the pool would pin every path forever (no more drift). Being here sets flag knot_found. Ottilie does not know this place exists; Pell does but has never gone all the way in."
+    },
+    "beechwood": {
+      "name": "The beech wood",
+      "desc": "Grey trunks, copper leaves underfoot, light that comes from everywhere at once. The path goes on in a gentle curve.",
+      "exits": {
+        "back to the crossing": "crossing",
+        "deeper": "beech_ring"
+      },
+      "items": [
+        "beech nut"
+      ],
+      "gm_notes": "The beech-wood path loops: walking on without attention brings the player back to the crossing from the south, through the orchard, and they cannot say when it turned. Following Pell's stones (if the player has seen them) or walking slowly and noticing gets them deeper."
+    },
+    "beech_ring": {
+      "name": "The ring of beeches",
+      "desc": "A clearing ringed by twelve great beeches. A circle of moss, a fallen trunk to sit on. On the far side the trees are close together, and through them, faintly, more light than there should be.",
+      "exits": {
+        "back": "beechwood"
+      },
+      "items": [],
+      "gm_notes": "A good place to think or talk. The light on the far side is where the sixth path comes out at dusk. Before dusk there is no way through."
+    },
+    "sixth_path": {
+      "name": "The sixth path",
+      "desc": "A path that was not there this morning, pale in the dusk, running from beside the signpost up past the beech wood and over the hill, out of the valley. It does not look dangerous. It looks like it goes somewhere.",
+      "exits": {
+        "back to the crossing": "crossing"
+      },
+      "items": [],
+      "hidden": true,
+      "gm_notes": "The sixth path appears only after flag dusk (then use a map op to open node sixth_path). Walking it to the end leaves Fivefold: set flag walked_on only if the player clearly chooses to go and not come back."
+    }
+  }
+}
