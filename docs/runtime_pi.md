@@ -322,6 +322,9 @@ or vendored code): deterministic control code that drives the world
 (games, shift logic, corpus coordinators — "dispatcher" ≠ "game"). Most scens have
 none. The dispatcher is a **persistent, disk-resumable driver, not an agent** (plan
 decision 13): the runtime — never dispatcher code — owns its process lifecycle.
+`dispatchlib` is runtime-neutral; besides `dispatchd.py`'s gateway adapter there is a
+second, in-memory adapter in `runtime_local/localrun.py` that runs plain-mode scens
+without a container (a harness, not a runtime).
 
 Renamed from "game master"/`gm` on 2026-09-16 so nothing inside a world
 says "game". Snaps built before that carry the old layout (`gm` user, `/gm`,

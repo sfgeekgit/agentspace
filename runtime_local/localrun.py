@@ -8,12 +8,13 @@ the same SOUL/ROLE/WORLD sandwich the PI runtime renders; the player is either a
 OpenRouter chat model or a base model on a /v1/completions endpoint (document format,
 see basemodel.py).
 
-    python3 runtime_local/localrun.py recess_mvp runs/t1 --player deepseek/deepseek-v4.1-flash
-    python3 runtime_local/localrun.py recess_mvp runs/g1 --seed 1 \\
+    python3 runtime_local/localrun.py recess_mvp --player deepseek/deepseek-v4.1-flash
+    python3 runtime_local/localrun.py recess_mvp [run_dir] --seed 1 \\
         --player base --base-url http://127.0.0.1:8000 [--player-name "Model C"] \\
         [--note-file note.txt] [--param max_turns=40] [--gm-model deepseek/deepseek-v4.1-flash]
 
-The run dir doubles as the dispatcher's home (what /dispatch is in a container):
+The run dir (default $AGENTSPACE_RESULTS_DIR/local/<scen>-<utc time>, the results repo's
+working area) doubles as the dispatcher's home (what /dispatch is in a container):
 meta.json, state.json, secrets.json, game_log.jsonl, transcript.md, calls.jsonl (every
 chat call: payload, reply, usage) and, for a base-model player, player_turns.jsonl
 (exact prompt with and without the note, raw completion, parsed action)."""
@@ -34,8 +35,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(REPO / "runtime_pi"))
 from agentspace import dispatchlib  # noqa: E402
+import agentd  # noqa: E402
 import basemodel  # noqa: E402
+
+RESULTS_DIR = Path(os.environ.get("AGENTSPACE_RESULTS_DIR", "/opt/agentspace-results"))   # agentspace/results.py
 
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
 # Fixed for the environment (GM and NPCs), logged in meta.json.
@@ -56,10 +61,8 @@ class Log:
 
 
 def sandwich(files):
-    """runtime_pi/agentd.py render_sandwich in plain mode: SOUL.md first, MEMORY.md
-    last, the rest alphabetical, each as '# NAME' + body, joined by '---'."""
-    names = sorted(files, key=lambda n: (n != "SOUL.md", n == "MEMORY.md", n))
-    return "\n\n---\n\n".join(f"# {n}\n\n{files[n].strip()}".strip() for n in names)
+    """The plain-mode system prompt, rendered by the PI runtime's own code."""
+    return agentd.join_sandwich([], files)
 
 
 class ChatAgent:
@@ -160,7 +163,7 @@ def scen_params(scen_dir, overrides):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("scen")
-    ap.add_argument("run_dir")
+    ap.add_argument("run_dir", nargs="?", help="default: $AGENTSPACE_RESULTS_DIR/local/<scen>-<utc time>")
     ap.add_argument("--param", action="append", default=[], help="k=v scen parameter")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--reserves", type=int, default=0)
@@ -184,7 +187,8 @@ def main():
     a = ap.parse_args()
 
     scen_dir = REPO / "scenarios" / a.scen
-    run_dir = Path(a.run_dir).resolve()
+    run_dir = Path(a.run_dir).resolve() if a.run_dir else \
+        RESULTS_DIR / "local" / f"{a.scen}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     run_dir.mkdir(parents=True, exist_ok=True)
     toml, params = scen_params(scen_dir, a.param)
     if not toml.get("plain"):

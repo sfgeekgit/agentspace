@@ -462,6 +462,9 @@ explicit `snap take` or `snap push`. Git pushes happen never — the human runs 
     runtimes/pi.py             ← the PI runtime (runtime_pi.md)
   runtime_pi/                  ← in-container PI runtime (gateway, agentd, dispatchd, prompt_capture.mjs)
                                  + the gates (checklist/, dispatch_gate/, plain_gate/, key, web, results, mirror, prompt capture)
+  runtime_local/               ← standalone harness for plain-mode dispatcher scens without Docker (localrun.py,
+                                 basemodel.py, chain.py); imports dispatchlib and agentd's sandwich; not wired
+                                 into any front end and not in runtimes/ (runtime_local/README.md)
   scripts/check_frontends.py   ← every cmd_* is wired into CLI, menu and web
   scripts/check_web_workspace.cjs, check_results_reader.cjs, check_results_workspace.cjs
                                ← optional Playwright browser passes (web_ui.md §7)

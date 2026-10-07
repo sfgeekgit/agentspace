@@ -205,13 +205,18 @@ def render_sandwich(home, agent_id, cfg):
         parts.append(MESSAGING_NORMS)
     if not cfg.get("plain") and cfg.get("require_scratchpad", True):
         parts.append(SCRATCH_REQUIRED)
-    # SOUL.md first, MEMORY.md last, everything else alphabetical between.
-    names = sorted(
-        (p.name for p in home.glob("*.md")
-         if not p.name.startswith(".") and p.name != "FIRST_WAKE.md"),
-        key=lambda n: (n != "SOUL.md", n == "MEMORY.md", n))
-    for name in names:
-        parts.append(f"# {name}\n\n{(home / name).read_text().strip()}")
+    files = {p.name: p.read_text() for p in home.glob("*.md")
+             if not p.name.startswith(".") and p.name != "FIRST_WAKE.md"}
+    return join_sandwich(parts, files)
+
+
+def join_sandwich(parts, files):
+    """`parts` (preamble blocks, empty in plain mode) then the files as '# NAME' +
+    body: SOUL.md first, MEMORY.md last, everything else alphabetical between,
+    joined by '---'. Shared with runtime_local, which renders the same sandwich
+    from in-memory files."""
+    names = sorted(files, key=lambda n: (n != "SOUL.md", n == "MEMORY.md", n))
+    parts = list(parts) + [f"# {n}\n\n{files[n].strip()}" for n in names]
     return "\n\n---\n\n".join(p.strip() for p in parts)
 
 

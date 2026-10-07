@@ -46,13 +46,17 @@ NPCs). Without Docker, with the local runner:
 ```bash
 export OPENROUTER_API_KEY=...
 # chat-model player (no GPU)
-python3 runtime_local/localrun.py recess_fivefold runs/t1 --player deepseek/deepseek-v4.1-flash
+python3 runtime_local/localrun.py recess_fivefold --player deepseek/deepseek-v4.1-flash
 # base-model player on a vLLM server
-python3 runtime_local/localrun.py recess_fivefold runs/g1 --seed 1 --player base \
+python3 runtime_local/localrun.py recess_fivefold --seed 1 --player base \
     --base-url http://127.0.0.1:8000 --player-name "Model C" --param guide=true
 # iterated play: each round starts with the previous round's message to its next self
-python3 runtime_local/chain.py recess_fivefold runs/chainA --rounds 3 --seed 21 --player base
+python3 runtime_local/chain.py recess_fivefold --rounds 3 --seed 21 --player base
 ```
+
+Runs land under `$AGENTSPACE_RESULTS_DIR/local/` unless a directory is given (see
+`runtime_local/README.md`). Unlike `recess_mvp`, this scen ships no `gate/`
+self-test; a real run is the check.
 
 ## Params beyond recess_mvp's
 

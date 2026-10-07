@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Iterated playthroughs: round k+1 starts with round k's message to its next self.
 
-    python3 runtime_local/chain.py recess_fivefold runs/chainA --rounds 3 --seed 21 [localrun args...]
+    python3 runtime_local/chain.py recess_fivefold [chain_dir] --rounds 3 --seed 21 [localrun args...]
 
 Each round is a full localrun.py game in <dir>/round<k>/, with seed `seed + k - 1`.
 Round 1 has no note (or --first-note-file). The note handed on is the dispatcher's
@@ -11,15 +11,18 @@ import argparse
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).parent
+sys.path.insert(0, str(HERE))
+import localrun  # noqa: E402
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scen")
-    ap.add_argument("chain_dir")
+    ap.add_argument("chain_dir", nargs="?", help="default: $AGENTSPACE_RESULTS_DIR/local/<scen>-chain-<utc time>")
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--first-note-file")
@@ -28,7 +31,8 @@ def main():
     ap.add_argument("--carry-carved", action="store_true",
                     help="lines carved in earlier rounds (state['carved']) reach later ones (scen param waystone_lines)")
     a, rest = ap.parse_known_args()
-    root = Path(a.chain_dir).resolve()
+    root = Path(a.chain_dir).resolve() if a.chain_dir else \
+        localrun.RESULTS_DIR / "local" / f"{a.scen}-chain-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     root.mkdir(parents=True, exist_ok=True)
     note = Path(a.first_note_file).read_text().strip() if a.first_note_file else ""
     log = root / "chain.jsonl"

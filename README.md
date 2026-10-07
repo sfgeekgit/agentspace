@@ -85,7 +85,8 @@ minting a fresh per-environment API key, spinning up new machines on demand (or
 running locally), tracking lineage, and tearing everything down afterward — so
 you can focus on the experiment, not the plumbing. Agent configs, scenario
 definitions, and the base container Dockerfile are also here. See
-[`docs/`](docs/) for the full architecture.
+[`docs/`](docs/) for the full architecture. Plain-mode text-adventure scens can also be
+smoke-run in one local process without Docker, see [`runtime_local/`](runtime_local/README.md).
 
 ## Watch what happens
 

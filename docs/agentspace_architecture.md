@@ -69,6 +69,8 @@ anything not written to a file should be assumed forgettable.
   mirror/, mirror_refresh.py      ← the no-password public mirror: static viewer + refresh trigger (mirror.md)
   agentspace/                     ← the library every front end calls (agentspace_cli.md, "Package layout")
   runtime_pi/                     ← the PI runtime that runs inside env containers (runtime_pi.md)
+  runtime_local/                  ← standalone harness: runs a plain-mode dispatcher scen in one local
+                                     process, no Docker, no snapshots; NOT a registered runtime (its README)
   deploy/                         ← systemd units: the web service, the mirror's refresh trigger
   scripts/                        ← front-end coverage check, scenario build helper
   scenarios/

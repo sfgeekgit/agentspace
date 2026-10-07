@@ -220,7 +220,9 @@ def gm_context(state, bundle, action, params, npc_lines=None, scheduled=None):
     return "\n\n".join(sec)
 
 
-FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
+# The closing fence is optional: some GMs end the reply right after the object, and
+# a block the engine cannot see is a turn whose moves and flags are lost.
+FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*(?:```|\Z)", re.S)
 
 
 def parse_gm(raw):

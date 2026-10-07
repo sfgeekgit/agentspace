@@ -23,10 +23,16 @@ and the run directory stands in for the dispatcher's home (`/dispatch`).
 
 ```bash
 export OPENROUTER_API_KEY=...
-python3 runtime_local/localrun.py recess_mvp runs/t0 --param max_turns=10       # chat player, no GPU
-python3 runtime_local/localrun.py recess_fivefold runs/g1 --seed 1 --player base --base-url http://127.0.0.1:8000
-python3 runtime_local/chain.py recess_fivefold runs/chainA --rounds 3 --seed 21 --player base
+python3 runtime_local/localrun.py recess_mvp --param max_turns=10                # chat player, no GPU
+python3 runtime_local/localrun.py recess_fivefold --seed 1 --player base --base-url http://127.0.0.1:8000
+python3 runtime_local/chain.py recess_fivefold --rounds 3 --seed 21 --player base
 ```
+
+The run directory is an optional second argument; by default a run lands under
+`$AGENTSPACE_RESULTS_DIR/local/` (the results checkout, `/opt/agentspace-results`
+here, see `docs/results.md`) as `<scen>-<utc time>`, a chain as `<scen>-chain-<utc time>`.
+These are raw working directories, not results bundles: `results generate` does not
+read them, and a `runs/` directory inside this repo is gitignored.
 
 Outputs per run: `meta.json`, `state.json`, `game_log.jsonl`, `transcript.md`,
 `calls.jsonl` (every chat call) and `player_turns.jsonl` (base-model player: exact
@@ -37,4 +43,7 @@ self (the dispatcher's `state["handoff"]`, e.g. `recess_fivefold`'s `handoff` pa
 in the frame (`--note-file`) or in the world (`--note-in-world`, `past_note`).
 
 Not supported: messaging, tools, the public board, budgets, snapshots. It is a
-research harness for single-player plain-mode worlds, not a replacement for PI.
+research harness for single-player plain-mode worlds, not a replacement for PI: it is
+not a registered runtime (`agentspace/runtimes/`), so the CLI, menu and web UI do not
+know about it, and it builds no world roots. The one piece of PI it shares is the
+prompt sandwich, imported from `runtime_pi/agentd.py` so the two cannot drift.

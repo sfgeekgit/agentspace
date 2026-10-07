@@ -97,7 +97,9 @@ collected. The exports contain hidden game state and agent instructions.
 ## Publishing
 
 Default local results directory: `/opt/agentspace-results`; override with
-`AGENTSPACE_RESULTS_DIR` in the server environment. It must be a separate Git
+`AGENTSPACE_RESULTS_DIR` in the server environment. `runtime_local/` also writes its
+raw run directories under `<results dir>/local/`; those are not bundles and this
+exporter does not read them. It must be a separate Git
 checkout with an `origin` remote. On this host it is
 `git@github.com:sfgeekgit/agentspace_results.git`. Core-repository publication is
 explicitly refused. On the password demo, holders of the password can open
